@@ -8,16 +8,16 @@ mode: "collect"
 usd_path: "assets/chemistry_lab/lab_001/lab_001.usd"
 target_path: "/World/beaker1"
 
-max_episodes: 100
+max_episodes: 1
 
 infer:
-  type: "local"
-  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  type: "remote"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb', "camera_3_rgb": 'camera_3_rgb'}
   policy_model_path: ""
   policy_config_path: ""
   normalizer_path: ""
   host: "127.0.0.1"
-  port: 8000
+  port: 31002
   n_obs_steps: 1
   timeout: 30
   max_retries: 3

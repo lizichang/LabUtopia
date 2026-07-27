@@ -7,3 +7,5 @@ from .close_controller import CloseController
 from .shake_controller import ShakeController
 from .press_controller import PressController
 from .pressZ_controller import PressZController
+from .uncap_controller import UncapController
+from .ignite_controller import IgniteController

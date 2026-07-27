@@ -23,7 +23,7 @@ args = parse_args()
 
 # Set up simulation app based on arguments
 simulation_config = {
-    "headless": False,
+    "headless": args.headless,
     "extra_args": ["--/rtx/raytracing/fractionalCutoutOpacity=true"],
 }
 
@@ -68,7 +68,7 @@ def main():
         show_video = False
     else:
         save_video = True
-        show_video = not args.headless
+        show_video = True
 
     robot = create_robot(
         cfg.robot.type,
