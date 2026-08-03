@@ -16,6 +16,8 @@ from tasks.LiquidMixing_task import LiquidMixing
 from tasks.navigation_task import NavigationTask
 from tasks.mobile_pick_task import MobilePickTask
 from tasks.ignitelamp_task import IgniteLampTask
+from tasks.flametest_task import FlameTestTask
+from tasks.heatlamp_task import HeatLampTask
 
 _task_registry: Dict[str, Type[BaseTask]] = {}
 
@@ -46,3 +48,5 @@ register_task("LiquidMixing", LiquidMixing)
 register_task("navigation", NavigationTask)
 register_task("mobile_pick", MobilePickTask)
 register_task("ignitelamp", IgniteLampTask)
+register_task("flametest", FlameTestTask)
+register_task("heatlamp", HeatLampTask)
