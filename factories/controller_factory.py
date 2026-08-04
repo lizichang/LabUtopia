@@ -24,6 +24,7 @@ from controllers.mobile_pick_controller import MobilePickController
 from controllers.ignitelamp_controller import IgniteLampTaskController
 from controllers.flametest_controller import FlameTestTaskController
 from controllers.heatlamp_controller import HeatLampTaskController
+from controllers.dissolve_controller import DissolveTaskController
 
 _controller_registry: Dict[str, Type[BaseController]] = {}
 
@@ -58,4 +59,5 @@ register_controller("navigation", NavigationController)
 register_controller("mobile_pick", MobilePickController)
 register_controller("ignitelamp", IgniteLampTaskController)
 register_controller("flametest", FlameTestTaskController)
+register_controller("dissolve", DissolveTaskController)
 register_controller("heatlamp", HeatLampTaskController)

@@ -13,7 +13,8 @@ class ShakeController(BaseController):
         name: str,
         cspace_controller: BaseController,
         events_dt: typing.List[float] = [0.02, 0.018, 0.018, 0.018, 0.018, 0.018, 0.018, 0.018, 0.018, 0.015],
-        shake_distance: float = 0.1   
+        shake_distance: float = 0.1,
+        initial_position: typing.Optional[np.ndarray] = None
     ) -> None:
         BaseController.__init__(self, name=name)  
         self._forward_start = False  
@@ -28,7 +29,15 @@ class ShakeController(BaseController):
             raise Exception("events_dt length is not 10")
         self._cspace_controller = cspace_controller 
         self._shake_distance = shake_distance / get_stage_units() 
-        self._initial_position = np.array([0.25, 0, 1.0])  
+        if initial_position is None:
+            self._initial_position = np.array([0.25, 0, 1.0])
+        else:
+            self._initial_position = np.array(initial_position, dtype=float)
+        return
+
+    def set_initial_position(self, position: np.ndarray) -> None:
+        """Set the world position where the shaking gesture takes place."""
+        self._initial_position = np.array(position, dtype=float)
         return
 
     def forward(

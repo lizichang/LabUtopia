@@ -113,6 +113,7 @@ class FlameTestTask(BaseTask):
                 "wire_state": self.wire_state,
                 "ignite_position": self.ignite_position,
                 "flame_on": self.flame_on,
+                "flame_color": self.flame_color,
             },
         )
 
