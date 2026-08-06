@@ -30,7 +30,7 @@ version: 1.3.0
 ## 关键约束
 
 - 所有生成/验证脚本写在 workspace 暂存区，**用 Bash cp 复制到仓库**（Write 工具不能直接写 LabUtopia）
-- 模板脚本（`scripts/gen_dissolve_assets.py`、`scripts/obj2usd.py`、`scripts/gen_lab004_scene.py`、`scripts/blender_asset_template.py`、`scripts/post_fix_usd.py`）随仓库 git 管理；若仓库缺失（如未 pull），先从 git 历史恢复（`git log --oneline -- scripts/` 找最近版本），不要自行重写
+- 模板脚本（`scripts/gen_dissolve_assets.py`、`scripts/obj2usd.py`、`scripts/obj_gen.py`、`scripts/gen_lab004_scene.py`、`scripts/blender_asset_template.py`、`scripts/post_fix_usd.py`）随仓库 git 管理；`obj_gen.py`（MeshBuilder 定义）是管线 A 的必需依赖，与 `gen_dissolve_assets.py`、`obj2usd.py` 成对出现（缺 obj_gen.py 则管线 A 无法运行）；若仓库缺失（如未 pull），先从 git 历史恢复（`git log --oneline -- scripts/` 找最近版本），不要自行重写
 - 场景保存必须 `stage.Export(新路径)`，**禁止 `stage.Save()`**（会污染源文件，见坑 2）
 - 材质规范（两套管线统一口径）：玻璃 → Principled BSDF transmission=1.0 + ior=1.45 + roughness≈0.05（USD 里后处理补 transmission，见坑 12）；金属 → metallic≈0.85 roughness≈0.3；陶瓷/塑料 → metallic=0、roughness≈0.4-0.6；纸/棉 → roughness≈0.9
 - 资产文件放 `assets/chemistry_lab/`，场景放 `assets/chemistry_lab/lab_XXX/lab_XXX.usd`

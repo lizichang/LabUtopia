@@ -94,33 +94,115 @@ assets/chemistry_lab/lab_XXX/lab_XXX.usd
 
 ## 管线 A：MeshBuilder → OBJ → USD
 
-### 几何 helpers（MeshBuilder）
+### 几何 helpers（MeshBuilder 真实 API，来自 scripts/obj_gen.py）
 
-以 scripts/gen_dissolve_assets.py 为模板，常用 4 个 helper：
-
-```python
-def lathe(mb, profile, axis, radius, start, end, steps, S, name, color=None, opacity=None, flip=False):
-    """旋转体：profile 为 [x, y] 列表（截面），axis 为旋转轴（'y'/'x'），
-    radius 为 [r0, r1] 半径范围，start/end 为轴方向高度范围。"""
-
-def h_cylinder(mb, radius, height, axis, center, S, name, color=None, opacity=None, flip=False):
-    """水平圆柱（手柄、立柱等）。"""
-
-def ellipsoid_half(mb, rx, ry, rz, x0, x1, ax, S, name, color=None, opacity=None, flip=False):
-    """半椭球（勺头），ax=0 时中心在 x0。"""
-
-def annulus(mb, inner, outer, height, axis, center, S, name, color=None, opacity=None, flip=False):
-    """圆环/孔板（试管架孔板：inner 为孔径）。"""
-```
-
-材质模板（make_usd）：
+**MeshBuilder 定义在 `scripts/obj_gen.py`**（随仓库 git 管理，与生成脚本同目录；生成脚本开头用 `sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))` 找到它）。核心方法（真实签名，勿凭旧文档编造）：
 
 ```python
-def make_usd(mesh, S, name, color=(0.8, 0.8, 0.8), opacity=1.0, metallic=0.0, roughness=0.5):
-    # UsdPreviewSurface shader + UsdPreviewSurface 材质
-    # glass: opacity=0.35, roughness=0.1
-    # steel: metallic=0.85, roughness=0.3, color=(0.75,0.78,0.82)
+class MeshBuilder:
+    def lathe(self, profile, segments, group, close_bottom=False, close_top=False,
+              bottom_cap_r=0.0, top_cap_r=0.0, reverse=False):
+        """旋转体：profile = [(r, z), ...] 绕 Z 轴旋转，z 朝上（米）。
+        例：mb.lathe([(0.0075,0.0),(0.0075,0.12)], 40, "tube")  # 直管
+            close_bottom=True 封底；reverse=True 法线朝内（做内壁）"""
+    def h_cylinder(self, p0, p1, r, segments, group, cap=False):
+        """圆柱：p0/p1 = 轴两端点 (x,y,z)，r 半径。例：手柄/立柱"""
+    def sphere(self, cx, cy, cz, r, rings, segments, group):
+        """球体"""
+    def torus(self, cx, cy, cz, R, r_tube, segments_u, segments_v, group):
+        """环面"""
+    def to_obj(self, groups_order):
+        """导出 OBJ 文本（groups_order 控制 prim 分组顺序）"""
+    # 低层原语（写特殊形状时用）：
+    #   _add_vert(p, n) -> 返回顶点索引
+    #   _add_quad(a, b, c, d, group)
+    #   _add_tri(a, b, c, group)
 ```
+
+**gen_dissolve_assets.py 模板里自定义的 helper**（MeshBuilder 没有，新资产脚本照抄即可）：
+
+```python
+def shift(mb, dx, dy, dz):                    # 平移全部顶点（lathe 生成后移位置，如试管架立柱）
+def annulus(mb, cx, cy, z0, z1, r_in, r_out, seg, group):
+    """圆环板（真孔）：顶/底/外壁/内壁，法线正确。例：试管架孔板"""
+def ellipsoid_half(mb, cx, cy, cz, ax, ay, az, rings, seg, group):
+    """实心半椭球（z 从 0 到 cz，底面平，法线正确）。例：药匙勺头"""
+```
+
+### 管线 A 资产脚本完整骨架（gen_xxx_assets.py，单资产最小版）
+
+完整多资产示例见 `scripts/gen_dissolve_assets.py`（6 个资产 + MTL 字典 + make_usd + main）。单资产最小骨架，照抄改 3 处（①②③ 注释标记）：
+
+```python
+# -*- coding: utf-8 -*-
+"""生成 <新资产> OBJ+USD（单位：米）。"""
+import os
+import sys
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # obj_gen.py 同目录
+from obj_gen import MeshBuilder  # noqa: E402
+
+OUT_USD = r"E:/.../LabUtopia/assets/chemistry_lab"   # ① 资产输出目录（米单位）
+OUT_OBJ = r"C:/.../outputs"                          # ② OBJ/MTL 暂存目录
+
+# ---------- 建模：每个资产一个 build 函数 ----------
+def build_xxx(mb):
+    S = 40
+    mb.lathe([(r1, z1), (r2, z2), ...], S, "body", close_bottom=True)  # ③ 主体剖面
+    mb.h_cylinder(p0, p1, r, S, "handle", cap=True)                    #    附属件
+
+# ---------- 材质参数表（键 = lathe/h_cylinder 的 group 名）----------
+USD_MATS = {
+    "body":   dict(diffuse=(0.85, 0.92, 0.98), opacity=0.35, roughness=0.05),  # 玻璃
+    "handle": dict(diffuse=(0.70, 0.71, 0.74), metallic=0.85, roughness=0.35),  # 不锈钢
+}
+GROUPS = {"xxx": ["body", "handle"]}
+BUILDERS = {"xxx": build_xxx}
+
+# ---------- OBJ→USD（模板自带，照抄）----------
+def make_usd(obj_path, out_usd, mat_specs):
+    from pxr import Usd, UsdGeom, UsdShade, Sdf, Gf
+    from obj2usd import parse_obj, write_mesh
+    verts, vns, groups = parse_obj(obj_path)
+    stage = Usd.Stage.CreateNew(out_usd)
+    UsdGeom.SetStageMetersPerUnit(stage, 1.0)     # 米单位，勿省（坑 8）
+    root = UsdGeom.Xform.Define(stage, "/root")
+    stage.SetDefaultPrim(root.GetPrim())
+    for g, faces in groups.items():
+        mesh = write_mesh(stage, f"/root/{g}", verts, faces, vns)
+        spec = mat_specs.get(g)
+        if spec is not None:
+            mat_path = f"/root/{g}_mat"
+            mat = UsdShade.Material.Define(stage, mat_path)
+            sh = UsdShade.Shader.Define(stage, f"{mat_path}/Shader")
+            sh.CreateIdAttr("UsdPreviewSurface")
+            sh.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*spec["diffuse"]))
+            if spec.get("opacity", 1.0) < 1.0:
+                sh.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(spec["opacity"])
+            if spec.get("metallic", 0.0) > 0:
+                sh.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(spec["metallic"])
+            sh.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(spec["roughness"])
+            mat.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), "surface")
+            UsdShade.MaterialBindingAPI(mesh).Bind(mat)
+    stage.GetRootLayer().Save()
+    print(f"{out_usd}: {len(groups)} prims OK")
+
+def main():
+    for name in BUILDERS:
+        mb = MeshBuilder()
+        BUILDERS[name](mb)
+        obj_path = os.path.join(OUT_OBJ, f"{name}.obj")
+        with open(obj_path, "w", encoding="utf-8") as f:
+            f.write(mb.to_obj(GROUPS[name]))
+        make_usd(obj_path, os.path.join(OUT_USD, f"{name}.usd"), USD_MATS[name])
+    print("DONE")
+
+if __name__ == "__main__":
+    main()
+```
+
+注意：多资产脚本在 `main()` 里循环 BUILDERS（OBJ/MTL 文本模板见 gen_dissolve_assets.py 的 MTL 字典，仅当目标渲染器需要 MTL 时写）；**运行环境是本地 anaconda base python（有 pxr），不是 Blender python**；make_usd 里 `stage.Save()` 是新建文件，安全（坑 2 管的是已有场景/源文件）。
 
 ### obj2usd.py 关键函数（修复版 write_mesh）
 
@@ -293,37 +375,116 @@ print({a.GetName(): a.Get() for a in sh.GetAttributes()})
 
 ---
 
-## 场景组装脚本骨架（gen_labXXX_scene.py）
+## 场景组装脚本骨架（gen_labXXX_scene.py，完整可运行版）
+
+完整示例见 `scripts/gen_lab004_scene.py`（D2 场景，REMOVE 6 个 prim + 5 个 REFS + 3 个 BUILTIN）。运行环境：本地 anaconda base python（有 pxr）。骨架如下，照抄改 3 个列表（① ② ③ 标记）：
 
 ```python
-SRC = "assets/chemistry_lab/lab_001/lab_001.usd"   # 基础场景
-OUT_DIR = "assets/chemistry_lab/lab_004/"
-REMOVE = ["/World/xxx_prim", ...]                    # 删除不需要的 prim
-REFS = {                                            # 资产引用 + 摆放
-    "TestTubeRack": (src, (0.30, 0.08, 0.80)),
-    "TestTube":     (src, (0.30, 0.08, 0.809)),     # 管底贴台面
-    ...
-}
-BUILTIN = {                                         # 隐藏标记 prim（圆柱；形状必须匹配容器内腔，见坑 18）
-    "PowderOnSpoon": ((0.305, 0.13, 0.80), 0.004, 0.008, (0.6,0.45,0.2)),
-    "TubeWater":     ((0.30, 0.08, 0.831), 0.006, 0.035, (0.55,0.75,0.95), 0.6),
-}
+# -*- coding: utf-8 -*-
+"""生成 lab_0XX.usd（基于 lab_001.usd 副本组装场景）。"""
+import os
+from pxr import Usd, UsdGeom, UsdShade, Sdf, Gf
 
-for prim_path in REMOVE:
-    stage.RemovePrim(prim_path)
-for name, (src, pos) in REFS.items():
-    prim = stage.DefinePrim(f"/World/{name}", "Xform")
-    prim.GetReferences().AddInternalReference(src)
-    ops = prim.GetOrderedXformOps()
-    if ops:
-        ops[0].Set(Gf.Vec3d(*pos))        # 幂等
-    else:
-        prim.AddTranslateOp().Set(Gf.Vec3d(*pos))
-# BUILTIN 用 UsdGeom.Cylinder.Define + AddTranslateOp + 颜色/透明度
-# 直壁容器（烧杯/试管）→ 圆柱（半径 < 内径）；收口容器（锥形瓶/容量瓶）→ 截锥
-# （UsdGeom.Cone.Define 或 Cylinder 缩放），半径按内腔在液面高度处的实际半径，否则直液柱悬空穿模（坑 18）
-stage.Export(os.path.join(OUT_DIR, "lab_004.usd"))   # 禁止 Save()！
+SRC = r"E:/.../assets/chemistry_lab/lab_001/lab_001.usd"   # 基础场景（只当输入，严禁 Save）
+OUT_DIR = r"E:/.../assets/chemistry_lab/lab_0XX"
+ASSET = r"E:/.../assets/chemistry_lab"
+
+REMOVE = ["/World/xxx_prim", ...]        # ① 要删除的 prim
+REFS = [                                 # ② 资产引用 (name, 资产文件名, translate)
+    ("TestTubeRack", "test_tube_rack.usd", (0.30, 0.08, 0.80)),
+    ("TestTube", "test_tube.usd", (0.30, 0.08, 0.809)),    # 管底贴台面
+]
+BUILTIN = [                              # ③ 内建效果 prim（初始隐藏）
+    # (name, kind, r, height, translate, color, opacity)
+    #   kind="cylinder"：直壁容器（烧杯/试管）液柱，r < 内径
+    #   kind="frustum" ：收口容器（锥形瓶/容量瓶）液体，r = 液面处内半径（坑 18）
+    ("PowderOnSpoon", "cylinder", 0.004, 0.004, (0.305, 0.13, 0.80), (0.93, 0.93, 0.94), 1.0),
+    ("TubeWater", "cylinder", 0.006, 0.035, (0.30, 0.08, 0.831), (0.55, 0.75, 0.95), 0.6),
+]
+
+
+def add_material(stage, prim, diffuse, opacity):
+    """UsdPreviewSurface 材质（BUILTIN 标记用）。"""
+    mat_path = str(prim.GetPath()) + "_mat"
+    mat = UsdShade.Material.Define(stage, mat_path)
+    sh = UsdShade.Shader.Define(stage, mat_path + "/Shader")
+    sh.CreateIdAttr("UsdPreviewSurface")
+    sh.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*diffuse))
+    sh.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(opacity)
+    sh.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+    mat.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), "surface")
+    UsdShade.MaterialBindingAPI(prim).Bind(mat)
+
+
+def add_frustum(stage, prim_path, r_bot, r_top, height, t, color, opacity):
+    """截锥 Mesh（收口容器内液体，坑 18）：r_bot 底内半径、r_top 液面处内半径。
+    UsdGeom.Cone 是尖锥（顶为一个点），不是截锥，不能用；Cylinder 是直壁。
+    用 Mesh 手写：两个环 + 侧面四边形。"""
+    import math
+    seg = 32
+    pts, idx = [], []
+    for i in range(seg):
+        a = 2 * math.pi * i / seg
+        pts.append(Gf.Vec3f(r_bot * math.cos(a), r_bot * math.sin(a), 0.0))   # 底环 z=0
+    for i in range(seg):
+        a = 2 * math.pi * i / seg
+        pts.append(Gf.Vec3f(r_top * math.cos(a), r_top * math.sin(a), height))  # 顶环
+    for i in range(seg):
+        j = (i + 1) % seg
+        idx += [i, j, seg + j, seg + i]
+    mesh = UsdGeom.Mesh.Define(stage, prim_path)
+    mesh.CreatePointsAttr(pts)
+    mesh.CreateFaceVertexCountsAttr([4] * seg)
+    mesh.CreateFaceVertexIndicesAttr(idx)
+    mesh.CreateSubdivisionSchemeAttr("none")
+    add_material(stage, mesh.GetPrim(), color, opacity)
+    mesh.AddTranslateOp().Set(Gf.Vec3d(*t))
+    UsdGeom.Imageable(mesh).MakeInvisible()
+
+
+def main():
+    os.makedirs(OUT_DIR, exist_ok=True)
+    stage = Usd.Stage.Open(SRC)                  # 打开副本；最后必须 Export 新路径
+    root = stage.GetPrimAtPath("/World")
+    assert root.IsValid(), "/World not found"
+
+    for path in REMOVE:                          # 1) 删除不需要的 prim
+        prim = stage.GetPrimAtPath(path)
+        if prim.IsValid():
+            stage.RemovePrim(Sdf.Path(path))
+
+    for name, asset_file, t in REFS:             # 2) 引用资产 + translate（幂等）
+        prim = UsdGeom.Xform.Define(stage, f"/World/{name}")
+        prim.GetPrim().GetReferences().AddReference(os.path.join(ASSET, asset_file))
+        ops = prim.GetOrderedXformOps()
+        if ops:
+            ops[0].Set(Gf.Vec3d(*t))             # 重复运行不报错
+        else:
+            prim.AddTranslateOp().Set(Gf.Vec3d(*t))
+
+    for name, kind, r, h, t, color, opacity in BUILTIN:   # 3) 内建效果 prim
+        prim_path = f"/World/{name}"
+        if kind == "frustum":
+            add_frustum(stage, prim_path, r, r, h, t, color, opacity)  # r_bot/r_top 按内腔调整
+        else:
+            geom = UsdGeom.Cylinder.Define(stage, prim_path)
+            geom.CreateRadiusAttr(r)
+            geom.CreateHeightAttr(h)
+            geom.CreateAxisAttr("Z")
+            geom.AddTranslateOp().Set(Gf.Vec3d(*t))
+            add_material(stage, geom.GetPrim(), color, opacity)
+            UsdGeom.Imageable(geom).MakeInvisible()   # 初始隐藏，事件触发后显示
+
+    out_file = os.path.join(OUT_DIR, "lab_0XX.usd")
+    stage.Export(out_file)                       # 禁止 Save()（坑 2）！
+    print("SAVED", out_file)
+
+
+if __name__ == "__main__":
+    main()
 ```
+
+要点：REFS 用 `AddReference(资产绝对路径)`（gen_lab004_scene.py 风格），不是 AddInternalReference；BUILTIN 初始 `MakeInvisible()`，由任务事件驱动显隐；液体形状必须匹配容器内腔（坑 18）——直壁容器圆柱（半径 < 内径），收口容器截锥（手写 Mesh，Cone 是尖锥不能用）。
 
 ---
 
