@@ -263,10 +263,11 @@ nohup timeout 420 /media/dky/Disk2TB/lizichang/miniconda3/envs/labutopia/bin/pyt
 
 一次失败可能多因叠加（材质路径 + 判定逻辑曾叠加）。**先注入 debug 日志跑一次拿全数据**，再二分定位：
 
-- 注入点：task `_update_dropper` 每帧写 `T<时间> st=状态 j7=夹爪值 gpos=TCP grasp=抓取点 d3d=距离 nG=判定`；原子 controller `forward` 每帧写 `C<时间> ev=事件 t=累计 gpos=TCP grasp/dip/tgt=参考点`
-- 判定两分法：
+- 注入点：task `_update_dropper` 每帧写 `T<时间> st=状态 j7=夹爪值 gpos=TCP grasp=抓取点 d3d=距离 nG=判定`；原子 controller `forward` 每帧写 `C<时间> ev=事件 t=累计 gpos=TCP grasp/dip/tgt=参考点`。**T 行必须同时记录被操作物体的实际位置（dropper=(x,y,z)）**——kinematic 跟随 bug（跟随只在 attached 分支、进入 squeezed 后物体冻结悬空）只有看物体实际坐标才能发现，只看 TCP/joint7 判定全绿照样漏
+- 判定三分法：
   - **物理/控制没到位**：TCP 没到参考点（d3d 大）、joint7 没到阈值、事件推进异常
   - **判定逻辑错**：TCP/joint7 数据全对、状态机演化完整（rest→attached→filled→dropped），但复合 controller 仍报失败 → 查 _check_phase_success 的判定条件（粘性标志！）
+  - **跟随丢失（视觉错但判定过）**：状态机/TCP/joint7 全对、任务判定"成功"，但物体实际位置冻结（如悬在瓶口不动）→ 查 kinematic 跟随是否覆盖整个吸附期间（dropper 曾只在 attached 分支跟随，进入 squeezed 后冻结；修复：跟随提为状态机公共段，覆盖 attached/squeezed/filled/dropped 全程，released 才复位）
 - 诊断完还原 patch（`git checkout --`）再 pull 正式修复
 
 验证：`python -m py_compile <file>`；stub cspace_controller 走查每个事件进入条件（阈值/时长/夹爪值）与 task 检测区间对齐。
