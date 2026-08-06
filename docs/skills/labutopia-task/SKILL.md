@@ -125,9 +125,13 @@ if self._start:
 17. **阈值跳转 vs dwell 冲突**：transfer 后 gripper 停在管口附近，若无门控会触发后续阶段判定——用显式状态条件隔离
 18. **抓取部位错误（不看物理语义定抓点）**：dropper 曾抓玻璃管身中段（z=0.06）——真实持滴管是捏**胶头**（最上部，z=0.115-0.15，抓 z=0.13），只有捏住胶头才能挤压排液/松开吸液。教训：**每个 phase 动手前必须过"抓取三问"**（抓哪/为什么/几何怎么定），答案来自步骤的物理语义 + 资产 USD extent 区间，不是猜。冒烟 T 行必须核对抓取点实际 z 落在预期区间（判定全绿不代表抓对地方）
 19. **kinematic 跟随只覆盖部分吸附期（物体悬空）**：dropper 跟随曾只在 attached 分支执行，进入 squeezed 后 set_position 不再调用 → 滴管在瓶口上方悬空冻结，但 TCP/joint7/状态机全对、任务判定"成功"（视觉错但判定过）。**任何 kinematic 附着物体，跟随必须提到状态机公共段，覆盖 attached/squeezed/filled/dropped 全程，released 才复位**；验证必须看物体实际坐标（debug T 行记录 dropper=(x,y,z)），只看判定全绿照样漏
+20. **相机 orientation 四元数按 (x,y,z,w) 写 → 相机翻转全黑**：Isaac Sim 相机 `set_local_pose(orientation=..., camera_axes="usd")` 按 **(w,x,y,z)** 解析四元数（Gf.Quatf 约定）。用 look-at 数学算出 (x,y,z,w) 后必须重排为 (w,x,y,z) 再写 yaml，否则相机被翻转朝上/朝外 → 画面全黑且无任何报错。症状排查看法：camera 画面 mean=0 从第 0 帧开始。另：新相机位置/朝向必须"看得见目标"——相机高度要接近目标高度且视线对准（2m 高水平视看不到 1m 桌面上的灯口），位置也不能在物体包围盒内
+21. **运行时改 UsdPreviewSurface 的 Shader input 不传导到渲染器**：点火时直接 `shader.GetInput('diffuseColor'/'emissiveColor').Set(...)`，USD 属性变了但 RTX 渲染器不刷新 → 火焰渲染成白色（判定全绿、visibility 生效、颜色无效）。**颜色变化必须用预制变体 + visibility 切换**：资产里预建 N 个同几何不同固定颜色材质的 prim（flame_outer_yellow/purple/…），全部初始隐藏，运行时只显示目标变体（visibility 已被证明即时生效）
+22. **判定成功 ≠ 视觉可见（火焰 2cm 锥体在 256px 相机只有 1-2 像素）**：FlameTest 首次冒烟判定 2/2 全绿，但三相机零黄色像素——火焰锥体半径 2cm 高 7.6cm 在 256×256、focal 5mm 相机里只有 1-4 像素，且 camera_1 在 2m 高水平视完全看不到 1m 高的桌面。**验证视觉性必须数据驱动**：把物体世界坐标用相机外参（quat 注意 w,x,y,z）+内参投影到像素，采样该点邻域颜色确认符合预期（火焰区域实测 (241,227,140) 黄色），不能只看任务判定。物体太小就放大几何（火焰放大 2.5x → φ10cm×19cm），相机要拉近对准目标
 
 ## 检查清单
 
+- [ ] 冒烟后做过视觉可见性验证：被操作/现象物体（火焰、颜色变化）世界坐标投影到相机像素，采样邻域颜色符合预期（判定全绿 ≠ 视觉可见，坑 22）
 - [ ] 任务已从 V7 文档拆 phase（一个 phase = 文档一步），每步的物理语义已想清
 - [ ] 每个 phase 过了抓取三问：抓哪个部位 / 为什么（语义）/ 参数怎么从资产几何定（USD extent 区间）
 - [ ] 动作所需器材全部有 3D 资产（lab_inventory.json ↔ assets/chemistry_lab 核对过），缺失的已调 labutopia-assets 生成
