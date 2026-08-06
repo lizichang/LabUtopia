@@ -175,6 +175,18 @@ class DropperDripTask(BaseTask):
         near_bottle = np.linalg.norm(gripper_pos[:2] - self.dip_position[:2]) < self.squeeze_xy_threshold
         near_tube = np.linalg.norm(gripper_pos[:2] - self.target_position[:2]) < self.squeeze_xy_threshold
 
+        # The dropper mirrors the gripper's full 3D motion (delta from attach)
+        # for the WHOLE held period (attached -> squeezed -> filled -> dropped),
+        # not only while the state is "attached". Freezing it at the squeeze
+        # point left the dropper floating over the bottle while the gripper
+        # moved on to dip and drip.
+        if self.dropper_state in ("attached", "squeezed", "filled", "dropped"):
+            delta = gripper_pos - self.attach_gripper_pos
+            self.object_utils.set_object_position(
+                object_path=self.dropper_path,
+                position=self.dropper_orig_translate + delta,
+            )
+
         if self.dropper_state == "rest":
             if near_grasp and gripper_opening < self.gripper_closed_threshold:
                 self.dropper_state = "attached"
@@ -182,12 +194,6 @@ class DropperDripTask(BaseTask):
                 self.attach_gripper_pos = gripper_pos.copy()
 
         elif self.dropper_state == "attached":
-            # The dropper mirrors the gripper's full 3D motion (delta from attach).
-            delta = gripper_pos - self.attach_gripper_pos
-            self.object_utils.set_object_position(
-                object_path=self.dropper_path,
-                position=self.dropper_orig_translate + delta,
-            )
             # Expel squeeze happens above the bottle mouth (same xy, higher z).
             if near_bottle and gripper_opening < self.squeeze_close_threshold:
                 self.dropper_state = "squeezed"
