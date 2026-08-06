@@ -8,6 +8,16 @@
 | 夹爪开合驱动 | 动作语义 = 夹爪距离变化（捏、压、挤、放） | dropper（挤压吸液）/ press（闭爪前压） |
 | velocity 驱动 | 关节按速度旋转（倾倒液体） | pour |
 
+## 资产依赖检查（缺资产先调用 labutopia-assets）
+
+动作分解完成后、写代码之前，先确认每个器材都有 3D 资产：
+
+1. 从动作分解列出所需器材清单（如：胶头滴管、试剂瓶、试管、废液杯）
+2. 核对 `lab_inventory.json`（项目根目录，equipment 的 notes 常带尺寸材质）与 `assets/chemistry_lab/*.usd`（场景类资产在 `assets/chemistry_lab/lab_00x/`）
+3. **缺失的器材 → 调用 labutopia-assets skill**（实物调研通法：inventory 优先 + 结构拆解三步法 + 形状原语映射），等资产生成完成再继续
+4. 几何参数必须对照真实资产尺寸：grasp_distance（夹爪距）来自资产直径，pickz_offset 来自资产高度，pre_offset_z/lift_z 参考资产尺寸设定
+5. 资产文件名要与 controller 里传的 object_name 一致（pick 的 get_gripper_distance/get_pickz_offset 按名字查表），新资产命名后同步查表项
+
 ## 统一签名（所有新动作必须遵守）
 
 ```python
@@ -86,7 +96,7 @@ class DropperController(BaseController):
         # event 13: 完成（None 关节保持）
 ```
 
-要点：挤压/松开事件（6/8/12）输出夹爪关节值后**不跳转**，靠 events_dt 0.05（125 帧）留足 task 检测窗口；task 端按 `joint7` 区间更新 `dropper_state`（'attached'/'squeezed'/'filled'/'dropped'），复合 controller 的 `_check_phase_success` 读它切换阶段。
+要点：挤压/松开事件（6/8/12）输出夹爪关节值后**不跳转**，靠 events_dt 0.05（20 帧 ≈ 0.33s）留足 task 检测窗口；task 端按 `joint7` 区间 + TCP 位置更新 `dropper_state`（'attached'/'squeezed'/'filled'/'dropped'），复合 controller 的 `_check_phase_success` 读它切换阶段。**注意：排空挤压与滴加挤压的 joint7 值相同（都是 squeeze_distance），task 必须联合 TCP 位置区分（液瓶口=排空、试管口=滴加），否则排空阶段就误判 dropped**。
 
 ## ScoopController 11 阶段模板（位置驱动，舀取/注水通用）
 
@@ -160,7 +170,7 @@ from .atomic_actions.dropper_controller import DropperController
 
 1. task 维护一个 state 字段（如 `dropper_state`），按 joint7 区间 + 位置更新
 2. 复合 controller 的 `_check_phase_success` 读该字段切换阶段（参考 ignitelamp_controller：`cap_state=='placed'` / `flame_on`）
-3. 每个需要 task 检测的事件必须留 dwell ≥ 25 帧（events_dt ≥ 0.01，常用 0.02-0.05）
+3. 每个需要 task 检测的事件必须留 dwell 窗口（帧数 = 1/dt：0.02→50 帧、0.05→20 帧；常用 0.02-0.05，更稳妥 0.02-0.03）
 4. 挤压类动作：挤压值必须 < 0.005（squeeze 检测）且释放值必须 < 0.025（否则脱离吸附）
 
 验证：`python -m py_compile <file>`；stub cspace_controller 走查每个事件进入条件（阈值/时长/夹爪值）与 task 检测区间对齐。

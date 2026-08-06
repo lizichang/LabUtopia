@@ -19,6 +19,7 @@ from tasks.ignitelamp_task import IgniteLampTask
 from tasks.flametest_task import FlameTestTask
 from tasks.heatlamp_task import HeatLampTask
 from tasks.dissolve_task import DissolveTask
+from tasks.dropperdrip_task import DropperDripTask
 
 _task_registry: Dict[str, Type[BaseTask]] = {}
 
@@ -52,3 +53,4 @@ register_task("ignitelamp", IgniteLampTask)
 register_task("flametest", FlameTestTask)
 register_task("heatlamp", HeatLampTask)
 register_task("dissolve", DissolveTask)
+register_task("dropperdrip", DropperDripTask)

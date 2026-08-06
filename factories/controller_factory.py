@@ -25,6 +25,7 @@ from controllers.ignitelamp_controller import IgniteLampTaskController
 from controllers.flametest_controller import FlameTestTaskController
 from controllers.heatlamp_controller import HeatLampTaskController
 from controllers.dissolve_controller import DissolveTaskController
+from controllers.dropperdrip_controller import DropperDripTaskController
 
 _controller_registry: Dict[str, Type[BaseController]] = {}
 
@@ -61,3 +62,4 @@ register_controller("ignitelamp", IgniteLampTaskController)
 register_controller("flametest", FlameTestTaskController)
 register_controller("dissolve", DissolveTaskController)
 register_controller("heatlamp", HeatLampTaskController)
+register_controller("dropperdrip", DropperDripTaskController)
