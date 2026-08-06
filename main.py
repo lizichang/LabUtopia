@@ -23,7 +23,7 @@ args = parse_args()
 
 # Set up simulation app based on arguments
 simulation_config = {
-    "headless": False,
+    "headless": args.headless,
     "extra_args": ["--/rtx/raytracing/fractionalCutoutOpacity=true"],
 }
 
