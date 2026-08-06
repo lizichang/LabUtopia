@@ -34,8 +34,9 @@ tube_path: "/World/TestTube"
 tube_drops_path: "/World/TubeDrops"
 
 # ---- 参考点推导参数 ----
-# 抓取点 = 滴管立放原点 + 该偏移（抓玻璃管身中段，z=0.06）
-grasp_offset: [0.0, 0.0, 0.06]
+# 抓取点 = 滴管立放原点 + 该偏移（夹胶头/乳胶头中段 z=0.13，胶头范围 0.115-0.15；
+# 真实持滴管姿势为捏住最上部的胶头，而非玻璃管身）
+grasp_offset: [0.0, 0.0, 0.13]
 # 吸液：尖嘴伸入液面下方深度（TCP z = 瓶口 - inset + grasp_height）
 dip_inset: 0.005
 # 试管口相对试管 translate z 的高度（管口 = translate.z + 0.12）

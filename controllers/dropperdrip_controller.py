@@ -17,8 +17,9 @@ class DropperDripTaskController(BaseController):
     """Composite controller for the "drip liquid from a dropper" task.
 
     The task has three stages:
-    1. PICK_DROPPER: grasp the standing dropper by its body (the task attaches
-       it kinematically once the gripper closes near the grasp point).
+    1. PICK_DROPPER: grasp the standing dropper by its bulb (top part; the
+       task attaches it kinematically once the gripper closes near the grasp
+       point).
     2. FILL_DROPPER: move to the reagent bottle mouth, squeeze the bulb to
        expel air, dip the tip into the liquid, release the bulb to aspirate.
     3. DRIP: move to the test tube mouth and squeeze the bulb to drip.

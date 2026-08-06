@@ -52,10 +52,11 @@ class DropperDripTask(BaseTask):
         self.tube_drops_path = cfg.tube_drops_path
 
         # Reference-point derivation offsets.
-        # The gripper grasps the dropper body at height grasp_height above its
-        # tip (tip bottom = asset origin). While held, the tip hangs that far
+        # The gripper grasps the dropper by its bulb (the top part, z=0.13 of
+        # the bulb range 0.115-0.15) at height grasp_height above the tip
+        # (tip bottom = asset origin). While held, the tip hangs that far
         # below the TCP, so dip/target TCP heights = surface height + grasp_height.
-        self.grasp_offset = np.array(getattr(cfg, "grasp_offset", [0.0, 0.0, 0.06]), dtype=float)
+        self.grasp_offset = np.array(getattr(cfg, "grasp_offset", [0.0, 0.0, 0.13]), dtype=float)
         self.dip_inset = getattr(cfg, "dip_inset", 0.005)      # tip goes this deep into the liquid
         self.tube_height = getattr(cfg, "tube_height", 0.12)   # tube mouth above its translate z
         self.drip_inset = getattr(cfg, "drip_inset", 0.005)    # tip goes this deep into the tube
