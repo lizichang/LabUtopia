@@ -1,13 +1,17 @@
 """焰色反应任务：夹取铂丝 → 移到本生灯口 → 停留点火 → 火焰按物质变色。
 
 场景须包含（见 assets/chemistry_lab/bunsen_burner.usd / platinum_wire.usd）：
-    <burner>/flame_outer        外焰 Cone（初始隐藏，点火后 reveal）
-    <burner>/flame_outer_mat/Shader  外焰材质（任务改 diffuseColor/emissiveColor 实现焰色）
+    <burner>/flame_outer_{color}   6 色外焰 Cone 变体（yellow/purple/green/red/
+                                  orange/blue，各自绑定固定颜色材质，初始隐藏）
+    <burner>/flame_inner           内焰 Cone（白热芯，点火后 reveal）
+    焰色实现：点火时仅显示 flame_outer_{flame_color} 变体（visibility 切换）。
+    注意：不要在运行时改 Shader 的 diffuseColor/emissiveColor —— UsdPreviewSurface
+    input 改动不会传导到 RTX 渲染器，火焰会渲染成白色（2026-08 实测验证）。
     铂丝为 kinematic：任务检测夹爪靠近手柄并闭合后，让铂丝跟随夹爪移动
     （与 IgniteLampTask 的 cap 跟随同一机制）。
 """
 import numpy as np
-from pxr import Usd, UsdGeom, UsdShade, Gf
+from pxr import Usd, UsdGeom
 from isaacsim.core.utils.prims import set_prim_visibility
 
 from tasks.base_task import BaseTask
@@ -158,7 +162,8 @@ class FlameTestTask(BaseTask):
                 self.flame_counter += 1
                 if self.flame_counter >= self.ignite_dwell_frames:
                     self.flame_on = True
-                    self._set_flame_color(self.flame_color)
+                    # 焰色通过显示预制的颜色变体 flame_outer_{color} 实现
+                    # （运行时改 Shader input 不会传导到渲染器）
                     self._set_flame_visible(True)
             else:
                 self.flame_counter = 0
@@ -177,23 +182,30 @@ class FlameTestTask(BaseTask):
         self.object_utils.set_object_position(object_path=self.wire_path, position=settled)
 
     def _set_flame_visible(self, visible: bool) -> None:
-        """Show or hide the flame prims."""
-        for flame_path in [f"{self.burner_path}/flame_outer", f"{self.burner_path}/flame_inner"]:
-            prim = self.stage.GetPrimAtPath(flame_path)
-            if prim.IsValid():
-                set_prim_visibility(prim, visible)
+        """Show or hide the flame prims.
 
-    def _set_flame_color(self, color_key: str) -> None:
-        """Set the outer flame color to the configured metal-ion flame color.
-
-        Only the outer flame changes; the inner flame keeps its white-hot core.
+        The flame color is realized by switching pre-authored color variants
+        (flame_outer_{color}) instead of editing Shader inputs at runtime —
+        Isaac Sim does not propagate runtime UsdPreviewSurface input changes
+        to the RTX renderer (verified 2026-08: diffuseColor/emissiveColor
+        edits left the flame white), while prim visibility does take effect.
+        The inner white-hot core is shown together with the outer flame.
         """
-        diffuse = self.FLAME_COLORS.get(color_key, self.FLAME_COLORS["yellow"])
-        emissive = tuple(min(1.0, c + 0.08) for c in diffuse)
-        shader = UsdShade.Shader(self.stage.GetPrimAtPath(f"{self.burner_path}/flame_outer_mat/Shader"))
-        if shader:
-            shader.GetInput("diffuseColor").Set(Gf.Vec3f(*diffuse))
-            shader.GetInput("emissiveColor").Set(Gf.Vec3f(*emissive))
+        for color in self.FLAME_COLORS:
+            prim = self.stage.GetPrimAtPath(f"{self.burner_path}/flame_outer_{color}")
+            if prim.IsValid():
+                set_prim_visibility(prim, False)
+
+        inner = self.stage.GetPrimAtPath(f"{self.burner_path}/flame_inner")
+        if inner.IsValid():
+            set_prim_visibility(inner, visible)
+
+        if visible:
+            prim = self.stage.GetPrimAtPath(
+                f"{self.burner_path}/flame_outer_{self.flame_color}"
+            )
+            if prim.IsValid():
+                set_prim_visibility(prim, True)
 
     def _read_translate(self, object_path: str) -> np.ndarray:
         """Read the translate xformOp value of a prim (defaults to zeros)."""
