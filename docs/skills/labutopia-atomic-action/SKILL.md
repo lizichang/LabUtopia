@@ -1,7 +1,7 @@
 ---
 name: labutopia-atomic-action
 description: Creates LabUtopia atomic actions / 元动作 (motion controllers) — scooping, shaking, picking, uncapping, pouring, dropper dripping — using the events_dt state machine pattern with kinematic grasping contracts. Use when the user asks to 制作元动作/原子动作/新动作, or mentions LabUtopia controllers, atomic_actions, scoop_controller, shake_controller, events_dt, gripper contract, kinematic attach, dropper. When the required 3D assets are missing, delegate to the labutopia-assets skill first.
-version: 1.2.1
+version: 1.3.0
 ---
 
 # LabUtopia 元动作制作
@@ -15,7 +15,9 @@ version: 1.2.1
 3. **选参考实现**：见 reference.md 动作类型表——先判断新动作属于哪一类（位置驱动 / 夹爪开合驱动 / velocity 驱动），再选对应模板
 4. **实现事件状态机**：`events_dt` 驱动，逐事件推进（见下）
 5. **注册（可选）**：仓库惯例是复合任务里直接 `from .atomic_actions.xxx_controller import XxxController`（scoop/cap/dip 等 6 个都没进 `__init__.py` 照样用）。`__init__.py` 只导出最常用 11 个，新动作不导也可以
-6. **验证**：py_compile + 事件序列走查（stub cspace_controller 逐帧推进）+ 与 task 的 kinematic 检测对齐
+6. **验证场景**：动作要能跑必须先有测试场景（lab_00X.usd），用 labutopia-assets 的场景脚本模板生成（REMOVE/REFS/BUILTIN 三部分）。**生成后必须检查 asset 属性无本地绝对路径**（坑 10：Stage.Open + Export 派生场景会把相对引用绝对化成 E:/ 路径，服务器红背景）。REFS 用相对路径（`../dropper.usd`），跨机器可解析
+7. **服务器冒烟**：部署到服务器 → pkill 清场 → python -u 跑 2 集冒烟 → 按成功判据确认（见 reference「部署与服务器冒烟」）。失败时先注入 debug 日志拿全数据，分清"物理/控制没到位" vs "判定逻辑错"，再改，不猜
+8. **验证**：py_compile + 事件序列走查（stub cspace_controller 逐帧推进）+ 与 task 的 kinematic 检测对齐 + 多阶段动作的复合 controller 判定契约（见坑 11）
 
 ## 动作类型（先分类再写）
 
@@ -89,6 +91,10 @@ if self._start:
 7. **挤压/松开值不落在 task 检测区间**：squeeze 必须 < 0.005，release 必须在 0.005-0.025 之间
 8. **dwell 太短**：task 每帧检测，dwell 0.02-0.05（50-20 帧）都可行，但 0.05 只有 20 帧是 cap 用过的下限，更稳妥用 0.02-0.03（50-33 帧）；换算记住帧数 = 1/dt
 9. **资产缺失仍写动作**：动作所需器材没有 3D 资产就动手，grasp_distance/pickz_offset 只能瞎猜，场景也摆不出来。工作流第 2 步先查资产，缺了就调 labutopia-assets skill 生成
+10. **Export 派生场景把相对引用绝对化**：`Stage.Open(源场景) + Export(新路径)` 生成测试场景时，源场景的相对引用（`SubUSDs/materials/...`、`SubUSDs/textures/...`）会被解析成本地绝对路径（`E:/浙江大学/...`）写入导出层 → 服务器加载贴图/MDL 全挂 → 视频红色背景。生成后必须检查 root layer 所有 asset 属性无本地绝对路径（pxr 遍历 primSpec.attributes，typeName=='asset'，把本地前缀替换为相对 `../`），再用 ExportToString 复查
+11. **复合 controller 阶段判定读当前状态**：原子 controller 一次跑完整个事件序列（如 dropper 14 事件 = 抓取+吸液+滴加）时，is_done 后 task 状态机早已走到最终态（dropped），PICK 阶段查 `state=='attached'` 必误报失败——**动作全程正确仍报 pick failed 即此因**。多阶段动作的 task 必须提供**粘性阶段标志**（picked/filled/dropped，达成置位、reset 才清零），复合 controller 读标志判定阶段成功；这样失败归因也准（吸液没成功会报 fill failed 而不是 pick failed）
+12. **pxr 26.8 AttributeSpec 无 timeSamples 属性**：遍历 time-sampled 值要用 `attr_spec.ListTimeSamples()` + `GetTimeSample(t)` + `SetTimeSample(t, v)`，直接 `.timeSamples.items()` 会 AttributeError（贴图路径通常只有 default 值，该分支可防御）
+13. **冒烟前不清理残留进程 / python 输出不可见**：服务器可能有旧 main.py 进程残留（混写日志、2 集配置跑出 10 集、诊断被污染），冒烟前必须 `pkill -9 -f 'main[.]py'`（用 `main[.]py` 防匹配到 shell 自身）；重定向到文件时 print 被块缓冲看不到 → 必须 `python -u`
 
 ## 检查清单
 
@@ -100,4 +106,7 @@ if self._start:
 - [ ] events_dt 长度 = 事件数，且有长度校验
 - [ ] 平移事件 xy 跳转、到达事件 3D 跳转
 - [ ] 开合值对齐 task 检测区间（<0.025 吸附、>0.03 释放、<0.005 挤压）
+- [ ] 验证场景 lab_00X.usd 已生成且 asset 属性无本地绝对路径（E:/ 残留 = 0，REFS 用相对路径）
+- [ ] 多阶段动作：task 有粘性阶段标志（picked/filled/dropped），复合 controller 读标志不用当前状态
 - [ ] py_compile 通过 + stub 走查 0→N 全事件可达
+- [ ] 服务器冒烟：pkill 清场 → python -u → 2 集 → 业务日志出现成功链（attached→filled→dropped/对应动作链）→ 进程退出 → h5 存在

@@ -173,4 +173,100 @@ from .atomic_actions.dropper_controller import DropperController
 3. 每个需要 task 检测的事件必须留 dwell 窗口（帧数 = 1/dt：0.02→50 帧、0.05→20 帧；常用 0.02-0.05，更稳妥 0.02-0.03）
 4. 挤压类动作：挤压值必须 < 0.005（squeeze 检测）且释放值必须 < 0.025（否则脱离吸附）
 
+### 多阶段动作：粘性标志模式（必须）
+
+**原子 controller 一次跑完整个事件序列时，不能用"当前状态"做阶段判定。** 等 is_done 时状态机早已走到最终态（dropper 14 事件跑完 → dropper_state 已到 dropped），PICK 阶段查 `== 'attached'` 必误报失败——dropper 曾整序列动作全对仍报 "pick_dropper failed" 即此因。
+
+```python
+# task：粘性标志，达成置位、reset 才清零，随 state dict 输出
+# __init__/reset:
+self.flag_picked = False
+self.flag_filled = False
+self.flag_dropped = False
+# 状态机转移处：
+if near_grasp and gripper_opening < self.gripper_closed_threshold:
+    self.dropper_state = "attached"
+    self.flag_picked = True
+# step() 的 additional_info 加 "picked"/"filled"/"dropped"
+
+# 复合 controller：_check_phase_success 读标志
+if self.current_phase == Phase.PICK_DROPPER:
+    return self.state.get('picked')
+elif self.current_phase == Phase.FILL_DROPPER:
+    return self.state.get('filled')
+elif self.current_phase == Phase.DRIP:
+    return self.state.get('dropped')
+```
+
+附带收益：失败归因变准——吸液没成功会报 "fill_dropper failed!" 而不是笼统的 pick 失败。单阶段动作（uncap/ignite）读最终状态 `cap_state=='placed'` 没问题，因为最终态恰是阶段成功条件；**只要原子 controller 的事件序列覆盖多个语义阶段，就必须用粘性标志**。
+
+## 派生场景 Export 绝对路径化（生成场景后必查）
+
+`Stage.Open(源场景) + Export(新路径)` 生成测试场景时，源场景的相对引用（`SubUSDs/materials/xxx.mdl`、`SubUSDs/textures/xxx.png`）被解析成本地绝对路径（`E:/浙江大学/...`）写入导出层 → 服务器加载贴图/MDL 全挂 → 视频红色背景（物体可见但贴图全丢）。lab_001 原文件里是相对路径（grep 二进制可证实），flatten 进派生场景才变成绝对路径。
+
+修复（pxr 遍历 root layer 替换前缀，本地 E:/ 前缀 → 相对 `../`，相对 lab_00X/ 目录解析到 assets/chemistry_lab/）：
+
+```python
+from pxr import Usd, Sdf
+PREFIX = "E:/<本地仓库根>/LabUtopia/assets/chemistry_lab/"
+def fix_spec(spec, count):
+    for attr_spec in spec.attributes:
+        if attr_spec.typeName == "asset":
+            d = attr_spec.default
+            if isinstance(d, Sdf.AssetPath) and d.path.startswith(PREFIX):
+                attr_spec.default = Sdf.AssetPath("../" + d.path[len(PREFIX):])
+                count[0] += 1
+        # pxr 26.8：AttributeSpec 无 .timeSamples 属性（坑 12），用方法遍历
+        for t in attr_spec.ListTimeSamples():
+            v = attr_spec.GetTimeSample(t)
+            if isinstance(v, Sdf.AssetPath) and v.path.startswith(PREFIX):
+                attr_spec.SetTimeSample(t, Sdf.AssetPath("../" + v.path[len(PREFIX):]))
+                count[0] += 1
+    for child in spec.nameChildren:
+        fix_spec(child, count)
+# 改完 layer.Save()，ExportToString 复查无 "E:" 残留
+```
+
+注意：写死 PREFIX 只在单机生效，换成"读取任意含本地盘的绝对路径前缀再替换"更通用；服务器上贴图目录（`assets/chemistry_lab/lab_001/SubUSDs/textures/`）必须随 git 同步（git lfs pull）。
+
+## 部署与服务器冒烟
+
+### 部署
+
+1. 本地 `git commit` + `git -c http.proxy= -c https.proxy= push origin main`（全局代理 7897 未开时单次绕过，勿改全局配置）
+2. 服务器 `git pull`；**若服务器仓库有本地 patch 残留，先 `git checkout -- <文件>` 再 pull**
+3. `pkill -9 -f 'main[.]py'` 清场（残留进程会混写日志、2 集配置跑出 10 集）
+
+### 冒烟命令（2 集，验证用）
+
+```bash
+mkdir -p config_smoke && cp config/level2_<任务>.yaml config_smoke/
+sed -i 's/max_episodes: 30/max_episodes: 2/' config_smoke/level2_<任务>.yaml
+nohup timeout 420 /media/dky/Disk2TB/lizichang/miniconda3/envs/labutopia/bin/python -u \
+    main.py --config-name level2_<任务> --config-dir config_smoke --headless --no-video \
+    > /tmp/dtest/run.log 2>&1 < /dev/null &
+```
+
+- `--headless`（服务器无显示；main.py 已改 args.headless 生效）；`--no-video` 只用于冒烟，正式跑删掉它才会存视频
+- `python -u` 必须（重定向到文件时 print 块缓冲，看不到业务输出）
+- `--config-dir` 必须相对路径（Hydra 限制，绝对路径报 Exception）
+- plink 启动命令会挂住（nohup 特性）——接受超时，**分开连接轮询日志**；环境是 labutopia 不是 labvla
+- 冒烟后删 config_smoke（防正式跑用错配置）
+
+### 成功判据（全过才算通）
+
+1. 业务日志出现完整成功链（dropper：`Dropper attached! Switching to fill...` → `filled` → `Drip success!`；`Success Rate = 2/2`）
+2. 进程自然退出（`ps aux | grep -c '[m]ain.py'` = 0）
+3. `outputs/collect/<日期>/<任务>/dataset/episode_*.h5` 存在
+
+### 失败诊断：先拿数据，不猜
+
+一次失败可能多因叠加（材质路径 + 判定逻辑曾叠加）。**先注入 debug 日志跑一次拿全数据**，再二分定位：
+
+- 注入点：task `_update_dropper` 每帧写 `T<时间> st=状态 j7=夹爪值 gpos=TCP grasp=抓取点 d3d=距离 nG=判定`；原子 controller `forward` 每帧写 `C<时间> ev=事件 t=累计 gpos=TCP grasp/dip/tgt=参考点`
+- 判定两分法：
+  - **物理/控制没到位**：TCP 没到参考点（d3d 大）、joint7 没到阈值、事件推进异常
+  - **判定逻辑错**：TCP/joint7 数据全对、状态机演化完整（rest→attached→filled→dropped），但复合 controller 仍报失败 → 查 _check_phase_success 的判定条件（粘性标志！）
+- 诊断完还原 patch（`git checkout --`）再 pull 正式修复
+
 验证：`python -m py_compile <file>`；stub cspace_controller 走查每个事件进入条件（阈值/时长/夹爪值）与 task 检测区间对齐。
