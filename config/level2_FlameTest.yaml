@@ -50,27 +50,26 @@ task:
 cameras:
   - prim_path: "/World/Camera1"
     name: "camera_1"
-    # 对准本生灯口火焰（火焰在 /World/BunsenBurner 上方 z≈1.05）。
-    # 注意：Isaac Sim 相机 orientation 四元数顺序是 (w,x,y,z)！数学上的 look-at
-    # 四元数 (x,y,z,w)=(0.3443,0.3998,0.64369,0.55434) 必须重排为 w,x,y,z，
-    # 否则相机翻转朝上 → 全黑。
-    translation: [1.1, 0.3, 1.45]
-    resolution: [256, 256]
-    focal_length: 5
-    orientation: [0.55434, 0.3443, 0.3998, 0.64369]
+    # 特写视角对准本生灯口火焰（火焰在 z≈1.02）：512 分辨率 + focal 12mm
+    # 提升清晰度（256px + focal 5 下火焰只有 ~20px，视频拼接后模糊）。
+    # orientation 四元数顺序 (w,x,y,z)！
+    translation: [1.25, 0.4, 1.5]
+    resolution: [512, 512]
+    focal_length: 12
+    orientation: [0.5283, 0.32878, 0.41362, 0.66462]
     image_type: "rgb"
 
   - prim_path: "/World/Camera2"
     name: "camera_2"
     translation: [0.1, 0, 2.5]
-    resolution: [256, 256]
+    resolution: [512, 512]
     focal_length: 5
     orientation: [0.70711, 0, 0, -0.70711]
     image_type: "rgb"
 
   - prim_path: "/World/Franka/panda_hand/arm_camera"
     name: "camera_3"
-    resolution: [256, 256]
+    resolution: [512, 512]
     image_type: "rgb"
 
 robot:
