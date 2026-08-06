@@ -70,6 +70,14 @@ class DropperDripTask(BaseTask):
 
         # Episode state (set properly in reset()).
         self.dropper_state = "rest"
+        # Phase-completion flags: set once a stage is truly reached and kept
+        # until reset. The composite controller checks these instead of the
+        # current dropper_state, because the atomic controller runs the whole
+        # pick->fill->drip sequence in one pass (by the time it reports done,
+        # dropper_state has advanced to "dropped").
+        self.flag_picked = False
+        self.flag_filled = False
+        self.flag_dropped = False
         self.dropper_orig_translate = None
         self.attach_gripper_pos = None
         self.grasp_position = None
@@ -89,6 +97,9 @@ class DropperDripTask(BaseTask):
         self._set_tube_drops_visible(False)
 
         self.dropper_state = "rest"
+        self.flag_picked = False
+        self.flag_filled = False
+        self.flag_dropped = False
         self.attach_gripper_pos = None
 
         # --- Static world-space reference points for this episode ---
@@ -136,6 +147,10 @@ class DropperDripTask(BaseTask):
                 "target_position": self.target_position,
                 # Dropper lifecycle: rest -> attached -> squeezed -> filled -> dropped -> released.
                 "dropper_state": self.dropper_state,
+                # Phase-completion flags (sticky until reset).
+                "picked": self.flag_picked,
+                "filled": self.flag_filled,
+                "dropped": self.flag_dropped,
             },
         )
 
@@ -163,6 +178,7 @@ class DropperDripTask(BaseTask):
         if self.dropper_state == "rest":
             if near_grasp and gripper_opening < self.gripper_closed_threshold:
                 self.dropper_state = "attached"
+                self.flag_picked = True
                 self.attach_gripper_pos = gripper_pos.copy()
 
         elif self.dropper_state == "attached":
@@ -181,11 +197,13 @@ class DropperDripTask(BaseTask):
             # 0.005-0.025), and still above the bottle mouth.
             if near_bottle and self.squeeze_close_threshold <= gripper_opening < self.release_threshold:
                 self.dropper_state = "filled"
+                self.flag_filled = True
 
         elif self.dropper_state == "filled":
             # The drip squeeze happens above the TUBE mouth (position-gated).
             if near_tube and gripper_opening < self.squeeze_close_threshold:
                 self.dropper_state = "dropped"
+                self.flag_dropped = True
                 self._set_tube_drops_visible(True)
 
         elif self.dropper_state == "dropped":

@@ -65,16 +65,20 @@ class DropperDripTaskController(BaseController):
             self.inference_engine.reset()
 
     def _check_phase_success(self):
-        """Check if the current phase goal has been achieved (reported by the task)."""
+        """Check if the current phase goal has been achieved (reported by the task).
+
+        The task exposes sticky per-phase flags ("picked"/"filled"/"dropped").
+        The atomic controller runs the whole pick->fill->drip sequence in one
+        pass, so by the time it reports done the current dropper_state has
+        already advanced to "dropped" — the flags record whether each stage
+        actually happened during the pass.
+        """
         if self.current_phase == Phase.PICK_DROPPER:
-            # The task attaches the dropper to the gripper.
-            return self.state.get('dropper_state') == 'attached'
+            return self.state.get('picked')
         elif self.current_phase == Phase.FILL_DROPPER:
-            # The task detects the aspirated liquid (release above the bottle mouth).
-            return self.state.get('dropper_state') == 'filled'
+            return self.state.get('filled')
         elif self.current_phase == Phase.DRIP:
-            # The task detects the drip squeeze above the tube mouth.
-            return self.state.get('dropper_state') == 'dropped'
+            return self.state.get('dropped')
         return False
 
     def step(self, state):
