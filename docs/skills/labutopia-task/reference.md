@@ -1,4 +1,16 @@
-# LabUtopia 元动作制作参考（reference）
+# LabUtopia 任务/元动作制作参考（reference）
+
+## 抓取三问（每个 phase 动手前必须回答，答不上来不许写 forward）
+
+机械臂"抓哪、移到哪"必须从**步骤的物理语义**推导，再拿**资产几何**定参数：
+
+1. **抓哪个部位？** 可抓部位来自资产 USD 的 extent 区间（读 `extent`：如滴管胶头 z 0.115-0.15、玻璃管 z 0-0.12、勺柄中心、瓶盖顶面）
+2. **为什么是它（一句话物理语义）？** 例：捏胶头才能挤压排液/松开吸液（吸液靠胶头弹力回吸）；移出滴管不能碰瓶口外壁（污染）；舀取用勺头、转移靠勺头对准管口
+3. **参数怎么定？** 抓取点 = 资产原点 + 部位区间内的偏移（留余量：胶头 0.115-0.15 → 抓 0.13）；grasp_distance 对照部位直径查表；dip/target 高度 = 液面/管口 + 抓取偏移（尖端在 TCP 下方 grasp_offset.z 处）
+
+**验证闭环**：冒烟 debug T 行记录抓取点实际 z，核对落在预期区间（dropper 抓取点实测 0.938 = 原点 0.800 + 0.138，落在胶头区间 ✓）。判定全绿（TCP/joint7/状态机对）不代表抓对地方——抓错部位的案例：dropper 曾抓玻璃管身 z=0.06，用户纠正"滴管要捏在最上部的胶头"。
+
+**移动到哪同理**：dip 点为什么是瓶口中心（尖端要浸入液面下方）、target 点为什么是试管口（滴加进管内）、路径约束（移出瓶口时高于瓶口）。
 
 ## 动作类型与模板选择
 
@@ -62,7 +74,7 @@ return target_joint_positions
 
 ## DropperController 夹爪开合驱动模板（胶头滴管：抓取→吸液→滴加，14 事件）
 
-实现在 `controllers/atomic_actions/dropper_controller.py`（2026-08 验证通过）。核心：**挤压/松开 = 夹爪距离变化 + dwell，task 按 joint7 区间检测状态**。
+实现在 `controllers/atomic_actions/dropper_controller.py`（2026-08 验证通过）。核心：**挤压/松开 = 夹爪距离变化 + dwell，task 按 joint7 区间检测状态**。抓取点 = 胶头（z=0.13，胶头区间 0.115-0.15），勿抓玻璃管身。
 
 ```python
 class DropperController(BaseController):
@@ -172,6 +184,7 @@ from .atomic_actions.dropper_controller import DropperController
 2. 复合 controller 的 `_check_phase_success` 读该字段切换阶段（参考 ignitelamp_controller：`cap_state=='placed'` / `flame_on`）
 3. 每个需要 task 检测的事件必须留 dwell 窗口（帧数 = 1/dt：0.02→50 帧、0.05→20 帧；常用 0.02-0.05，更稳妥 0.02-0.03）
 4. 挤压类动作：挤压值必须 < 0.005（squeeze 检测）且释放值必须 < 0.025（否则脱离吸附）
+5. **kinematic 跟随必须覆盖整个吸附期间**（attached→squeezed→filled→dropped 全程，released 才复位到初始位置）——跟随只放 attached 分支会让物体在后续阶段悬空冻结（坑 19），T 行必须记录物体实际位置才能发现
 
 ### 多阶段动作：粘性标志模式（必须）
 
@@ -199,6 +212,110 @@ elif self.current_phase == Phase.DRIP:
 ```
 
 附带收益：失败归因变准——吸液没成功会报 "fill_dropper failed!" 而不是笼统的 pick 失败。单阶段动作（uncap/ignite）读最终状态 `cap_state=='placed'` 没问题，因为最终态恰是阶段成功条件；**只要原子 controller 的事件序列覆盖多个语义阶段，就必须用粘性标志**。
+
+## 三层架构模板（复合任务：task + controller + config）
+
+### Task 状态机模板（D2 dissolve 已实现并验证）
+
+```python
+class DissolveTask(BaseTask):
+    def __init__(self, cfg):
+        # 读 cfg: paths(prim 路径) / offsets / thresholds
+        # _read_translate 读取一次初始位置:
+        self.spoon_orig_translate = self._read_translate(spoon_path)
+        self.wash_orig_translate = self._read_translate(wash_path)
+
+    def reset(self):
+        # 参考点偏移链（全部从 prim 位置推导）:
+        table_z = powder_pos[2]
+        spoon_grasp_pos = spoon_pos + np.array([0.0, 0.0, 0.0025])      # 手柄中心
+        powder_center = powder_pos + [0, 0, 0.0035]
+        powder_scoop_pos = powder_center + scoop_insert_offset - spoon_head_offset
+        tube_mouth_pos = tube_pos + [0, 0, 0.115]
+        tube_transfer_pos = tube_mouth_pos - spoon_head_offset
+        wash_grasp_pos = wash_orig + wash_grasp_offset
+        wash_lift_pos = wash_grasp + [0, 0, 0.10]
+        wash_pour_pos = tube_mouth + [0, 0, wash_pour_lift]
+        shake_pos = tube_mouth + shake_offset
+
+    def _update_spoon(self, ...):
+        # rest -> (gripper 近 + joint7<0.025) attached
+        #      -> [dwell 25f -> PowderOnSpoon reveal]
+        #      -> [transfer dwell 25f -> TubeSample reveal, PowderOnSpoon hide]
+        #      -> (joint7>0.03) released -> _return_to_origin
+    def _update_wash(self, ...):
+        # rest -> attached -> [gripper 到 pour 点停留 25f -> TubeWater reveal]
+        #      -> released -> _return_to_origin
+    def _update_dissolving(self, ...):
+        # 关键门控: if not self.dissolved and self.water_added:
+        #     gripper 距 shake_pos < 0.15 持续 60 帧 -> dissolved=True, TubeSample hide
+        #     obs_done 30 帧
+```
+
+### Controller Phase 状态机模板
+
+```python
+class DissolveTaskController(BaseController):
+    class Phase(Enum):
+        SCOOP_POWDER / POUR_WATER / SHAKE / OBSERVE / FINISHED
+
+    def _check_phase_success(self, state):
+        # 相位推进条件（上一个动作的 object state 到位）:
+        SCOOP_POWDER: spoon_state == 'released'
+        POUR_WATER:   wash_state == 'released'
+        SHAKE:        state['dissolved'] is True
+        OBSERVE:      state['obs_done'] is True
+
+    def _phase_action(self, phase, state, actions, ...):
+        SCOOP_POWDER: scoop_controller.forward(
+            grasp=state['spoon_grasp_position'],
+            scoop=state['powder_scoop_position'],
+            transfer=state['tube_transfer_position'],
+            grasp_distance=0.006)
+        POUR_WATER:   同一 scoop_controller（wash 模式），
+            grasp=wash_grasp, scoop=wash_lift, transfer=wash_pour, grasp_distance=0.018
+        SHAKE:        shake_controller.forward(current_joint_positions, orientation)
+    def _advance_phase(self):
+        if self._phase == SHAKE:
+            self.shake_controller.set_initial_position(state['shake_position'])
+            # 进入 SHAKE 前把摇动点喂给 shake 控制器（位置参数化）
+```
+
+### yaml 配置结构
+
+```yaml
+name: Level2_Dissolve
+task_type: dissolve          # -> task_factory / controller_factory 的注册键
+controller_type: dissolve
+usd_path: assets/chemistry_lab/lab_004/lab_004.usd
+prims:                        # /World/... 路径
+  spoon: /World/Spoon
+  powder: /World/SamplePowder
+  ...
+offsets: {...}               # 参考点偏移（可调参数）
+thresholds: {...}            # joint7 吸附/释放、dwell 帧数
+task:
+  max_steps: 4000
+cameras: [...]               # 复制现有 level2_*.yaml 的相机配置
+robot: {...}                 # 复制现有配置
+```
+
+### 验证方法
+
+1. **参考点 pxr 模拟**（本地无需 Isaac Sim）：
+   - 加载场景 → 读 prim 世界坐标（`np.array(xf)[3,:3]`，行主序！）
+   - 验证每个参考点：在工作区内、与物体几何对齐（勺头距粉末中心 2mm、距管口 0mm）
+   - 验证勺头 y 范围完全落入管口 y 范围（无碰撞）
+2. **静态检查**：py_compile、yaml 解析、factory 注册键匹配
+3. **测试指令**：`python main.py --config-name levelX_<name>`，按检查表核对每个 phase 的日志输出
+
+### 测试预期行为检查表（D2 示例）
+
+- [ ] SCOOP_POWDER: 夹爪抓勺 → 舀取 → 粉末堆出现 → 转移至试管口 → 松开
+- [ ] POUR_WATER: 夹爪抓洗瓶 → 提升 → 瓶口对试管口 → 试管中水柱出现 → 放回
+- [ ] SHAKE: 夹爪到试管口附近摇动（y 方向摆动）→ 粉末消失（溶解）
+- [ ] OBSERVE: 停留观察后任务结束
+- [ ] 任何 phase 打印 "xxx failed!" → 把输出发回分析
 
 ## 派生场景 Export 绝对路径化（生成场景后必查）
 
@@ -251,6 +368,7 @@ nohup timeout 420 /media/dky/Disk2TB/lizichang/miniconda3/envs/labutopia/bin/pyt
 - `python -u` 必须（重定向到文件时 print 块缓冲，看不到业务输出）
 - `--config-dir` 必须相对路径（Hydra 限制，绝对路径报 Exception）
 - plink 启动命令会挂住（nohup 特性）——接受超时，**分开连接轮询日志**；环境是 labutopia 不是 labvla
+- pkill 与启动命令合并到一条 plink 会返回 128——**分步执行**（pkill 单独一条连接）
 - 冒烟后删 config_smoke（防正式跑用错配置）
 
 ### 成功判据（全过才算通）
@@ -263,7 +381,7 @@ nohup timeout 420 /media/dky/Disk2TB/lizichang/miniconda3/envs/labutopia/bin/pyt
 
 一次失败可能多因叠加（材质路径 + 判定逻辑曾叠加）。**先注入 debug 日志跑一次拿全数据**，再二分定位：
 
-- 注入点：task `_update_dropper` 每帧写 `T<时间> st=状态 j7=夹爪值 gpos=TCP grasp=抓取点 d3d=距离 nG=判定`；原子 controller `forward` 每帧写 `C<时间> ev=事件 t=累计 gpos=TCP grasp/dip/tgt=参考点`。**T 行必须同时记录被操作物体的实际位置（dropper=(x,y,z)）**——kinematic 跟随 bug（跟随只在 attached 分支、进入 squeezed 后物体冻结悬空）只有看物体实际坐标才能发现，只看 TCP/joint7 判定全绿照样漏
+- 注入点：task `_update_<obj>` 每帧写 `T<时间> st=状态 j7=夹爪值 gpos=TCP grasp=抓取点 d3d=距离 nG=判定`；controller `forward` 每帧写 `C<时间> ev=事件 t=累计 gpos=TCP grasp/dip/tgt=参考点`。**T 行必须同时记录被操作物体的实际位置（dropper=(x,y,z)）**——kinematic 跟随 bug（跟随只在 attached 分支、进入 squeezed 后物体冻结悬空）只有看物体实际坐标才能发现，只看 TCP/joint7 判定全绿照样漏；抓取点是否落在预期部位区间（胶头 z≈0.13）也要靠 T 行核对
 - 判定三分法：
   - **物理/控制没到位**：TCP 没到参考点（d3d 大）、joint7 没到阈值、事件推进异常
   - **判定逻辑错**：TCP/joint7 数据全对、状态机演化完整（rest→attached→filled→dropped），但复合 controller 仍报失败 → 查 _check_phase_success 的判定条件（粘性标志！）
