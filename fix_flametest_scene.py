@@ -17,7 +17,7 @@ import sys
 def main():
     # 定位场景目录
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    scene_dir = os.path.join(script_dir, 'LabUtopia', 'assets', 'chemistry_lab', 'lab_flametest')
+    scene_dir = os.path.join(script_dir, 'assets', 'chemistry_lab', 'lab_flametest')
     
     v17fix = os.path.join(scene_dir, 'lab_flametest.usd.v17fix')
     v17_usd = os.path.join(scene_dir, 'lab_flametest_v17.usd')
