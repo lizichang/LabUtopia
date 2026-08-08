@@ -254,6 +254,25 @@ class FlameTestTask(BaseTask):
                 return True
         return False
 
+    def _find_closest_graspable(self, gripper_pos):
+        """v21: 找到离夹爪最近的可抓取物体（rest 状态的 kin_obj 或 wire）。
+        返回 (type, name) 或 (None, None)。type 为 "kin" 或 "wire"。
+        当滴管和铂丝在试管架上仅相距 5mm 时，确保只抓最近的那个。
+        """
+        candidates = []
+        for name, obj in self.kin_objs.items():
+            if obj["state"] == "rest":
+                grasp = self.GRASP_POINTS[name]
+                dist = np.linalg.norm(gripper_pos - grasp)
+                candidates.append((dist, "kin", name))
+        if self.wire_state == "rest":
+            dist = np.linalg.norm(gripper_pos - self.WIRE_GRASP)
+            candidates.append((dist, "wire", None))
+        if not candidates:
+            return None, None
+        candidates.sort(key=lambda c: c[0])
+        return candidates[0][1], candidates[0][2]
+
     def _update_kin_objects(self, gripper_pos, gripper_opening):
         for name, obj in self.kin_objs.items():
             if obj["state"] == "settled":
@@ -262,6 +281,10 @@ class FlameTestTask(BaseTask):
             if obj["state"] == "rest":
                 # v21: 一次只抓一个物体——已有物体附着时不抓新的
                 if self._any_obj_attached():
+                    continue
+                # v21: 只抓最近的物体（防止滴管/铂丝误抓）
+                closest_type, closest_name = self._find_closest_graspable(gripper_pos)
+                if closest_type != "kin" or closest_name != name:
                     continue
                 grasp = self.GRASP_POINTS[name]
                 closed_thresh = self.GRIP_CLOSED_THRESH[name]
@@ -281,6 +304,10 @@ class FlameTestTask(BaseTask):
         if self.wire_state == "rest":
             # v21: 一次只抓一个——已有 kin_obj 附着时不抓 wire
             if self._any_obj_attached():
+                return
+            # v21: 只抓最近的物体（防止抓铂丝时误抓滴管）
+            closest_type, _ = self._find_closest_graspable(gripper_pos)
+            if closest_type != "wire":
                 return
             if (self._near_grasp(gripper_pos, self.WIRE_GRASP)
                     and gripper_opening < self.GRIP_CLOSED_THRESH["wire"]):
