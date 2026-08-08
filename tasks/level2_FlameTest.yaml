@@ -6,8 +6,8 @@ controller_type: "flametest"
 mode: "collect"
 
 # 场景：lab_flametest（V7 C1 焰色反应专用布局，桌面 z=0.80）
-# 铂丝 rotateY(150°) 斜置：手柄中心 (0.228,-0.14,0.898)，尖端触桌面
-usd_path: "assets/chemistry_lab/lab_flametest/lab_flametest.usd"
+# 铂丝 rotateY(120°) 斜置：手柄中心 (0.537,-0.14,0.867)，环中心 (0.631,-0.14,0.812)
+usd_path: "assets/chemistry_lab/lab_flametest/lab_flametest_v17.usd"
 
 max_episodes: 100
 
