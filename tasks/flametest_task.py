@@ -7,14 +7,14 @@
   P10 灼烧 2-5s（受染）  P11 灯帽盖灭           P12 冲洗擦干归位
   P13 表面皿清洗归位
 
-v16 修正（试管架布局 + per-object 夹爪阈值）：
-  - 铂丝改为竖直放在试管架上（rotateY=0°），origin 在手柄底部(0.536,-0.14,0.812)
-  - 滴管竖直放在试管架孔中(0.488,-0.14,0.812)，origin 在管口
-  - WIRE_TIP_OFFSET 改为竖直方向：(0, 0, 0.1095)
-  - DROPPER_NOZZLE_OFFSET 改为：(0, 0, -0.06)
-  - 夹爪阈值收紧到物体直径：dish 0.005, stopper 0.015, dropper 0.005, match 0.003, cap 0.020, wire 0.005
-  - 修复 stoppers 双重偏移 bug：stopper 局部几何中心在 z=0.0735
-  - FLAME_Z 适配缩小后火焰（外焰 z[0.958,1.004]）
+v17 修正（试管架布局 + rotateY(120°) 铂丝）：
+  - 场景用 lab_flametest_v17.usd（含 TestTubeRack at (0.50,-0.14,0.80)）
+  - 铂丝 rotateY(120°) 斜置：origin 在手柄底部 (0.488,-0.14,0.895)
+    手柄中心 world=(0.537,-0.14,0.867)，环中心 world=(0.631,-0.14,0.812)
+  - 滴管竖直放在试管架孔中：origin 在管口 (0.536,-0.14,0.812)
+  - WIRE_TIP_OFFSET=(0.095,0,-0.055)：环中心 = gripper + offset
+  - DROPPER_NOZZLE_OFFSET=(0,0,-0.06)：管口 = gripper + offset
+  - per-object 夹爪阈值：GRIP_CLOSED_THRESH wire=0.005
   - stain 锥由 controller 定位到铂丝尖端，仅尖端周围 1.2cm 黄色光晕
 """
 import numpy as np
