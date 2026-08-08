@@ -5,8 +5,9 @@ controller_type: "flametest"
 
 mode: "collect"
 
-# 场景：lab_001（本生灯 /World/BunsenBurner、铂丝 /World/PlatinumWire 已引用进场景）
-usd_path: "assets/chemistry_lab/lab_001/lab_001.usd"
+# 场景：lab_flametest（V7 C1 焰色反应专用布局，桌面 z=0.80）
+# 铂丝 rotateY(120°) 斜置：手柄中心 (0.537,-0.14,0.867)，环中心 (0.631,-0.14,0.812)
+usd_path: "assets/chemistry_lab/lab_flametest/lab_flametest_v17.usd"
 
 max_episodes: 2
 
@@ -22,41 +23,44 @@ infer:
   timeout: 30
   max_retries: 3
 
-# ---- 本生灯与铂丝路径及参数（FlameTestTask 使用）----
-# 本生灯引用 prim（部件在其下：/base /tube /collar /flame_outer /flame_inner /flame_outer_mat）
-burner_path: "/World/BunsenBurner"
-# 铂丝引用 prim（部件在其下：/handle /wire /loop）
-wire_path: "/World/PlatinumWire"
-# 夹爪抓取位 = 铂丝场景 translate + 该偏移（手柄中心）
-grasp_offset: [0.0, 0.0, 0.06]
-# 夹爪点火位 = 本生灯根 + 该偏移（丝顶端伸入灯口火焰区）
-ignite_offset: [0.03, 0.0, 0.088]
-# 铂丝放回桌面的水平偏移（z 由任务自动校正贴桌面）
-wire_rest_offset: [0.0, -0.12, 0.0]
+# ---- 器材路径（FlameTestTask 使用，均为 /World 下顶层 prim）----
+dish_path: "/World/SampleDish"          # 表面皿（P1 移中央 / P13 清洗归位）
+hcl_path: "/World/HClBottle"            # 稀盐酸瓶（P2 旋塞 / P5 蘸酸）
+dropper_path: "/World/Dropper"          # 胶头滴管（P3 吸酸滴 2-3 滴）
+wire_path: "/World/PlatinumWire"        # 铂丝（P5-P12）
+sample_path: "/World/SampleBottle"      # 待测固体样品瓶（P9 蘸粉末）
+burner_path: "/World/BunsenBurner"      # 本生灯（P4 点燃 / P6-P10 灼烧 / P11 盖灭）
+match_path: "/World/Match"              # 火柴（P4 点燃）
+droplet_path: "/World/Droplet"          # 盐酸滴效果 prim（隐藏）
+jet_path: "/World/WaterJet"             # 洗瓶水柱效果 prim（隐藏）
+dish_acid_path: "/World/DishAcid"       # 皿内酸液效果 prim（隐藏）
 # 焰色：yellow(Na) / purple(K) / green(Cu) / red(Ca,Sr) / blue / orange
 flame_color: "yellow"
 
-# 检测阈值（一般不用改）
-grasp_xy_threshold: 0.03        # 夹爪距手柄多近算"到位"
+# 检测阈值与事件 dwell 帧数（一般不用改）
+grasp_xy_threshold: 0.03        # 夹爪距抓取点多近算"到位"
 gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
 gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
-ignite_xy_threshold: 0.025      # 夹爪距点火点多近算"靠近"
-ignite_dwell_frames: 25         # 靠近点火点连续多少帧后点着火
+ignite_dwell_frames: 15         # 火柴头在灯口连续帧数后点着火
+stain_dwell_frames: 150         # 铂丝尖端入外焰连续帧数后显示受染（≈3s@50Hz）
+extinguish_dwell_frames: 15     # 灯帽盖灯口连续帧数后熄灭
+drop_dwell_frames: 20           # 滴管口悬停帧数后滴第 1 滴
+drop_interval_frames: 30        # 相邻两滴间隔帧数
+n_drops: 3                      # 滴数（V7 文档 2-3 滴）
 
 task:
-  max_steps: 2500
-  obj_paths: []   # 本生灯和铂丝是静态的，无需随机化的物体
+  max_steps: 15000
+  obj_paths: []   # 器材静态摆放，无需随机化
 
 cameras:
   - prim_path: "/World/Camera1"
     name: "camera_1"
-    # 特写视角对准本生灯口火焰（火焰在 z≈1.02）：512 分辨率 + focal 12mm
-    # 提升清晰度（256px + focal 5 下火焰只有 ~20px，视频拼接后模糊）。
-    # orientation 四元数顺序 (w,x,y,z)！
+    # 特写视角对准本生灯口火焰（火焰 z 0.962-1.038）：512 分辨率 + focal 12mm
+    # orientation 四元数顺序 (w,x,y,z)！看向 (0.36,0.18,1.02)
     translation: [1.25, 0.4, 1.5]
     resolution: [512, 512]
     focal_length: 12
-    orientation: [0.5283, 0.32878, 0.41362, 0.66462]
+    orientation: [0.855523, -0.124247, 0.502636, 0.0]
     image_type: "rgb"
 
   - prim_path: "/World/Camera2"
@@ -74,7 +78,7 @@ cameras:
 
 robot:
   type: "franka"
-  position: [-0.4, -0, 0.71]
+  position: [-0.3, -0, 0.71]
 
 collector:
   type: "default"
