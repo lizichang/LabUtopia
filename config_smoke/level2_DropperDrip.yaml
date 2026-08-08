@@ -1,0 +1,94 @@
+name: Level2_DropperDrip
+
+task_type: "dropperdrip"
+controller_type: "dropperdrip"
+
+mode: "collect"
+
+# 场景：lab_005（基于 lab_001 副本，删焰色器材、保留 HClBottle 作吸液源）
+# Dropper 立放 (0.36, 0.16)，TestTube 管口 z=0.929，HClBottle 瓶口 z≈0.879
+usd_path: "assets/chemistry_lab/lab_005/lab_005.usd"
+
+max_episodes: 30
+
+infer:
+  type: "remote"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 31002
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# ---- 物体路径（DropperDripTask 使用）----
+# 滴管立在桌上（尖嘴底 = 资产原点 = 场景 translate），玻璃管身 z 0-0.12，胶头 0.115-0.15
+dropper_path: "/World/Dropper"
+# 吸液源：lab_001 原有的盐酸瓶（瓶口 z≈0.879）
+bottle_path: "/World/HClBottle"
+# 滴加目标：试管（translate z=0.809，管底；管口 = translate.z + tube_height）
+tube_path: "/World/TestTube"
+# 试管内液滴效果（初始隐藏，dropped 后显示）
+tube_drops_path: "/World/TubeDrops"
+
+# ---- 参考点推导参数 ----
+# 抓取点 = 滴管立放原点 + 该偏移（夹胶头/乳胶头中段 z=0.13，胶头范围 0.115-0.15；
+# 真实持滴管姿势为捏住最上部的胶头，而非玻璃管身）
+grasp_offset: [0.0, 0.0, 0.13]
+# 吸液：尖嘴伸入液面下方深度（TCP z = 瓶口 - inset + grasp_height）
+dip_inset: 0.005
+# 试管口相对试管 translate z 的高度（管口 = translate.z + 0.12）
+tube_height: 0.12
+# 滴加：尖嘴伸入试管口下方深度
+drip_inset: 0.005
+
+# ---- 检测阈值（dropper 契约）----
+grasp_xy_threshold: 0.03        # 夹爪距抓取点多近算"到位"
+gripper_closed_threshold: 0.025 # joint7 小于此值算"夹紧"（kinematic 吸附）
+gripper_open_threshold: 0.03    # joint7 大于此值算"松开"（脱离）
+squeeze_close_threshold: 0.005  # joint7 小于此值算"挤压胶头"
+release_threshold: 0.025        # 0.005-0.025 之间 = 松开吸液但仍吸附
+squeeze_xy_threshold: 0.05      # TCP xy 距瓶口/试管口多近算"在该口附近"（区分两种挤压）
+
+task:
+  max_steps: 2500
+  obj_paths: []   # 物体都是静态的，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [2, 0, 2]
+    resolution: [512, 512]
+    focal_length: 5
+    orientation: [0.61237, 0.35355, 0.35355, 0.61237]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.1, 0, 2.5]
+    resolution: [512, 512]
+    focal_length: 5
+    orientation: [0.70711, 0, 0, -0.70711]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  position: [-0.4, -0, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

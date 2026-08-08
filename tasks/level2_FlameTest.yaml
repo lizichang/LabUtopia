@@ -7,9 +7,9 @@ mode: "collect"
 
 # 场景：lab_flametest（V7 C1 焰色反应专用布局，桌面 z=0.80）
 # 铂丝 rotateY(150°) 斜置：手柄中心 (0.228,-0.14,0.898)，尖端触桌面
-usd_path: "assets/chemistry_lab/lab_flametest/lab_flametest_v17.usd"
+usd_path: "assets/chemistry_lab/lab_flametest/lab_flametest.usd"
 
-max_episodes: 1
+max_episodes: 100
 
 infer:
   type: "local"
@@ -55,14 +55,12 @@ task:
 cameras:
   - prim_path: "/World/Camera1"
     name: "camera_1"
-    # 特写视角对准本生灯口火焰（火焰 z 0.962-1.038，4cm 宽 7.6cm 高）。
-    # v17.2 修复：focal 15mm 时火焰与浅蓝玻璃管同色系混淆、变黄区仅 23px；
-    # 改 focal 25mm（距 0.54m 不变）火焰放大至约 93px，黄色铂丝手柄移出画面。
-    # orientation 四元数顺序 (w,x,y,z)！看向 (0.36,0.18,0.99)
-    translation: [0.75, 0.3, 1.35]
+    # 特写视角对准本生灯口火焰（火焰 z 0.962-1.038）：512 分辨率 + focal 12mm
+    # orientation 四元数顺序 (w,x,y,z)！看向 (0.36,0.18,1.02)
+    translation: [1.25, 0.4, 1.5]
     resolution: [512, 512]
-    focal_length: 25
-    orientation: [0.54151, 0.24438, 0.33089, 0.73318]
+    focal_length: 12
+    orientation: [0.855523, -0.124247, 0.502636, 0.0]
     image_type: "rgb"
 
   - prim_path: "/World/Camera2"

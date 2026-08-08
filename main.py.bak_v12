@@ -1,6 +1,5 @@
 import os
 import argparse
-import subprocess
 from isaacsim import SimulationApp
 
 # Parse command line arguments
@@ -48,35 +47,6 @@ from factories.robot_factory import create_robot
 from utils.object_utils import ObjectUtils
 from factories.task_factory import create_task
 from factories.controller_factory import create_controller
-
-class FFmpegVideoWriter:
-    """ffmpeg 子进程视频写入器。
-
-    规避 isaac sim 环境下 cv2.VideoWriter(mp4v) release 时 C++ 层崩溃的问题
-    （现象：无 Python traceback、进程被 signal 终止、mp4 缺 moov atom 无法打开）。
-    编码在独立 ffmpeg 子进程中完成，即使主进程异常退出，已写入的帧也会被
-    ffmpeg 正常收尾，视频文件保持可播放。
-    """
-
-    def __init__(self, path, width, height, fps=60.0):
-        self.path = path
-        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo",
-               "-pix_fmt", "bgr24", "-s", f"{width}x{height}", "-r", str(fps),
-               "-i", "-", "-an", "-c:v", "libx264", "-preset", "ultrafast",
-               "-threads", "0", "-crf", "23", "-pix_fmt", "yuv420p", path]
-        self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-
-    def write(self, frame):
-        self._proc.stdin.write(frame.tobytes())
-
-    def release(self):
-        try:
-            self._proc.stdin.close()
-            self._proc.wait(timeout=600)
-        except Exception as e:
-            print(f"[video] ffmpeg finalize warn: {e}")
-            self._proc.kill()
-
 
 def main():
     hydra.initialize(config_path=args.config_dir, job_name=args.config_name)
@@ -135,26 +105,18 @@ def main():
             
         if world.is_playing():
             if task_controller.need_reset() or task.need_reset():
+                if video_writer is not None:
+                    video_writer.release()
+                    video_writer = None
+                           
+                task_controller.reset()
                 if task_controller.episode_num() >= cfg.max_episodes:
-                    # 先 close：等待 h5 异步写入完成并 shutdown 进程池，释放 worker 继承的
-                    # ffmpeg 管道写端 fd（否则 ffmpeg 收不到 EOF，finalize 时无限等待）
                     task_controller.close()
-                    if video_writer is not None:
-                        print("[video] releasing writer")
-                        video_writer.release()
-                        video_writer = None
-                        print("[video] released OK")
                     simulation_app.close()
                     cv2.destroyAllWindows()
                     break
-                if video_writer is not None:
-                    print("[video] releasing writer")
-                    video_writer.release()
-                    video_writer = None
-                    print("[video] released OK")
-                task_controller.reset()
                 task.reset()
-
+                
                 continue
                 
             state = task.step()
@@ -192,7 +154,8 @@ def main():
                         output_path = os.path.join(output_dir, f"episode_{task_controller._episode_num}.mp4")
                         if video_writer is None:
                             height, width = combined_img.shape[:2]
-                            video_writer = FFmpegVideoWriter(output_path, width, height)
+                            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                            video_writer = cv2.VideoWriter(output_path, fourcc, 60.0, (width, height))
                         video_writer.write(combined_img)
 
 

@@ -1,0 +1,88 @@
+name: Level2_FlameTest
+
+task_type: "flametest"
+controller_type: "flametest"
+
+mode: "collect"
+
+# 场景：lab_001（本生灯 /World/BunsenBurner、铂丝 /World/PlatinumWire 已引用进场景）
+usd_path: "assets/chemistry_lab/lab_001/lab_001.usd"
+
+max_episodes: 2
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# ---- 本生灯与铂丝路径及参数（FlameTestTask 使用）----
+# 本生灯引用 prim（部件在其下：/base /tube /collar /flame_outer /flame_inner /flame_outer_mat）
+burner_path: "/World/BunsenBurner"
+# 铂丝引用 prim（部件在其下：/handle /wire /loop）
+wire_path: "/World/PlatinumWire"
+# 夹爪抓取位 = 铂丝场景 translate + 该偏移（手柄中心）
+grasp_offset: [0.0, 0.0, 0.06]
+# 夹爪点火位 = 本生灯根 + 该偏移（丝顶端伸入灯口火焰区）
+ignite_offset: [0.03, 0.0, 0.088]
+# 铂丝放回桌面的水平偏移（z 由任务自动校正贴桌面）
+wire_rest_offset: [0.0, -0.12, 0.0]
+# 焰色：yellow(Na) / purple(K) / green(Cu) / red(Ca,Sr) / blue / orange
+flame_color: "yellow"
+
+# 检测阈值（一般不用改）
+grasp_xy_threshold: 0.03        # 夹爪距手柄多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+ignite_xy_threshold: 0.025      # 夹爪距点火点多近算"靠近"
+ignite_dwell_frames: 25         # 靠近点火点连续多少帧后点着火
+
+task:
+  max_steps: 2500
+  obj_paths: []   # 本生灯和铂丝是静态的，无需随机化的物体
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 特写视角对准本生灯口火焰（火焰在 z≈1.02）：512 分辨率 + focal 12mm
+    # 提升清晰度（256px + focal 5 下火焰只有 ~20px，视频拼接后模糊）。
+    # orientation 四元数顺序 (w,x,y,z)！
+    translation: [1.25, 0.4, 1.5]
+    resolution: [512, 512]
+    focal_length: 12
+    orientation: [0.5283, 0.32878, 0.41362, 0.66462]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.1, 0, 2.5]
+    resolution: [512, 512]
+    focal_length: 5
+    orientation: [0.70711, 0, 0, -0.70711]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  position: [-0.4, -0, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

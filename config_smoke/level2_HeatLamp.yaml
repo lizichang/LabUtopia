@@ -1,0 +1,98 @@
+name: Level2_HeatLamp
+
+task_type: "heatlamp"
+controller_type: "heatlamp"
+
+mode: "collect"
+
+# 场景：lab_003（酒精灯 /World/AlcoholLamp、蒸汽 /World/Steam、铁架台 /World/IronStand、
+# 石棉网 /World/AsbestosGauze、火柴 /World/Match、火柴火 /World/MatchFlame 已引用进场景；
+# 烧杯为场景原有物理物体）
+usd_path: "assets/chemistry_lab/lab_003/lab_003.usd"
+
+max_episodes: 100
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# ---- 场景 prim 路径（HeatLampTask 使用）----
+lamp_path: "/World/AlcoholLamp"
+steam_path: "/World/Steam"
+stand_path: "/World/AsbestosGauze"     # 铁架台石棉网（烧杯放置位）
+match_path: "/World/Match"             # 火柴（kinematic）
+match_flame_path: "/World/MatchFlame"  # 火柴头火焰（任务驱动跟随）
+
+# ---- 偏移参数 ----
+# 帽桌面位 = 灯根 + 该偏移
+cap_rest_offset: [0.12, 0.06, 0.02]
+# 火柴头目标 = 灯芯顶 + 该偏移（火柴头伸到灯芯旁火焰区）
+ignite_offset: [0.0, 0.02, 0.02]
+# 火柴抓取点 = 火柴场景 translate + 该偏移（棍中部）
+match_grasp_offset: [0.04, 0.0, 0.0]
+# 火柴头 = 夹爪 + 该偏移（+x 端；夹爪抓在棍中部）
+match_head_offset: [0.0578, 0.0, 0.0]
+
+# ---- 检测阈值（一般不用改）----
+grasp_xy_threshold: 0.03          # 夹爪距抓取点多近算"到位"
+gripper_closed_threshold: 0.025   # 夹爪闭合阈值（闭合目标必须小于它）
+gripper_open_threshold: 0.03      # 夹爪打开阈值（松开即释放）
+ignite_xy_threshold: 0.02         # 火柴头距点燃位多近开始 dwell 计数
+ignite_dwell_frames: 25           # 点燃位连续停留帧数 -> 灯焰 reveal
+heat_dwell_frames: 40             # 火焰亮且烧杯在 stand 位的连续帧数 -> 蒸汽 reveal
+obs_dwell_frames: 30              # 蒸汽 reveal 后连续帧数 -> 观察完成
+on_stand_threshold: 0.03          # 烧杯中心距 stand 位多近算"在台上"
+
+task:
+  max_steps: 3500
+  obj_paths:
+    - path: "/World/beaker_2"
+      position_range:
+        x: [0.13, 0.28]
+        y: [0.05, 0.2]
+        z: [0.77, 0.775]
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [2, 0, 2]
+    resolution: [256, 256]
+    focal_length: 5
+    orientation: [0.61237, 0.35355, 0.35355, 0.61237]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.1, 0, 2.5]
+    resolution: [256, 256]
+    focal_length: 5
+    orientation: [0.70711, 0, 0, -0.70711]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [256, 256]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  position: [-0.4, -0, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

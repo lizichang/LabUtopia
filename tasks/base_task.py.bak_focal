@@ -120,12 +120,7 @@ class BaseTask(ABC):
                     resolution=tuple(cam_cfg.resolution)
                 )
                 camera.set_local_pose(orientation=np.array(cam_cfg.orientation), camera_axes="usd")
-                # 坑: Camera.set_focal_length() 内部把输入 ×10 再写 focalLength 属性
-                # (isaacsim.sensors.camera: USD_CAMERA_TENTHS_TO_STAGE_UNIT=10.0, 单位是
-                # "十分之一 stage unit" 而非 mm) —— 传 25(mm) 会写 attr=250, 渲染按
-                # focalLength/horizontalAperture 比值出图, f_px=250×512/20.955≈6108,
-                # 画面被放大 10 倍。直接写 mm 值到属性即可得到正确的 25mm 视场。
-                camera.prim.GetAttribute("focalLength").Set(float(cam_cfg.focal_length))
+                camera.set_focal_length(cam_cfg.focal_length)
             
             if hasattr(cam_cfg, 'clipping_range'):
                 camera.set_clipping_range(near_distance=cam_cfg.clipping_range[0], far_distance=cam_cfg.clipping_range[1])
