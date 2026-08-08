@@ -1,12 +1,13 @@
-"""焰色反应控制器：按 V7 文档 C1 的 13 步驱动机械臂，一步一 phase。
+﻿"""焰色反应控制器：按 V7 文档 C1 的 13 步驱动机械臂，一步一 phase。
 
-v19 修正（修复 H 变量顺序 bug + 夹爪开合 = 物体直径）：
+v20 修正（试管架移入工作空间 + 夹爪开合 = 物体直径）：
   - joint7 = 物体直径 / 2（总宽 = 2×joint7 = 物体直径），不再夹到比物体更窄
   - 从 USD mesh extent 提取精确直径：
     * 表面皿边缘 4.2mm  瓶塞 25.2mm  滴管玻璃管 8mm
-    * 火柴杆 3mm       铂丝手柄 11mm  灯帽 34mm
+    * 火柴杆 3mm       铂丝手柄 8mm   灯帽 34mm
   - 铂丝放在试管架上（rotateY=120°，手柄穿过孔板，丝/环挂在下方）
   - 滴管竖直放在试管架孔中
+  - 试管架从 x=0.50 移至 x=0.38（Franka 工作空间内）
   - WIRE_TIP_OFFSET=(0.095,0,-0.055)，FLAME_HOLD gripper=(0.265,0.18,1.040)
   - DROPPER_NOZZLE_OFFSET=(0,0,-0.06)，HCL_DIP gripper z=0.89
   - 安全过渡高度 H=1.15（夹爪距焰顶 >=14cm，臂绝不穿入火焰）
@@ -32,7 +33,7 @@ class FlameTestTaskController(TaskBaseController):
 
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
-        print("[flametest] controller VERSION v19 (fix H-order bug, grip=diameter, flame-detour)")
+        print("[flametest] controller VERSION v20 (rack in workspace, grip=diameter, wire=8mm)")
         self.orient = euler_angles_to_quat(np.array([0, np.pi, 0]))
         self._build_phases()
         self.phase_idx = 0
@@ -62,12 +63,12 @@ class FlameTestTaskController(TaskBaseController):
         # 总宽 = 2 * joint7 = 物体直径（从 USD mesh extent 精确提取）
         # 物体直径（USD 实测）：
         #   表面皿边缘 4.2mm  瓶塞 25.2mm  滴管玻璃管 8mm
-        #   火柴杆 3mm       铂丝手柄 11mm  灯帽 34mm
+        #   火柴杆 3mm       铂丝手柄 8mm   灯帽 34mm
         GRIP_DISH    = 0.0021  # total 4.2mm, 表面皿边缘厚度 4.2mm
         GRIP_STOPPER = 0.0126  # total 25.2mm, 瓶塞直径 25.2mm
         GRIP_DROPPER = 0.004   # total 8mm, 滴管玻璃管直径 8mm
         GRIP_MATCH   = 0.0015  # total 3mm, 火柴杆直径 3mm
-        GRIP_WIRE    = 0.0055  # total 11mm, 铂丝手柄直径 11mm
+        GRIP_WIRE    = 0.004   # total 8mm, 铂丝手柄直径 8mm (handle radius=0.004 at grasp z)
         GRIP_CAP     = 0.017   # total 34mm, 灯帽直径 34mm
         GRIP_OPEN    = self.GRIP_OPEN
 
@@ -76,11 +77,11 @@ class FlameTestTaskController(TaskBaseController):
         DISH_CENTER   = (0.20,    0.02, 0.803)
         STO_GRASP     = (0.12,    0.02, 0.877)
         STO_SIDE      = (0.16,    0.06, 0.877)
-        DROP_GRASP    = (0.536,  -0.14, 0.872)  # 滴管在试管架上
+        DROP_GRASP    = (0.416,  -0.14, 0.872)  # 滴管在试管架上
         SSTO_GRASP    = (0.20,    0.12, 0.877)
         SSTO_SIDE     = (0.24,    0.08, 0.877)
         MATCH_GRASP   = (0.4585,  0.24, 0.803)
-        WIRE_GRASP    = (0.537,  -0.14, 0.867)  # 铂丝在试管架上
+        WIRE_GRASP    = (0.417,  -0.14, 0.867)  # 铂丝在试管架上
         CAP_GRASP     = (0.46,    0.28, 0.825)
 
         # 安全过渡高度（夹爪 z，焰顶 z=1.004，安全裕量 14.6cm）
@@ -156,11 +157,11 @@ class FlameTestTaskController(TaskBaseController):
             # ================================================================
             [
                 # --- 取滴管（从试管架）---
-                seg((0.536, -0.14, H)),
+                seg((0.416, -0.14, H)),
                 seg(DROP_GRASP),
                 seg(DROP_GRASP, "hold", SETTLE),
                 seg(DROP_GRASP, "close", 25, grip=GRIP_DROPPER),
-                seg((0.536, -0.14, H)),
+                seg((0.416, -0.14, H)),
                 # --- 伸入盐酸瓶吸液 ---
                 seg((0.12, 0.02, H)),
                 seg((0.12, 0.02, 0.93)),       # 管口在瓶口高度(z=0.87)
@@ -170,10 +171,10 @@ class FlameTestTaskController(TaskBaseController):
                 seg((0.20, 0.02, H)),
                 seg(DISH_DRIP, "hold", 200),    # 管口 z=0.85，停留滴 3 滴
                 # --- 滴管归架（放回试管架）---
-                seg((0.536, -0.14, H)),
+                seg((0.416, -0.14, H)),
                 seg(DROP_GRASP),
                 seg(DROP_GRASP, "open", 25),
-                seg((0.536, -0.14, H)),
+                seg((0.416, -0.14, H)),
                 # --- 盖紧盐酸瓶塞 ---
                 seg((0.16, 0.06, H)),
                 seg(STO_SIDE),
@@ -204,11 +205,11 @@ class FlameTestTaskController(TaskBaseController):
             # P5 取铂丝 -> 尖端浸入稀盐酸（表面皿中）
             # ================================================================
             [
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
                 seg(WIRE_GRASP),
                 seg(WIRE_GRASP, "hold", SETTLE),
                 seg(WIRE_GRASP, "close", 25, grip=GRIP_WIRE),
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
                 seg((0.105, 0.02, H)),
                 seg(ACID_DIP, "hold", 25),       # 尖端接触皿内酸液
                 seg((0.105, 0.02, H)),
@@ -258,10 +259,10 @@ class FlameTestTaskController(TaskBaseController):
             # ================================================================
             [
                 # 放回铂丝（到试管架）
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
                 seg(WIRE_GRASP),
                 seg(WIRE_GRASP, "open", 25),
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
                 # 开样品瓶塞
                 seg((0.20, 0.12, H)),
                 seg(SSTO_GRASP),
@@ -273,11 +274,11 @@ class FlameTestTaskController(TaskBaseController):
                 seg(SSTO_SIDE, "open", 25),
                 seg((0.24, 0.08, H)),
                 # 再取铂丝（从试管架）
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
                 seg(WIRE_GRASP),
                 seg(WIRE_GRASP, "hold", SETTLE),
                 seg(WIRE_GRASP, "close", 25, grip=GRIP_WIRE),
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
                 # 蘸粉末
                 seg((0.105, 0.12, H)),
                 seg((0.105, 0.12, 0.96)),    # 尖端在瓶口上方
@@ -298,10 +299,10 @@ class FlameTestTaskController(TaskBaseController):
             # ================================================================
             [
                 # 放回铂丝（到试管架）
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
                 seg(WIRE_GRASP),
                 seg(WIRE_GRASP, "open", 25),
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
                 # 取灯帽
                 seg((0.46, 0.28, H)),
                 seg(CAP_GRASP),
@@ -315,18 +316,18 @@ class FlameTestTaskController(TaskBaseController):
             # P12 冲洗铂丝 -> 归位
             # ================================================================
             [
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
                 seg(WIRE_GRASP),
                 seg(WIRE_GRASP, "hold", SETTLE),
                 seg(WIRE_GRASP, "close", 25, grip=GRIP_WIRE),
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
                 seg((0.305, -0.10, H)),
                 seg(WASH_POS, "hold", 80),     # 尖端在水柱下冲洗
                 seg((0.305, -0.10, H)),
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
                 seg(WIRE_GRASP),
                 seg(WIRE_GRASP, "open", 25),
-                seg((0.537, -0.14, H)),
+                seg((0.417, -0.14, H)),
             ],
             # ================================================================
             # P13 表面皿冲洗归位

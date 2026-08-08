@@ -7,12 +7,12 @@
   P10 灼烧 2-5s（受染）  P11 灯帽盖灭           P12 冲洗擦干归位
   P13 表面皿清洗归位
 
-v19 修正（修复 H 变量顺序 bug + 夹爪开合 = 物体直径）：
+v20 修正（试管架移入工作空间 + 夹爪开合 = 物体直径）：
   - controller joint7 = 物体直径 / 2（从 USD mesh extent 精确提取）
-  - 场景用 lab_flametest_v17.usd（含 TestTubeRack at (0.50,-0.14,0.80)）
-  - 铂丝 rotateY(120°) 斜置：origin 在手柄底部 (0.488,-0.14,0.895)
-    手柄中心 world=(0.537,-0.14,0.867)，环中心 world=(0.631,-0.14,0.812)
-  - 滴管竖直放在试管架孔中：origin 在管口 (0.536,-0.14,0.812)
+  - 场景用 lab_flametest_v17.usd（含 TestTubeRack at (0.38,-0.14,0.80)）
+  - 铂丝 rotateY(120°) 斜置：origin 在手柄底部 (0.368,-0.14,0.895)
+    手柄中心 world=(0.417,-0.14,0.867)，环中心 world=(0.511,-0.14,0.812)
+  - 滴管竖直放在试管架孔中：origin 在管口 (0.416,-0.14,0.812)
   - WIRE_TIP_OFFSET=(0.095,0,-0.055)：环中心 = gripper + offset
   - DROPPER_NOZZLE_OFFSET=(0,0,-0.06)：管口 = gripper + offset
   - per-object 夹爪阈值：GRIP_CLOSED_THRESH = grip值 + 2mm 裕量
@@ -40,25 +40,25 @@ class FlameTestTask(BaseTask):
     TABLE_Z = 0.80
 
     # ---- 铂丝（rotateY=120°，手柄穿过试管架孔板，丝/环挂在下方）----
-    # origin 在手柄底部(0.488,-0.14,0.895)，在孔板顶上方 8mm
+    # origin 在手柄底部(0.368,-0.14,0.895)，在孔板顶上方 8mm
     # sin120=0.866, cos120=-0.5
-    # 手柄中心 local(0,0,0.056) → 旋转后(0.0485,0,-0.028) → 世界(0.537,-0.14,0.867)
-    # loop local(0,0,0.1655) → 旋转后(0.1433,0,-0.0828) → 世界(0.631,-0.14,0.812)
-    WIRE_GRASP = np.array([0.537, -0.14, 0.867])
-    WIRE_REST = np.array([0.488, -0.14, 0.895])
+    # 手柄中心 local(0,0,0.056) → 旋转后(0.0485,0,-0.028) → 世界(0.417,-0.14,0.867)
+    # loop local(0,0,0.1655) → 旋转后(0.1433,0,-0.0828) → 世界(0.511,-0.14,0.812)
+    WIRE_GRASP = np.array([0.417, -0.14, 0.867])
+    WIRE_REST = np.array([0.368, -0.14, 0.895])
     WIRE_HELD_OFFSET = WIRE_REST - WIRE_GRASP  # (-0.049, 0, 0.028)
     # loop 相对夹爪 = (0.1433-0.0485, 0, -0.0828+0.028) = (0.0948, 0, -0.0548)
     WIRE_TIP_OFFSET = np.array([0.095, 0.0, -0.055])
 
     # ---- 各物体抓取点（夹爪 TCP 位置，世界坐标）----
-    # 滴管：origin 在管口(0.536,-0.14,0.812)，玻璃管 z[0.812,0.932]，夹在 z=0.872
+    # 滴管：origin 在管口(0.416,-0.14,0.812)，玻璃管 z[0.812,0.932]，夹在 z=0.872
     # 瓶塞：世界中心 z=0.8735，夹在近顶部 z=0.877
     # 火柴(rotY=180)：杆中心世界 (0.4585, 0.24, 0.803)
     # 灯帽：世界中心 (0.46,0.28,0.82)，夹在近顶部 z=0.825
     GRASP_POINTS = {
         "dish":           np.array([0.32,   -0.22, 0.803]),
         "hcl_stopper":    np.array([0.12,    0.02, 0.877]),
-        "dropper":        np.array([0.536,  -0.14, 0.872]),
+        "dropper":        np.array([0.416,  -0.14, 0.872]),
         "sample_stopper": np.array([0.20,    0.12, 0.877]),
         "match":          np.array([0.4585,  0.24, 0.803]),
         "cap":            np.array([0.46,    0.28, 0.825]),
@@ -68,7 +68,7 @@ class FlameTestTask(BaseTask):
     REST_POS = {
         "dish":           np.array([0.32,   -0.22, 0.80]),
         "hcl_stopper":    np.array([0.12,    0.02, 0.8735]),
-        "dropper":        np.array([0.536,  -0.14, 0.812]),
+        "dropper":        np.array([0.416,  -0.14, 0.812]),
         "sample_stopper": np.array([0.20,    0.12, 0.8735]),
         "match":          np.array([0.50,    0.24, 0.8013]),
         "cap":            np.array([0.46,    0.28, 0.82]),
@@ -98,7 +98,7 @@ class FlameTestTask(BaseTask):
     # ---- 每物体夹爪闭合阈值（joint7 单指位移 < 此值才算夹紧）----
     # controller 设置 joint7 = grip_val（= 物体直径/2）；总宽 = 2*joint7
     # 阈值 = grip值 + 2mm 裕量，确保 controller 设 grip 后 task 能检测到"夹紧"
-    # grip 值：dish 0.0021, stopper 0.0126, dropper 0.004, match 0.0015, cap 0.017, wire 0.0055
+    # grip 值：dish 0.0021, stopper 0.0126, dropper 0.004, match 0.0015, cap 0.017, wire 0.004
     GRIP_CLOSED_THRESH = {
         "dish":           0.005,   # 表面皿边缘 4.2mm, grip=0.0021
         "hcl_stopper":    0.015,   # 瓶塞 25.2mm, grip=0.0126
@@ -106,7 +106,7 @@ class FlameTestTask(BaseTask):
         "sample_stopper": 0.015,   # 瓶塞 25.2mm, grip=0.0126
         "match":          0.003,   # 火柴杆 3mm, grip=0.0015
         "cap":            0.020,   # 灯帽 34mm, grip=0.017
-        "wire":           0.008,   # 铂丝手柄 11mm, grip=0.0055
+        "wire":           0.006,   # 铂丝手柄 8mm, grip=0.004
     }
 
     # ---- 关键点 ----
