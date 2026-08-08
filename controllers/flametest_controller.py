@@ -1,13 +1,16 @@
 """焰色反应控制器：按 V7 文档 C1 的 13 步驱动机械臂，一步一 phase。
 
-v16 修正（试管架布局 + per-object 夹爪阈值）：
+v18 修正（夹爪开合 = 物体直径）：
+  - joint7 = 物体直径 / 2（总宽 = 2×joint7 = 物体直径），不再夹到比物体更窄
+  - 从 USD mesh extent 提取精确直径：
+    * 表面皿边缘 4.2mm  瓶塞 25.2mm  滴管玻璃管 8mm
+    * 火柴杆 3mm       铂丝手柄 11mm  灯帽 34mm
   - 铂丝放在试管架上（rotateY=120°，手柄穿过孔板，丝/环挂在下方）
   - 滴管竖直放在试管架孔中
-  - per-object 夹爪闭合宽度收紧到物体直径（joint7=单指位移，总宽=2×joint7）：
-    * 表面皿 4mm / 瓶塞 22mm / 滴管 6mm / 火柴 3mm / 铂丝 6mm / 灯帽 30mm
   - WIRE_TIP_OFFSET=(0.095,0,-0.055)，FLAME_HOLD gripper=(0.265,0.18,1.040)
   - DROPPER_NOZZLE_OFFSET=(0,0,-0.06)，HCL_DIP gripper z=0.89
   - 安全过渡高度 H=1.15（夹爪距焰顶 >=14cm，臂绝不穿入火焰）
+  - 火焰绕行：经过灯口上方区域时走 y>0.28 或 y<0.05 的绕行航路点
   - 所有落位符合实验室规则：瓶塞倒放桌面、滴管归架、铂丝归架、灯帽盖灯
 """
 import numpy as np
@@ -29,7 +32,7 @@ class FlameTestTaskController(TaskBaseController):
 
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
-        print("[flametest] controller VERSION v14 (aligned-grip, tight-jaws, safe-H=1.15)")
+        print("[flametest] controller VERSION v18 (grip=diameter, flame-detour)")
         self.orient = euler_angles_to_quat(np.array([0, np.pi, 0]))
         self._build_phases()
         self.phase_idx = 0
@@ -56,16 +59,16 @@ class FlameTestTaskController(TaskBaseController):
             }
 
         # ---- per-object 夹爪闭合宽度（joint7 = 单指位移，米）----
-        # 总宽 = 2 * joint7，应略小于物体直径以夹紧
-        # 物体直径/厚度：
-        #   表面皿厚 ~3mm  瓶塞直径 ~25mm  滴管直径 8mm
-        #   火柴杆 3mm    铂丝手柄 8mm     灯帽直径 ~34mm
-        GRIP_DISH    = 0.002   # total 4mm, 表面皿 ~3mm
-        GRIP_STOPPER = 0.011   # total 22mm, 瓶塞 ~25mm
-        GRIP_DROPPER = 0.003   # total 6mm, 滴管 8mm
-        GRIP_MATCH   = 0.0015  # total 3mm, 火柴 3mm
-        GRIP_WIRE    = 0.003   # total 6mm, 铂丝手柄 8mm
-        GRIP_CAP     = 0.015   # total 30mm, 灯帽 ~34mm
+        # 总宽 = 2 * joint7 = 物体直径（从 USD mesh extent 精确提取）
+        # 物体直径（USD 实测）：
+        #   表面皿边缘 4.2mm  瓶塞 25.2mm  滴管玻璃管 8mm
+        #   火柴杆 3mm       铂丝手柄 11mm  灯帽 34mm
+        GRIP_DISH    = 0.0021  # total 4.2mm, 表面皿边缘厚度 4.2mm
+        GRIP_STOPPER = 0.0126  # total 25.2mm, 瓶塞直径 25.2mm
+        GRIP_DROPPER = 0.004   # total 8mm, 滴管玻璃管直径 8mm
+        GRIP_MATCH   = 0.0015  # total 3mm, 火柴杆直径 3mm
+        GRIP_WIRE    = 0.0055  # total 11mm, 铂丝手柄直径 11mm
+        GRIP_CAP     = 0.017   # total 34mm, 灯帽直径 34mm
         GRIP_OPEN    = self.GRIP_OPEN
 
         # ---- 抓取点（与 task.GRASP_POINTS 精确对齐）----
@@ -101,6 +104,9 @@ class FlameTestTaskController(TaskBaseController):
         FLAME_APPROACH = (0.235, 0.16, 1.065)
         # 冷却位：远离火焰
         COOL_POS = (0.40, 0.18, 1.18)
+        # 火焰绕行航路点（南侧绕行，y=-0.05 避开灯口 y=0.18）
+        # 当从 COOL_POS 返回酸液区时，先南下绕过火焰再西行
+        FLAME_DETOUR_S = (0.36, -0.05, H)
         # 水柱冲洗：环中心在(0.40,-0.10,0.84) → gripper=(0.305,-0.10,0.895)
         WASH_POS = (0.305, -0.10, 0.895)
         DISH_WASH = (0.40, -0.10, 0.86)
@@ -219,18 +225,21 @@ class FlameTestTaskController(TaskBaseController):
             # P7 反复蘸酸+灼烧 3 次
             # ================================================================
             [
+                seg(FLAME_DETOUR_S),               # 绕行：从 P6 COOL_POS 南下避开火焰
                 seg((0.105, 0.02, H)),
                 seg(ACID_DIP, "hold", 20),
                 seg((0.105, 0.02, H)),
                 seg(FLAME_APPROACH, "hold", 20),
                 seg(FLAME_HOLD, "hold", 60),
                 seg(COOL_POS),
+                seg(FLAME_DETOUR_S),               # 绕行：南下避开火焰
                 seg((0.105, 0.02, H)),
                 seg(ACID_DIP, "hold", 20),
                 seg((0.105, 0.02, H)),
                 seg(FLAME_APPROACH, "hold", 20),
                 seg(FLAME_HOLD, "hold", 60),
                 seg(COOL_POS),
+                seg(FLAME_DETOUR_S),               # 绕行：南下避开火焰
                 seg((0.105, 0.02, H)),
                 seg(ACID_DIP, "hold", 20),
                 seg((0.105, 0.02, H)),

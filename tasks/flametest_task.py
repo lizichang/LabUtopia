@@ -7,14 +7,15 @@
   P10 灼烧 2-5s（受染）  P11 灯帽盖灭           P12 冲洗擦干归位
   P13 表面皿清洗归位
 
-v17 修正（试管架布局 + rotateY(120°) 铂丝）：
+v18 修正（夹爪开合 = 物体直径）：
+  - controller joint7 = 物体直径 / 2（从 USD mesh extent 精确提取）
   - 场景用 lab_flametest_v17.usd（含 TestTubeRack at (0.50,-0.14,0.80)）
   - 铂丝 rotateY(120°) 斜置：origin 在手柄底部 (0.488,-0.14,0.895)
     手柄中心 world=(0.537,-0.14,0.867)，环中心 world=(0.631,-0.14,0.812)
   - 滴管竖直放在试管架孔中：origin 在管口 (0.536,-0.14,0.812)
   - WIRE_TIP_OFFSET=(0.095,0,-0.055)：环中心 = gripper + offset
   - DROPPER_NOZZLE_OFFSET=(0,0,-0.06)：管口 = gripper + offset
-  - per-object 夹爪阈值：GRIP_CLOSED_THRESH wire=0.005
+  - per-object 夹爪阈值：GRIP_CLOSED_THRESH = grip值 + 2mm 裕量
   - stain 锥由 controller 定位到铂丝尖端，仅尖端周围 1.2cm 黄色光晕
 """
 import numpy as np
@@ -95,17 +96,17 @@ class FlameTestTask(BaseTask):
     }
 
     # ---- 每物体夹爪闭合阈值（joint7 单指位移 < 此值才算夹紧）----
-    # controller 设置 joint7 = grip_val；总宽 = 2*joint7
-    # 阈值 = grip值 + 0.002~0.005 裕量，确保 controller 设 grip 后 task 能检测到"夹紧"
-    # grip 值：dish 0.002, stopper 0.011, dropper 0.003, match 0.0015, cap 0.015, wire 0.003
+    # controller 设置 joint7 = grip_val（= 物体直径/2）；总宽 = 2*joint7
+    # 阈值 = grip值 + 2mm 裕量，确保 controller 设 grip 后 task 能检测到"夹紧"
+    # grip 值：dish 0.0021, stopper 0.0126, dropper 0.004, match 0.0015, cap 0.017, wire 0.0055
     GRIP_CLOSED_THRESH = {
-        "dish":           0.005,   # 表面皿 ~3mm, grip=0.002
-        "hcl_stopper":    0.015,   # 瓶塞 ~25mm, grip=0.011
-        "dropper":        0.005,   # 滴管 8mm, grip=0.003
-        "sample_stopper": 0.015,   # 瓶塞 ~25mm, grip=0.011
-        "match":          0.003,   # 火柴 3mm, grip=0.0015
-        "cap":            0.020,   # 灯帽 ~34mm, grip=0.015
-        "wire":           0.005,   # 铂丝手柄 8mm, grip=0.003
+        "dish":           0.005,   # 表面皿边缘 4.2mm, grip=0.0021
+        "hcl_stopper":    0.015,   # 瓶塞 25.2mm, grip=0.0126
+        "dropper":        0.006,   # 滴管玻璃管 8mm, grip=0.004
+        "sample_stopper": 0.015,   # 瓶塞 25.2mm, grip=0.0126
+        "match":          0.003,   # 火柴杆 3mm, grip=0.0015
+        "cap":            0.020,   # 灯帽 34mm, grip=0.017
+        "wire":           0.008,   # 铂丝手柄 11mm, grip=0.0055
     }
 
     # ---- 关键点 ----
