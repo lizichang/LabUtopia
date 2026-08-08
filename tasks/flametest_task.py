@@ -7,6 +7,14 @@
   P10 灼烧 2-5s（受染）  P11 灯帽盖灭           P12 冲洗擦干归位
   P13 表面皿清洗归位
 
+v21 修正（修复多物体同时附着 + 一次只抓一个 + 收紧 z 阈值）：
+  - _near_grasp z_thresh 从 0.03 收紧至 0.015（1.5cm）
+  - 新增 _any_obj_attached()：任何 kin_obj 或 wire 处于 attached 时禁止新附着
+  - GRIP_CLOSED_THRESH 收紧裕量（从 grip+2mm 改为 grip+1mm）
+  - 修复：抓铂丝时滴管同时附着（两者在试管架上仅相距 5mm）
+  - 修复：伸入盐酸瓶时瓶塞误附着（瓶塞阈值 0.015 过宽松）
+  - max_steps 从 15000 增至 30000（确保 13 phase 全部完成）
+
 v20 修正（试管架移入工作空间 + 夹爪开合 = 物体直径）：
   - controller joint7 = 物体直径 / 2（从 USD mesh extent 精确提取）
   - 场景用 lab_flametest_v17.usd（含 TestTubeRack at (0.38,-0.14,0.80)）
@@ -15,7 +23,6 @@ v20 修正（试管架移入工作空间 + 夹爪开合 = 物体直径）：
   - 滴管竖直放在试管架孔中：origin 在管口 (0.416,-0.14,0.812)
   - WIRE_TIP_OFFSET=(0.095,0,-0.055)：环中心 = gripper + offset
   - DROPPER_NOZZLE_OFFSET=(0,0,-0.06)：管口 = gripper + offset
-  - per-object 夹爪阈值：GRIP_CLOSED_THRESH = grip值 + 2mm 裕量
   - stain 锥由 controller 定位到铂丝尖端，仅尖端周围 1.2cm 黄色光晕
 """
 import numpy as np
@@ -97,16 +104,16 @@ class FlameTestTask(BaseTask):
 
     # ---- 每物体夹爪闭合阈值（joint7 单指位移 < 此值才算夹紧）----
     # controller 设置 joint7 = grip_val（= 物体直径/2）；总宽 = 2*joint7
-    # 阈值 = grip值 + 2mm 裕量，确保 controller 设 grip 后 task 能检测到"夹紧"
+    # 阈值 = grip值 + 1mm 裕量（v21 收紧，原 2mm 导致多物体误触发）
     # grip 值：dish 0.0021, stopper 0.0126, dropper 0.004, match 0.0015, cap 0.017, wire 0.004
     GRIP_CLOSED_THRESH = {
-        "dish":           0.005,   # 表面皿边缘 4.2mm, grip=0.0021
-        "hcl_stopper":    0.015,   # 瓶塞 25.2mm, grip=0.0126
-        "dropper":        0.006,   # 滴管玻璃管 8mm, grip=0.004
-        "sample_stopper": 0.015,   # 瓶塞 25.2mm, grip=0.0126
-        "match":          0.003,   # 火柴杆 3mm, grip=0.0015
-        "cap":            0.020,   # 灯帽 34mm, grip=0.017
-        "wire":           0.006,   # 铂丝手柄 8mm, grip=0.004
+        "dish":           0.0035,  # 表面皿边缘 4.2mm, grip=0.0021
+        "hcl_stopper":    0.0135,  # 瓶塞 25.2mm, grip=0.0126
+        "dropper":        0.005,   # 滴管玻璃管 8mm, grip=0.004
+        "sample_stopper": 0.0135,  # 瓶塞 25.2mm, grip=0.0126
+        "match":          0.0025,  # 火柴杆 3mm, grip=0.0015
+        "cap":            0.018,   # 灯帽 34mm, grip=0.017
+        "wire":           0.005,   # 铂丝手柄 8mm, grip=0.004
     }
 
     # ---- 关键点 ----
@@ -232,11 +239,20 @@ class FlameTestTask(BaseTask):
         self._update_wire(gripper_pos, gripper_opening)
         self._update_effects(gripper_pos)
 
-    def _near_grasp(self, gripper_pos, grasp_pos, xy_thresh=None, z_thresh=0.03):
+    def _near_grasp(self, gripper_pos, grasp_pos, xy_thresh=None, z_thresh=0.015):
         if xy_thresh is None:
             xy_thresh = self.grasp_xy_threshold
         return (np.linalg.norm(gripper_pos[:2] - grasp_pos[:2]) < xy_thresh
                 and abs(gripper_pos[2] - grasp_pos[2]) < z_thresh)
+
+    def _any_obj_attached(self):
+        """检查是否已有任何 kin_obj 或 wire 处于 attached 状态（一次只抓一个）。"""
+        if self.wire_state == "attached":
+            return True
+        for name, obj in self.kin_objs.items():
+            if obj["state"] == "attached":
+                return True
+        return False
 
     def _update_kin_objects(self, gripper_pos, gripper_opening):
         for name, obj in self.kin_objs.items():
@@ -244,6 +260,9 @@ class FlameTestTask(BaseTask):
                 continue
 
             if obj["state"] == "rest":
+                # v21: 一次只抓一个物体——已有物体附着时不抓新的
+                if self._any_obj_attached():
+                    continue
                 grasp = self.GRASP_POINTS[name]
                 closed_thresh = self.GRIP_CLOSED_THRESH[name]
                 if self._near_grasp(gripper_pos, grasp) and gripper_opening < closed_thresh:
@@ -260,6 +279,9 @@ class FlameTestTask(BaseTask):
 
     def _update_wire(self, gripper_pos, gripper_opening):
         if self.wire_state == "rest":
+            # v21: 一次只抓一个——已有 kin_obj 附着时不抓 wire
+            if self._any_obj_attached():
+                return
             if (self._near_grasp(gripper_pos, self.WIRE_GRASP)
                     and gripper_opening < self.GRIP_CLOSED_THRESH["wire"]):
                 self.wire_state = "attached"

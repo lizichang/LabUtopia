@@ -6,7 +6,8 @@ controller_type: "flametest"
 mode: "collect"
 
 # 场景：lab_flametest（V7 C1 焰色反应专用布局，桌面 z=0.80）
-# 铂丝 rotateY(120°) 斜置：手柄中心 (0.537,-0.14,0.867)，环中心 (0.631,-0.14,0.812)
+# 铂丝 rotateY(120°) 斜置：手柄中心 (0.417,-0.14,0.867)，环中心 (0.511,-0.14,0.812)
+# 试管架 (0.38,-0.14,0.80)，滴管竖直在架孔中 (0.416,-0.14,0.812)
 usd_path: "assets/chemistry_lab/lab_flametest/lab_flametest_v17.usd"
 
 max_episodes: 1
@@ -49,7 +50,7 @@ drop_interval_frames: 30        # 相邻两滴间隔帧数
 n_drops: 3                      # 滴数（V7 文档 2-3 滴）
 
 task:
-  max_steps: 15000
+  max_steps: 30000
   obj_paths: []   # 器材静态摆放，无需随机化
 
 cameras:

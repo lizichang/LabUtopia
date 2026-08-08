@@ -1,5 +1,11 @@
 ﻿"""焰色反应控制器：按 V7 文档 C1 的 13 步驱动机械臂，一步一 phase。
 
+v21 修正（修复多物体同时附着）：
+  - task 层新增 _any_obj_attached()：一次只抓一个物体
+  - task 层 _near_grasp z_thresh 从 0.03 收紧至 0.015
+  - task 层 GRIP_CLOSED_THRESH 裕量从 2mm 收紧至 1mm
+  - yaml max_steps 从 15000 增至 30000
+
 v20 修正（试管架移入工作空间 + 夹爪开合 = 物体直径）：
   - joint7 = 物体直径 / 2（总宽 = 2×joint7 = 物体直径），不再夹到比物体更窄
   - 从 USD mesh extent 提取精确直径：
@@ -33,7 +39,7 @@ class FlameTestTaskController(TaskBaseController):
 
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
-        print("[flametest] controller VERSION v20 (rack in workspace, grip=diameter, wire=8mm)")
+        print("[flametest] controller VERSION v21 (one-obj-at-a-time, tight z_thresh, max_steps=30000)")
         self.orient = euler_angles_to_quat(np.array([0, np.pi, 0]))
         self._build_phases()
         self.phase_idx = 0
