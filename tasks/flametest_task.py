@@ -7,7 +7,7 @@
   P10 灼烧 2-5s（受染）  P11 灯帽盖灭           P12 冲洗擦干归位
   P13 表面皿清洗归位
 
-v18 修正（夹爪开合 = 物体直径）：
+v19 修正（修复 H 变量顺序 bug + 夹爪开合 = 物体直径）：
   - controller joint7 = 物体直径 / 2（从 USD mesh extent 精确提取）
   - 场景用 lab_flametest_v17.usd（含 TestTubeRack at (0.50,-0.14,0.80)）
   - 铂丝 rotateY(120°) 斜置：origin 在手柄底部 (0.488,-0.14,0.895)

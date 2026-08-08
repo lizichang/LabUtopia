@@ -1,6 +1,6 @@
 """焰色反应控制器：按 V7 文档 C1 的 13 步驱动机械臂，一步一 phase。
 
-v18 修正（夹爪开合 = 物体直径）：
+v19 修正（修复 H 变量顺序 bug + 夹爪开合 = 物体直径）：
   - joint7 = 物体直径 / 2（总宽 = 2×joint7 = 物体直径），不再夹到比物体更窄
   - 从 USD mesh extent 提取精确直径：
     * 表面皿边缘 4.2mm  瓶塞 25.2mm  滴管玻璃管 8mm
@@ -32,7 +32,7 @@ class FlameTestTaskController(TaskBaseController):
 
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
-        print("[flametest] controller VERSION v18 (grip=diameter, flame-detour)")
+        print("[flametest] controller VERSION v19 (fix H-order bug, grip=diameter, flame-detour)")
         self.orient = euler_angles_to_quat(np.array([0, np.pi, 0]))
         self._build_phases()
         self.phase_idx = 0
@@ -83,6 +83,9 @@ class FlameTestTaskController(TaskBaseController):
         WIRE_GRASP    = (0.537,  -0.14, 0.867)  # 铂丝在试管架上
         CAP_GRASP     = (0.46,    0.28, 0.825)
 
+        # 安全过渡高度（夹爪 z，焰顶 z=1.004，安全裕量 14.6cm）
+        H = 1.15
+
         # ---- 功能位置 ----
         # 滴管：DROPPER_NOZZLE_OFFSET=(0,0,-0.06)，管口 = gripper_z - 0.06
         # 液面 z=0.8415，管口需到 z=0.83（深入 1.15cm）→ gripper z=0.89
@@ -116,9 +119,6 @@ class FlameTestTaskController(TaskBaseController):
         # 帽底 = gripper_z - 0.005 - 0.02 = gripper_z - 0.025
         # 灯口 z=0.958 → gripper z = 0.983
         CAP_BURNER = (0.36, 0.18, 0.983)
-
-        # 安全过渡高度（夹爪 z，焰顶 z=1.004，安全裕量 14.6cm）
-        H = 1.15
 
         # 抓取前 settling 帧数（确保臂完全到位再合爪）
         SETTLE = 5
