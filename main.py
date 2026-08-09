@@ -17,6 +17,8 @@ def parse_args():
                        help='Configuration file name (without .yaml extension)')
     parser.add_argument('--config-dir', type=str, default='config',
                        help='Configuration directory path (default: config)')
+    parser.add_argument('--snapshot', type=int, default=0,
+                       help='Save N frames as PNG images and exit (quick visual check, no video)')
     return parser.parse_args()
 
 # Get command line arguments
@@ -100,7 +102,7 @@ def main():
         world = World(stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy")
     
     # Override configuration based on command line arguments
-    if args.no_video:
+    if args.no_video or args.snapshot > 0:
         save_video = False
         show_video = False
     else:
@@ -133,6 +135,14 @@ def main():
     
     video_writer = None
     task.reset()
+    
+    # --snapshot 模式：只抓 N 帧 PNG 就退出，不生成视频
+    snapshot_count = 0
+    snapshot_dir = None
+    if args.snapshot > 0:
+        snapshot_dir = os.path.join(cfg.multi_run.run_dir, "snapshot")
+        os.makedirs(snapshot_dir, exist_ok=True)
+        print(f"[snapshot] Will save {args.snapshot} frames to {snapshot_dir}")
     
     while simulation_app.is_running():
         world.step(render=True)
@@ -167,6 +177,31 @@ def main():
             state = task.step()
             if state is None:
                 continue
+            
+            # --snapshot 模式：存 PNG 并在 N 帧后退出
+            if args.snapshot > 0 and snapshot_dir is not None:
+                camera_images = []
+                for cam_name, image_data in state['camera_display'].items():
+                    display_img = cv2.cvtColor(image_data.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
+                    camera_images.append((cam_name, display_img))
+                
+                if camera_images:
+                    # 存每个相机单独的图
+                    for cam_name, img in camera_images:
+                        safe_name = cam_name.replace('/', '_')
+                        fname = f"frame_{snapshot_count:04d}_{safe_name}.png"
+                        cv2.imwrite(os.path.join(snapshot_dir, fname), img)
+                    
+                    # 也存一个拼接的全景图
+                    combined = np.hstack([img for _, img in camera_images])
+                    cv2.imwrite(os.path.join(snapshot_dir, f"frame_{snapshot_count:04d}_combined.png"), combined)
+                    print(f"[snapshot] Saved frame {snapshot_count + 1}/{args.snapshot}")
+                
+                snapshot_count += 1
+                if snapshot_count >= args.snapshot:
+                    print(f"[snapshot] Done! {snapshot_count} frames saved to {snapshot_dir}")
+                    simulation_app.close()
+                    break
             
             action, done, is_success = task_controller.step(state)
             if action is not None:
