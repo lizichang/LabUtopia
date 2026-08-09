@@ -59,10 +59,11 @@ cameras:
     # 特写视角对准本生灯口火焰（火焰 z 0.962-1.038，4cm 宽 7.6cm 高）。
     # v17.2 修复：focal 15mm 时火焰与浅蓝玻璃管同色系混淆、变黄区仅 23px；
     # 改 focal 25mm（距 0.54m 不变）火焰放大至约 93px，黄色铂丝手柄移出画面。
+    # v17.3：focal 从 25 微调到 20，视角稍广以容纳更多操作区域。
     # orientation 四元数顺序 (w,x,y,z)！看向 (0.36,0.18,0.99)
     translation: [0.75, 0.3, 1.35]
     resolution: [512, 512]
-    focal_length: 25
+    focal_length: 20
     orientation: [0.54151, 0.24438, 0.33089, 0.73318]
     image_type: "rgb"
 
