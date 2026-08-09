@@ -88,7 +88,7 @@ class FlameTestTaskController(TaskBaseController):
         SSTO_SIDE     = (0.24,    0.08, 0.877)
         MATCH_GRASP   = (0.4585,  0.24, 0.803)
         WIRE_GRASP    = (0.417,  -0.14, 0.867)  # 铂丝在试管架上
-        CAP_GRASP     = (0.46,    0.28, 0.825)
+        CAP_GRASP     = (0.46,    0.28, 0.815)
 
         # 安全过渡高度（夹爪 z，焰顶 z=1.004，安全裕量 14.6cm）
         H = 1.15
@@ -122,7 +122,7 @@ class FlameTestTaskController(TaskBaseController):
         DISH_WASH = (0.40, -0.10, 0.86)
 
         # 灯帽盖灭：CAP_HELD_OFFSET 后帽底到灯口
-        # cap 高 4cm，中心 z=0.82；夹在 z=0.825，HELD_OFFSET z=-0.005
+        # cap 高 4cm，中心 z=0.81；夹在 z=0.815，HELD_OFFSET z=-0.005
         # 帽底 = gripper_z - 0.005 - 0.02 = gripper_z - 0.025
         # 灯口 z=0.958 → gripper z = 0.983
         CAP_BURNER = (0.36, 0.18, 0.983)

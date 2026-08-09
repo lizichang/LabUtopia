@@ -61,14 +61,14 @@ class FlameTestTask(BaseTask):
     # 滴管：origin 在管口(0.416,-0.14,0.812)，玻璃管 z[0.812,0.932]，夹在 z=0.872
     # 瓶塞：世界中心 z=0.8735，夹在近顶部 z=0.877
     # 火柴(rotY=180)：杆中心世界 (0.4585, 0.24, 0.803)
-    # 灯帽：世界中心 (0.46,0.28,0.82)，夹在近顶部 z=0.825
+    # 灯帽：世界中心 (0.46,0.28,0.81)，夹在近顶部 z=0.815
     GRASP_POINTS = {
         "dish":           np.array([0.32,   -0.22, 0.803]),
         "hcl_stopper":    np.array([0.12,    0.02, 0.877]),
         "dropper":        np.array([0.416,  -0.14, 0.872]),
         "sample_stopper": np.array([0.20,    0.12, 0.877]),
         "match":          np.array([0.4585,  0.24, 0.803]),
-        "cap":            np.array([0.46,    0.28, 0.825]),
+        "cap":            np.array([0.46,    0.28, 0.815]),
     }
 
     # ---- 物体静止位置（世界坐标，对于子物体指几何中心）----
@@ -78,7 +78,7 @@ class FlameTestTask(BaseTask):
         "dropper":        np.array([0.416,  -0.14, 0.812]),
         "sample_stopper": np.array([0.20,    0.12, 0.8735]),
         "match":          np.array([0.50,    0.24, 0.8013]),
-        "cap":            np.array([0.46,    0.28, 0.82]),
+        "cap":            np.array([0.46,    0.28, 0.81]),
     }
 
     # ---- 子物体局部几何中心偏移（raw mesh center relative to prim origin）----
