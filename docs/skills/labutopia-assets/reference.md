@@ -488,6 +488,213 @@ if __name__ == "__main__":
 
 ---
 
+## 场景配置与相机调参（YAML）
+
+### YAML 配置文件结构
+
+实验环境通过 `config/level2_<TaskName>.yaml` 配置（如 `level2_FlameTest.yaml`）。关键部分：
+
+```yaml
+usd_path: "assets/chemistry_lab/lab_flametest/lab_flametest_v17.usd"  # 场景文件（相对仓库根）
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [0.75, 0.3, 1.35]     # [x, y, z] 世界坐标（米）
+    resolution: [512, 512]              # 输出分辨率
+    focal_length: 20                    # 焦距(mm)，越小视角越广
+    orientation: [0.54151, 0.24438, 0.33089, 0.73318]  # 四元数(w,x,y,z)!
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.25, 0, 1.5]
+    resolution: [512, 512]
+    focal_length: 12
+    orientation: [0.70711, 0, 0, -0.70711]  # 俯视(绕X轴-90°)
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"                    # 机械臂腕部相机，无需设 translation/orientation
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  position: [-0.3, 0, 0.71]            # 机器人基座位置
+
+task:
+  max_steps: 30000                      # 最大步数（长任务如FlameTest需30000）
+  obj_paths: []                         # 需随机化的物体路径（静态场景留空）
+```
+
+**相机参数在 YAML 里设，不是 USD 里**——改视角只需改 YAML 无需重建场景。
+
+### 三个相机的角色
+
+| 相机 | 角色 | 典型参数 | 备注 |
+|---|---|---|---|
+| Camera1 | 斜视特写，对准操作焦点（火焰/抓取点） | focal 14-25mm，靠近操作区 | 焦距越大画面越窄但细节越清晰 |
+| Camera2 | 俯视全局，覆盖整个工作区 | focal 10-15mm，z 距桌面 0.5-1.0m | 焦距太小→大面积空白；太大→覆盖不全 |
+| Camera3 | 机械臂腕部相机，跟随末端运动 | 仅设 resolution | 无需手动设 translation/orientation |
+
+### FOV 与覆盖范围计算
+
+```
+FOV(水平) = 2 * atan(sensor_width / (2 * focal_length))    # sensor_width ≈ 36mm
+地面覆盖宽度 = 2 * 相机高度 * tan(FOV / 2)
+```
+
+示例：
+- focal=5mm → FOV≈158°，z=2.5m → 覆盖 ~7m（太大，90%空白）
+- focal=12mm → FOV≈82°，z=1.5m → 覆盖 ~2.6m
+- focal=12mm → FOV≈82°，z=1.5m → 覆盖 ~1.2m（对齐1m工作区，Camera2 推荐）
+
+调参流程：先确定目标覆盖宽度 W（工作区尺寸）→ 算 z = W/(2*tan(FOV/2)) → 调 focal 使 FOV 合适 → 用 `--snapshot 2` 验证。
+
+### 常见配置对比
+
+| 参数 | 通用实验默认 | FlameTest 调整后 | 原因 |
+|---|---|---|---|
+| Camera2 z | 2.5 | 1.5 | 降高度缩小覆盖范围 |
+| Camera2 focal | 5 | 12 | 增焦距收窄 FOV，对齐 1m 工作区 |
+| Camera2 x | 0.1 | 0.25 | 对准工作区中心 |
+| Camera1 focal | 5 | 14-20 | 特写需长焦距放大火焰/操作细节 |
+| Camera1 resolution | 256 | 512 | 焰色反应需高分辨率辨色 |
+| Camera1 translation | [2,0,2] | [0.75,0.3,1.35] | 靠近操作区获得特写 |
+
+> 通用实验（TransportBeaker/HeatLiquid 等）Camera2 z=2.5 + focal=5 之所以能用，是因为那些实验物体随机化范围大（x[0.13,0.34] y[-0.33,0.25]），需要覆盖更大区域。FlameTest 工作区固定且小（1m×0.5m），需收紧相机参数。
+
+### orientation 四元数
+
+- 顺序是 **(w, x, y, z)**，不是 (x, y, z, w)！写反会导致相机朝向完全错误
+- 俯视（Camera2）：`[0.70711, 0, 0, -0.70711]` = 绕 X 轴旋转 -90°（光轴朝下，看向 -Z）
+- 斜视（Camera1）：需用四元数计算器或 Blender 辅助确定，让相机 -Z 轴指向目标点
+- 斜视常用值：`[0.61237, 0.35355, 0.35355, 0.61237]`（绕 X 45° + 绕 Y 45°，从右前上方看向原点）
+
+### 快速验证
+
+```bash
+# 导出 2 帧（Camera1 + Camera2 各一张），不跑完整实验
+python main.py --config config/level2_FlameTest.yaml --snapshot 2
+```
+
+检查输出图片中：
+- 操作区域居中，无大面积空白
+- 关键物体清晰可辨（如火焰颜色、器材轮廓）
+- 相机未穿过桌面/物体（穿模会导致画面异常）
+
+---
+
+## USD 资产引用架构（场景组装进阶）
+
+### 引用 vs 内嵌
+
+| 方式 | 语法 | 优点 | 缺点 |
+|---|---|---|---|
+| **内嵌几何** | 直接在场景 USD 里写 Mesh points/faces | 自包含，不依赖外部文件 | 改器材需逐场景修改，不可维护 |
+| **引用资产** | `references = [@../asset.usd@</root>]` | 修改一处全局生效，资产可复用 | 需管理引用路径，单位/材质需对齐 |
+
+**原则：所有器材都用引用，不内嵌。** 场景 USD 只负责布局（translate/scale/rotate），不存几何数据。
+
+### 引用语法
+
+```usda
+def Xform "BunsenBurner"
+{
+    # 引用外部 USD 文件的 /root prim
+    references = [@../bunsen_burner.usd@</root>]
+
+    # 摆放位置（相对 /World）
+    xformOp:translate = (0.36, 0.18, 0.8)
+    xformOpOrder = ["xformOp:translate"]
+}
+
+def Xform "TestTubeRack"
+{
+    # 引用 + 缩放（源资产用 mm，场景用 m）
+    references = [@test_tube_rack_detailed.usd@</TestTubeRack>]
+    xformOp:translate = (0.38, -0.14, 0.8965)
+    xformOp:scale = (0.001, 0.001, 0.001)
+    xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+}
+
+def Xform "PlatinumWire"
+{
+    # 引用 + 旋转
+    references = [@../platinum_wire.usd@</root>]
+    xformOp:translate = (0.368, -0.14, 0.895)
+    xformOp:rotateXYZ = (0, 0, 90)
+    xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+}
+```
+
+要点：
+- `@路径@` 内是相对当前 USD 文件的路径（如 `../bunsen_burner.usd`），**禁止绝对路径**（坑 21）
+- `</root>` 是被引用 USD 中的 prim 路径（不是文件路径），需先打开源资产确认顶层 prim 名
+- 单位不匹配（源 mm，场景 m）时加 `xformOp:scale = (0.001, 0.001, 0.001)`
+- `xformOpOrder` 必须列出所有 xformOp，顺序即变换顺序
+
+### 引用资产的碰撞与材质继承
+
+引用外部资产时，碰撞属性和材质绑定**随引用继承**：
+
+- **碰撞**：源资产 USD 中 Mesh 有 PhysicsCollisionAPI + physics:collisionEnabled=True → 引用后碰撞自动生效。如果源资产没有碰撞，引用后也没有——需要在**源资产**里加，不是在场景引用 prim 上加
+- **材质**：源资产 USD 中 Material + MaterialBinding → 引用后材质自动生效。如需覆盖材质（如换颜色），在场景 prim 上重新 `MaterialBindingAPI.Bind()` 会覆盖引用的材质
+- **可见性**：源资产的 visibility 设为 invisible → 引用后也不可见。需在源资产或场景中设为 inherited
+
+### 从内嵌转为引用的操作步骤
+
+```python
+from pxr import Usd, UsdGeom, Sdf, Gf
+import os
+
+ASSET_DIR = "E:/.../assets/chemistry_lab"
+
+# 1. 删除内嵌的器材 prim
+stage.RemovePrim(Sdf.Path("/World/BunsenBurner"))
+
+# 2. 创建新 Xform 并添加引用
+prim = UsdGeom.Xform.Define(stage, "/World/BunsenBurner")
+prim.GetPrim().GetReferences().AddReference(
+    os.path.join(ASSET_DIR, "bunsen_burner.usd"),  # 资产路径
+    "/root"                                          # 被引用的 prim 路径
+)
+prim.AddTranslateOp().Set(Gf.Vec3d(0.36, 0.18, 0.8))
+
+# 3. 验证引用已添加
+assert stage.GetPrimAtPath("/World/BunsenBurner").HasAuthoredReferences()
+
+# 4. 导出（禁止 Save，用 Export）
+stage.Export(out_path)
+```
+
+### 引用架构的维护优势
+
+修改器材只需改源资产 USD，所有引用该资产的场景自动更新：
+
+```
+assets/chemistry_lab/bunsen_burner.usd  ← 改这一个文件
+    ↑ references
+    ├── lab_flametest/lab_flametest_v17.usd  ← 自动更新
+    ├── lab_005/lab_005.usd                   ← 自动更新
+    └── ...其他场景                            ← 自动更新
+```
+
+用 Blender 打开整体场景 USD（如 lab_flametest_v17.usd）即可预览引用效果——Blender 会自动加载所有引用的外部 USD 文件，无需逐个文件检查。修改某个器材后，重新打开场景 USD 即可看到更新后的效果。
+
+### 场景中表格可见性
+
+场景 USD 中的桌子 prim（如 `/World/table`、`/World/lounge_booth_table`）默认 visibility 可能被设为 `invisible`，导致桌面不可见但物体悬空。修复：将 visibility 改为 `inherited`：
+
+```python
+from pxr import Usd, UsdGeom
+table = stage.GetPrimAtPath("/World/table")
+UsdGeom.Imageable(table).MakeVisible()  # 等价于 visibility = "inherited"
+```
+
+---
+
 ## 参考几何参数（D2 已标定）
 
 | 物体 | 参数 |

@@ -1,7 +1,7 @@
 ---
 name: labutopia-assets
 description: Creates LabUtopia (Isaac Sim chemistry simulator) 3D assets and scenes — test tubes, racks, spoons, wash bottles, beakers, powder piles — via 实物调研通法(inventory优先+结构拆解三步法+形状原语映射) → MeshBuilder → OBJ → USD pipeline, or the Blender bpy photorealistic pipeline (bmesh lathe + 基本体 helpers + Principled BSDF + EEVEE render check + USD export), and assembles lab_XXX scenes with references, builtin prims and kinematic markers. Use when the user asks to 制作资产/创建实验器材/生成场景, or mentions labutopia assets, USD asset creation, Blender bpy 资产, scene assembly, gen_*_assets.py, obj2usd, blender_asset_template, post_fix_usd, lab_00X scenes.
-version: 1.3.0
+version: 1.4.0
 ---
 
 # LabUtopia 资产制作
@@ -56,6 +56,11 @@ version: 1.3.0
 17. **Blender 5.0 Principled BSDF 输入改名**：4.x 起 `Specular` 已改名为 `Specular IOR Level`，直接 `bsdf.inputs["Specular"]` 会 KeyError。模板 set_mat 已用兼容检测（`if "Specular" in bsdf.inputs ... elif "Specular IOR Level" in ...`），新写材质代码照抄，勿直接用旧名。
 18. **液体/标记 BUILTIN 形状必须匹配容器内腔**：烧杯/试管等直壁容器内腔是圆柱，BUILTIN 液柱用圆柱（半径 < 内径）没问题；但锥形瓶/容量瓶等**收口容器内腔是锥形**（上窄下宽），直液柱会悬空穿模（液面不贴壁、露出空隙）。此类容器液体须用截锥/锥台形状（下半径 = 底部内半径，上半径 = 液面高度处的内半径，高 = 液面高度），或把液面压在锥面以下（低于收口起始高度）。判断依据：内腔轮廓是直上直下还是逐渐收窄。
 19. **post_fix_usd.py 原地 `stage.Save()` 是预期行为**：该脚本处理的是资产副本本身（补 transmission 就是要改这个文件），与坑 2 的"禁止 Save"不冲突——坑 2 禁止的是把**源场景/被引用资产**（lab_001/lab_003.usd 等）当输入或让 Save 污染它们。区分方法：当前文件是本次工作新产出的资产/副本 → 可原地 Save；是已有场景或被引用的源文件 → 只能 Export 新路径。
+20. **通用场景混入专用器材**：lab_001.usd 曾被当作"杂物间"堆积所有器材（含焰色反应专用的 BunsenBurner/PlatinumWire/HClBottle/SampleDish/CobaltGlass），导致 ~16 个使用 lab_001 的实验场景里都出现本生灯。原则：**通用场景只放通用器材**（桌子/烧杯/锥形瓶/干燥箱/柜子等），**专用器材放专用场景**（如 lab_flametest_v17.usd）。新建专用场景 = 从 lab_001 复制 + 删除不需要的 prim + 添加专用器材，不要在通用场景里堆积。
+21. **USD 资产路径必须用相对路径**：USD 文件中的 asset 属性（贴图、MDL 材质、子 USD 引用）如果用绝对路径（`E:/浙江大学/...`），换到 Linux 服务器后路径全部失效 → 贴图加载失败 → 桌面/物体显示为默认红色。生成或修改 USD 后必须检查所有 asset 属性使用相对路径（如 `../SubUSDs/textures/xxx.png`）。检查方法：pxr 遍历 `primSpec.attributes`，`typeName=='asset'` 的属性值不能含本地盘符前缀。
+22. **相机视角配置不当导致大面积空白或过窄**：Camera2 俯视全局视角默认 z=2.5 + focal=5（FOV~158°）→ 桌面覆盖 ~7m，但实际工作区仅 1m×0.5m → 90%画面空白。修复：z 降到 1.5（距桌面 0.7m）+ focal 增到 12（FOV~82°）→ 覆盖 ~1.2m 正好对齐工作区。Camera1 特写视角 focal 太大（如 25mm）→ 操作区域移出画面；太小（如 15mm）→ 火焰细节不足。调参方法：先算目标覆盖宽度 W，再 z = W/(2*tan(FOV/2))；FOV = 2*atan(36/(2*focal))（sensor≈36mm）。orientation 四元数顺序是 **(w,x,y,z)** 不是 (x,y,z,w)。用 `--snapshot 2` 快速导出 2 帧验证，不必跑完整实验。详见 reference.md「场景配置与相机调参」。
+23. **专用场景器材应引用资产文件而非内嵌几何**：在专用场景 USD（如 lab_flametest_v17.usd）中直接写 Mesh 几何体，改器材需逐场景修改 → 不可维护。正确做法：每件器材单独存为 `assets/chemistry_lab/<name>.usd`，场景中用 `references = [@../<name>.usd@</root>]` 引用，修改一处即全局生效。引用语法：`def Xform "BunsenBurner" { references = [@../bunsen_burner.usd@</root>] xformOp:translate = (...) }`。单位不匹配时加 `xformOp:scale = (0.001,0.001,0.001)`（mm→m）。引用资产的碰撞属性和材质绑定随引用继承——源资产没有碰撞，引用后也没有，需在源资产里加。详见 reference.md「USD 资产引用架构」。
+24. **YAML 环境配置（相机/机器人/任务参数）**：实验环境通过 `config/level2_<TaskName>.yaml` 配置，不是直接改 USD。关键字段：`usd_path`（场景文件，相对仓库路径）、`cameras`（列表，每相机含 prim_path/name/translation/resolution/focal_length/orientation/image_type）、`robot`（type+position）、`task.max_steps`（长任务如 FlameTest 需 30000）。**相机参数在 YAML 里设，不是 USD 里**——改视角只需改 YAML 无需重建场景。快速验证用 `python main.py --config config/level2_xxx.yaml --snapshot 2` 导出 2 帧图片。详见 reference.md「场景配置与相机调参」。
 
 ## 检查清单
 
@@ -73,8 +78,17 @@ version: 1.3.0
 - [ ] 场景 BUILTIN 液体/标记形状匹配容器内腔（直壁容器=圆柱；锥形瓶/容量瓶等收口容器=截锥，不悬空穿模）
 - [ ] Blender 管线：导出 USD 无 cam/key/env_light 残留，metersPerUnit == 1.0
 - [ ] Blender 管线：玻璃 transmission 已后处理（pxr 读 inputs:transmission == 1.0）
+- [ ] USD asset 属性无本地绝对路径（盘符前缀 E:/ 等 = 0，用相对路径 `../`）（坑 21）
+- [ ] 通用场景（lab_001）不含专用器材；专用器材在专用场景中（坑 20）
+- [ ] 相机参数合理：Camera2 俯视 z≤1.5 + focal≥10（覆盖≤1.5m），Camera1 特写 focal 按目标尺寸调（坑 22）
+- [ ] 专用场景器材用 references 引用资产文件，非内嵌 Mesh（坑 23）
+- [ ] 引用资产有碰撞属性（PhysicsCollisionAPI）和材质绑定（随引用继承，源资产里加）
+- [ ] YAML 配置文件 usd_path/cameras/robot/task 字段齐全（坑 24）
+- [ ] 用 `--snapshot 2` 快速验证相机视角，无需跑完整实验
 
 ## 附加资源
 
 - 详细代码模板（实物调研方法、helpers 签名、write_mesh 修复版、场景脚本骨架、Blender 精模管线模板、材质映射表、规格表样例）见 [reference.md](reference.md)
 - 组合参考几何参数表（试管/试管架/勺子/洗瓶尺寸）见 [reference.md](reference.md)
+- 场景配置与相机调参（YAML 结构、FOV 计算、orientation 四元数、--snapshot 验证）见 [reference.md](reference.md)「场景配置与相机调参」
+- USD 资产引用架构（引用语法、碰撞/材质继承、内嵌转引用步骤、维护优势）见 [reference.md](reference.md)「USD 资产引用架构」
