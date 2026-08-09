@@ -63,7 +63,7 @@ cameras:
     # orientation 四元数顺序 (w,x,y,z)！看向 (0.36,0.18,0.99)
     translation: [0.75, 0.3, 1.35]
     resolution: [512, 512]
-    focal_length: 20
+    focal_length: 14
     orientation: [0.54151, 0.24438, 0.33089, 0.73318]
     image_type: "rgb"
 
