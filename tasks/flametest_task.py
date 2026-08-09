@@ -51,8 +51,8 @@ class FlameTestTask(BaseTask):
     # sin120=0.866, cos120=-0.5
     # 手柄中心 local(0,0,0.056) → 旋转后(0.0485,0,-0.028) → 世界(0.417,-0.14,0.867)
     # loop local(0,0,0.1655) → 旋转后(0.1433,0,-0.0828) → 世界(0.511,-0.14,0.812)
-    WIRE_GRASP = np.array([0.417, -0.14, 0.867])
-    WIRE_REST = np.array([0.368, -0.14, 0.895])
+    WIRE_REST  = np.array([0.3977, -0.0201, 0.9756])
+    WIRE_GRASP = np.array([0.3977, -0.0201, 0.9476])
     WIRE_HELD_OFFSET = WIRE_REST - WIRE_GRASP  # (-0.049, 0, 0.028)
     # loop 相对夹爪 = (0.1433-0.0485, 0, -0.0828+0.028) = (0.0948, 0, -0.0548)
     WIRE_TIP_OFFSET = np.array([0.095, 0.0, -0.055])
@@ -73,12 +73,12 @@ class FlameTestTask(BaseTask):
 
     # ---- 物体静止位置（世界坐标，对于子物体指几何中心）----
     REST_POS = {
-        "dish":           np.array([0.32,   -0.22, 0.80]),
-        "hcl_stopper":    np.array([0.12,    0.02, 0.8735]),
-        "dropper":        np.array([0.416,  -0.14, 0.812]),
-        "sample_stopper": np.array([0.20,    0.12, 0.8735]),
-        "match":          np.array([0.50,    0.24, 0.8013]),
-        "cap":            np.array([0.46,    0.28, 0.81]),
+        "dish":           np.array([0.6682, -0.2200, 0.8000]),
+        "hcl_stopper":    np.array([0.1200,  0.0200, 0.8735]),
+        "dropper":        np.array([0.3591, -0.0205, 0.8120]),
+        "sample_stopper": np.array([0.2000,  0.1200, 0.8735]),
+        "match":          np.array([0.5000,  0.2400, 0.8013]),
+        "cap":            np.array([0.4600,  0.2800, 0.8100]),
     }
 
     # ---- 子物体局部几何中心偏移（raw mesh center relative to prim origin）----
@@ -107,13 +107,13 @@ class FlameTestTask(BaseTask):
     # 阈值 = grip值 + 1mm 裕量（v21 收紧，原 2mm 导致多物体误触发）
     # grip 值：dish 0.0021, stopper 0.0126, dropper 0.004, match 0.0015, cap 0.017, wire 0.004
     GRIP_CLOSED_THRESH = {
-        "dish":           0.0035,  # 表面皿边缘 4.2mm, grip=0.0021
-        "hcl_stopper":    0.0135,  # 瓶塞 25.2mm, grip=0.0126
-        "dropper":        0.005,   # 滴管玻璃管 8mm, grip=0.004
-        "sample_stopper": 0.0135,  # 瓶塞 25.2mm, grip=0.0126
-        "match":          0.0025,  # 火柴杆 3mm, grip=0.0015
-        "cap":            0.018,   # 灯帽 34mm, grip=0.017
-        "wire":           0.005,   # 铂丝手柄 8mm, grip=0.004
+        "dish":           0.0031,
+        "hcl_stopper":    0.0136,
+        "dropper":        0.005,
+        "sample_stopper": 0.0136,
+        "match":          0.0025,
+        "cap":            0.018,
+        "wire":           0.005,
     }
 
     # ---- 关键点 ----

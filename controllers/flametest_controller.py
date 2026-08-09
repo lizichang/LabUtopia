@@ -79,16 +79,16 @@ class FlameTestTaskController(TaskBaseController):
         GRIP_OPEN    = self.GRIP_OPEN
 
         # ---- 抓取点（与 task.GRASP_POINTS 精确对齐）----
-        DISH_GRASP    = (0.32,   -0.22, 0.803)
-        DISH_CENTER   = (0.20,    0.02, 0.803)
-        STO_GRASP     = (0.12,    0.02, 0.877)
-        STO_SIDE      = (0.16,    0.06, 0.877)
-        DROP_GRASP    = (0.416,  -0.14, 0.872)  # 滴管在试管架上
-        SSTO_GRASP    = (0.20,    0.12, 0.877)
-        SSTO_SIDE     = (0.24,    0.08, 0.877)
-        MATCH_GRASP   = (0.4585,  0.24, 0.803)
-        WIRE_GRASP    = (0.417,  -0.14, 0.867)  # 铂丝在试管架上
-        CAP_GRASP     = (0.46,    0.28, 0.815)
+        DISH_GRASP    = (0.6682, -0.2200, 0.8030)
+        DISH_CENTER   = (0.5482,  0.0000, 0.8030)
+        STO_GRASP     = (0.1200,  0.0200, 0.8770)
+        STO_SIDE      = (0.1600,  0.0600, 0.8770)
+        DROP_GRASP    = (0.3591, -0.0205, 0.8720)  # 滴管在试管架上
+        SSTO_GRASP    = (0.2000,  0.1200, 0.8770)
+        SSTO_SIDE     = (0.2400,  0.0800, 0.8770)
+        MATCH_GRASP   = (0.5000,  0.2400, 0.8030)
+        WIRE_GRASP    = (0.3977, -0.0201, 0.9476)  # 铂丝在试管架上
+        CAP_GRASP     = (0.4600,  0.2800, 0.8150)
 
         # 安全过渡高度（夹爪 z，焰顶 z=1.004，安全裕量 14.6cm）
         H = 1.15
