@@ -145,50 +145,105 @@ class DataCollector:
             self.temp_language_instruction = language_instruction
         
     def write_cached_data(self, final_joint_positions):
-        """Write cached data asynchronously using process pool"""
+        """Write cached data directly to HDF5 (memory-efficient, no process pool).
+
+        原实现通过 ProcessPoolExecutor 异步写入，需 pickle 整个 camera_data dict，
+        导致峰值内存 = 原始list + np.array副本 + pickle副本 ≈ 3x 数据量。
+        FlameTest 单 episode 可缓存 ~1862 步 × 3 摄像头 × 512×512×3 ≈ 4.4GB，
+        3x 峰值约 13GB，极易触发 OOM SIGKILL。
+
+        改为直接写 h5（同步），逐个摄像头转 array 后立即释放 list，
+        峰值内存降为 原始list(全量) + 单摄像头array(1/3) ≈ 1.33x。
+        """
+        import gc
+
         if self.episode_count >= self.max_episodes:
             self.close()
             return
-            
+
         # Add the final action
         self.temp_actions = self.temp_agent_pose[1:] + [final_joint_positions]
-        
-        # Convert lists to numpy arrays
-        camera_data = {
-            name: np.array(images) 
-            for name, images in self.temp_cameras.items()
-        }
-        agent_pose_data = np.array(self.temp_agent_pose)
-        actions_data = np.array(self.temp_actions)
-        
+
         # Create individual episode file path
         episode_name = f"episode_{self.episode_count:04d}"
         episode_path = os.path.join(self.session_dir, f"{episode_name}.h5")
-        
-        # Submit writing task to process pool
-        future = self.process_pool.submit(
-            _write_episode_data,
-            episode_path,
-            episode_name,
-            camera_data,
-            agent_pose_data,
-            actions_data,
-            self.temp_task_properties,
-            self.temp_language_instruction,
-            self.compression
-        )
-        self.pending_futures.append(future)
+
+        print(f"Writing episode {episode_name} to {episode_path}")
+        episode_length = len(self.temp_agent_pose)
+
+        with h5py.File(episode_path, 'w') as h5_file:
+            # Write camera data one at a time to minimize peak memory
+            for camera_name in list(self.temp_cameras.keys()):
+                images = self.temp_cameras[camera_name]
+                if not images:
+                    continue
+                image_array = np.array(images)          # convert list → array
+                self.temp_cameras[camera_name] = []      # free the list immediately
+                gc.collect()
+
+                chunk_size = (min(64, image_array.shape[0]),) + image_array.shape[1:]
+                kwargs = {
+                    'data': image_array,
+                    'dtype': 'uint8',
+                    'chunks': chunk_size
+                }
+                if self.compression == "gzip":
+                    kwargs.update({
+                        'compression': "gzip",
+                        'compression_opts': 5
+                    })
+                h5_file.create_dataset(camera_name, **kwargs)
+                del image_array                          # free the array
+                gc.collect()
+
+            # Store pose and action data
+            agent_pose_data = np.array(self.temp_agent_pose)
+            h5_file.create_dataset(
+                "agent_pose",
+                data=agent_pose_data,
+                dtype='float32',
+                chunks=True
+            )
+            del agent_pose_data
+
+            actions_data = np.array(self.temp_actions)
+            h5_file.create_dataset(
+                "actions",
+                data=actions_data,
+                dtype='float32',
+                chunks=True
+            )
+            del actions_data
+
+            # Store language instruction if provided
+            if self.temp_language_instruction is not None:
+                h5_file.create_dataset(
+                    "language_instruction",
+                    data=self.temp_language_instruction,
+                    dtype=h5py.special_dtype(vlen=str)
+                )
+
+            # Store task properties (as JSON string)
+            if self.temp_task_properties:
+                task_properties_json = json.dumps(self.temp_task_properties, ensure_ascii=False)
+                h5_file.create_dataset(
+                    "task_properties",
+                    data=task_properties_json,
+                    dtype=h5py.special_dtype(vlen=str)
+                )
+
+        print(f"Finished writing episode {episode_name}")
 
         info = {
             "episode_index": self.episode_count,
             "tasks": [self.task_instructions] if self.task_instructions else [],
-            "length": len(self.temp_agent_pose),
+            "length": episode_length,
             "task_properties": self.temp_task_properties
         }
-        
+
         with open(self.episode_file_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(info, ensure_ascii=False) + "\n")
-        
+
         # Clear cache
         for camera_name in self.temp_cameras:
             self.temp_cameras[camera_name] = []
@@ -196,7 +251,7 @@ class DataCollector:
         self.temp_actions = []
         self.temp_language_instruction = None
         self.temp_task_properties = {}
-        
+
         # Increment episode count
         self.episode_count += 1
 

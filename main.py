@@ -50,12 +50,15 @@ from factories.task_factory import create_task
 from factories.controller_factory import create_controller
 
 class FFmpegVideoWriter:
-    """ffmpeg 子进程视频写入器。
+    """ffmpeg 子进程视频写入器（fragmented MP4 模式）。
 
-    规避 isaac sim 环境下 cv2.VideoWriter(mp4v) release 时 C++ 层崩溃的问题
-    （现象：无 Python traceback、进程被 signal 终止、mp4 缺 moov atom 无法打开）。
-    编码在独立 ffmpeg 子进程中完成，即使主进程异常退出，已写入的帧也会被
-    ffmpeg 正常收尾，视频文件保持可播放。
+    使用 -movflags +frag_keyframe+empty_moov 生成分片 MP4：
+    - 每个 keyframe 处开始一个新 fragment，各 fragment 独立可播放
+    - 即使主进程被 OOM SIGKILL，已写入的 fragment 仍然有效
+    - 视频文件可播放到最后一个完整 fragment（最多丢失 1 秒）
+
+    每帧 write 后 flush，确保数据及时到达 ffmpeg 子进程，
+    避免主进程被杀时 Python 缓冲区中的帧丢失。
     """
 
     def __init__(self, path, width, height, fps=60.0):
@@ -63,11 +66,15 @@ class FFmpegVideoWriter:
         cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo",
                "-pix_fmt", "bgr24", "-s", f"{width}x{height}", "-r", str(fps),
                "-i", "-", "-an", "-c:v", "libx264", "-preset", "ultrafast",
-               "-threads", "0", "-crf", "23", "-pix_fmt", "yuv420p", path]
+               "-threads", "0", "-crf", "23", "-pix_fmt", "yuv420p",
+               "-g", "60",
+               "-movflags", "+frag_keyframe+empty_moov",
+               path]
         self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
     def write(self, frame):
         self._proc.stdin.write(frame.tobytes())
+        self._proc.stdin.flush()
 
     def release(self):
         try:

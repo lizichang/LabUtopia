@@ -159,48 +159,98 @@ class ActionStateDataCollector:
             self.temp_language_instruction = language_instruction
     
     def write_cached_data(self):
-        """write cached data asynchronously using process pool"""
+        """Write cached data directly to HDF5 (memory-efficient, no process pool).
+
+        同 DataCollector 的修复：逐个摄像头转 array 后立即释放 list，
+        避免峰值内存 = 原始list + np.array副本 + pickle副本 ≈ 3x。
+        """
+        import gc
+
         if self.episode_count >= self.max_episodes:
             self.close()
             return
-        
-        # convert lists to numpy arrays
-        camera_data = {
-            name: np.array(images) 
-            for name, images in self.temp_cameras.items()
-        }
-        agent_pose_data = np.array(self.temp_agent_pose)
-        actions_data = np.array(self.temp_actions)
-        
+
         # create single episode file path
         episode_name = f"episode_{self.episode_count:04d}"
         episode_path = os.path.join(self.session_dir, f"{episode_name}.h5")
-        
-        # submit writing task to process pool
-        future = self.process_pool.submit(
-            _write_episode_data_with_properties,
-            episode_path,
-            episode_name,
-            camera_data,
-            agent_pose_data,
-            actions_data,
-            self.temp_task_properties,
-            self.temp_language_instruction,
-            self.compression
-        )
-        self.pending_futures.append(future)
-        
+
+        print(f"Writing episode {episode_name} to {episode_path}")
+        episode_length = len(self.temp_agent_pose)
+
+        with h5py.File(episode_path, 'w') as h5_file:
+            # Write camera data one at a time to minimize peak memory
+            for camera_name in list(self.temp_cameras.keys()):
+                images = self.temp_cameras[camera_name]
+                if not images:
+                    continue
+                image_array = np.array(images)
+                self.temp_cameras[camera_name] = []
+                gc.collect()
+
+                chunk_size = (min(64, image_array.shape[0]),) + image_array.shape[1:]
+                kwargs = {
+                    'data': image_array,
+                    'dtype': 'uint8',
+                    'chunks': chunk_size
+                }
+                if self.compression == "gzip":
+                    kwargs.update({
+                        'compression': "gzip",
+                        'compression_opts': 5
+                    })
+                h5_file.create_dataset(camera_name, **kwargs)
+                del image_array
+                gc.collect()
+
+            # store pose and action data
+            agent_pose_data = np.array(self.temp_agent_pose)
+            h5_file.create_dataset(
+                "agent_pose",
+                data=agent_pose_data,
+                dtype='float32',
+                chunks=True
+            )
+            del agent_pose_data
+
+            actions_data = np.array(self.temp_actions)
+            h5_file.create_dataset(
+                "actions",
+                data=actions_data,
+                dtype='float32',
+                chunks=True
+            )
+            del actions_data
+
+            # store language instruction (if provided)
+            if self.temp_language_instruction is not None:
+                h5_file.create_dataset(
+                    "language_instruction",
+                    data=self.temp_language_instruction,
+                    dtype=h5py.special_dtype(vlen=str)
+                )
+
+            # store task properties (as JSON string)
+            if self.temp_task_properties:
+                task_properties_json = json.dumps(self.temp_task_properties, ensure_ascii=False)
+                h5_file.create_dataset(
+                    "task_properties",
+                    data=task_properties_json,
+                    dtype=h5py.special_dtype(vlen=str)
+                )
+
+        print(f"Finished writing episode {episode_name}")
+
         # write episode metadata
         info = {
             "episode_index": self.episode_count,
             "tasks": [self.task_instructions] if self.task_instructions else [],
-            "length": len(self.temp_agent_pose),
+            "length": episode_length,
             "task_properties": self.temp_task_properties
         }
-        
+
         with open(self.episode_file_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(info, ensure_ascii=False) + "\n")
-        
+
         # clear cache
         for camera_name in self.temp_cameras:
             self.temp_cameras[camera_name] = []
@@ -208,7 +258,7 @@ class ActionStateDataCollector:
         self.temp_actions = []
         self.temp_language_instruction = None
         self.temp_task_properties = {}
-        
+
         # increase episode count
         self.episode_count += 1
     
