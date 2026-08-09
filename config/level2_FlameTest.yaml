@@ -68,9 +68,12 @@ cameras:
 
   - prim_path: "/World/Camera2"
     name: "camera_2"
-    translation: [0.1, 0, 2.5]
+    # 俯视全局视角：z 从 2.5 降到 1.5（距桌面 0.7m），focal 从 5 增到 12（FOV ~82°）
+    # 桌面覆盖范围从 ~7m 缩小到 ~1.2m，正好覆盖焰色反应工作区（x:-0.3~0.75, y:-0.22~0.28）
+    # 相机 x 从 0.1 移到 0.25，对准工作区中心
+    translation: [0.25, 0, 1.5]
     resolution: [512, 512]
-    focal_length: 5
+    focal_length: 12
     orientation: [0.70711, 0, 0, -0.70711]
     image_type: "rgb"
 
