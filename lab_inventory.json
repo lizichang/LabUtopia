@@ -1,0 +1,1257 @@
+{
+  "_description": "实验室资产清单 — 记录全部仪器、器材和试剂的物理存放信息和规格。仅陈述物理事实，不包含任何操作提示或规范建议。",
+  "_usage": "所有技能在执行前必须检索本清单确认所需物品可用。Experimenter 收到的库存上下文仅包含物品名称列表。Lab Agent 的 validate_operation 工具可以看到完整信息。",
+  "_last_updated": "2026-07-15",
+  "instruments": [
+    {
+      "name": "旋光仪",
+      "quantity": 1,
+      "storage_location": "仪器台左侧",
+      "required_accessories": [
+        "旋光管（1dm）",
+        "旋光管（2dm）",
+        "擦镜纸"
+      ],
+      "sample_preparation": "将待测样品溶于适当溶剂配成已知浓度的溶液，用该溶液润洗旋光管2-3次后注满旋光管，确保管内无气泡，旋紧两端盖帽，用擦镜纸将管壁擦拭至清洁透光，放入旋光仪样品槽",
+      "usage_constraint": "仅对有光学活性的手性物质产生有效读数；需实验者提供溶液浓度（g/mL）和旋光管长度（dm）两个参数",
+      "notes": "使用钠光灯（D线，589nm），可测定样品比旋光度"
+    },
+    {
+      "name": "折光仪",
+      "quantity": 1,
+      "storage_location": "仪器台中央",
+      "required_accessories": [
+        "擦镜纸",
+        "胶头滴管"
+      ],
+      "sample_preparation": "用胶头滴管吸取2-3滴液体样品，滴在折光仪棱镜表面上，合上棱镜盖，调节反光镜对准光源直至视野中出现明暗分界线",
+      "usage_constraint": "仅适用于液体样品；棱镜面严禁接触硬物和强腐蚀性液体；用后须用擦镜纸蘸乙醇轻轻擦净棱镜面",
+      "notes": "固定测试温度25°C，量程nD 1.3000-1.7000"
+    },
+    {
+      "name": "分析天平",
+      "quantity": 1,
+      "storage_location": "天平室实验台",
+      "required_accessories": [
+        "称量纸",
+        "药匙"
+      ],
+      "sample_preparation": "将称量纸对折后放置在天平托盘上，按归零键清零，用药匙取适量样品置于称量纸上，读数稳定后记录质量",
+      "usage_constraint": "最大称量200g，精度0.0001g；不得直接称量腐蚀性物质和热物体；称量时关闭天平防风门",
+      "notes": "需水平放置，使用前校准"
+    },
+    {
+      "name": "台秤",
+      "quantity": 1,
+      "storage_location": "实验台",
+      "required_accessories": [
+        "称量纸",
+        "表面皿（10cm）"
+      ],
+      "sample_preparation": "将称量纸或表面皿放置于秤盘上归零，用药匙取样品置于其上称量",
+      "usage_constraint": "最大称量500g，精度0.1g",
+      "notes": "用于一般不需精确称量的操作"
+    },
+    {
+      "name": "显微镜",
+      "quantity": 0,
+      "storage_location": "仪器台右侧",
+      "required_accessories": [
+        "载玻片",
+        "盖玻片"
+      ],
+      "sample_preparation": "取少量样品置于载玻片上，盖上盖玻片，将玻片固定于载物台上，调节焦距至图像清晰",
+      "usage_constraint": "仅用于观察固体样品的晶体形态",
+      "notes": "[已禁用-专家难度] 放大倍数40×-400×"
+    },
+    {
+      "name": "电导率仪",
+      "quantity": 1,
+      "storage_location": "仪器台",
+      "required_accessories": [
+        "烧杯（50mL）",
+        "玻璃棒",
+        "洗瓶"
+      ],
+      "sample_preparation": "称取适量样品溶于蒸馏水中配成已知浓度的溶液（实验者需提供浓度g/L），将溶液转移至50mL烧杯中，放入电导电极，确保电极片完全浸没在液面以下",
+      "usage_constraint": "仅适用于可配制成水溶液的电解质样品；纯固体和纯非电解质有机液体无法获得有效读数；量程0-200 mS/cm",
+      "notes": "默认测试温度25°C"
+    },
+    {
+      "name": "熔点仪",
+      "quantity": 0,
+      "storage_location": "仪器台",
+      "required_accessories": [
+        "毛细管（熔点管）"
+      ],
+      "sample_preparation": "取少量干燥的粉末状固体样品于表面皿上，将毛细管开口端反复插入样品粉末中使样品进入管内，将毛细管封口端在桌面上轻轻顿实使样品紧密填充至约2-3mm高度，将毛细管封口端朝下放入熔点仪加热槽",
+      "usage_constraint": "仅适用于常温下为固体的样品；量程室温-300°C；超过300°C需改用显微熔点仪",
+      "notes": "[已禁用-专家难度] 升温速率可调，通常初始快速升温，接近熔点时降速至1-2°C/min"
+    },
+    {
+      "name": "沸点仪",
+      "quantity": 0,
+      "storage_location": "仪器台",
+      "required_accessories": [
+        "沸点管",
+        "温度计（0-360°C）"
+      ],
+      "sample_preparation": "用胶头滴管吸取约0.3-0.5mL待测液体样品，沿管壁缓慢注入沸点管中，将沸点管与温度计用橡皮圈固定在一起后放入加热浴中",
+      "usage_constraint": "仅适用于常温下为液体的样品；量程25-300°C；低沸点物质（<25°C）需先用冰浴预冷后操作",
+      "notes": "[已禁用-专家难度] 加热浴介质根据预期沸点选择（水浴或油浴）"
+    },
+    {
+      "name": "红外光谱仪",
+      "quantity": 0,
+      "storage_location": "仪器台",
+      "required_accessories": [],
+      "sample_preparation": "",
+      "usage_constraint": "已禁用",
+      "notes": "[已禁用] 无可靠IR谱图数据源（PubChem不提供标准谱图），LLM编造波数会误导鉴定。如未来接入SDBS/NIST等标准谱库可恢复。"
+    }
+  ],
+  "equipment": [
+    {
+      "name": "试管（10mL）",
+      "quantity": 20,
+      "storage_location": "器材柜上层抽屉，置于试管架上",
+      "material": "硼硅玻璃",
+      "notes": "外径15mm，长125mm"
+    },
+    {
+      "name": "试管（25mL）",
+      "quantity": 15,
+      "storage_location": "器材柜上层抽屉，置于试管架上",
+      "material": "硼硅玻璃",
+      "notes": "外径25mm，长150mm"
+    },
+    {
+      "name": "烧杯（50mL）",
+      "quantity": 10,
+      "storage_location": "器材柜中层隔板",
+      "material": "硼硅玻璃"
+    },
+    {
+      "name": "烧杯（100mL）",
+      "quantity": 10,
+      "storage_location": "器材柜中层隔板",
+      "material": "硼硅玻璃"
+    },
+    {
+      "name": "烧杯（250mL）",
+      "quantity": 8,
+      "storage_location": "器材柜中层隔板",
+      "material": "硼硅玻璃"
+    },
+    {
+      "name": "烧杯（500mL）",
+      "quantity": 5,
+      "storage_location": "器材柜中层隔板",
+      "material": "硼硅玻璃"
+    },
+    {
+      "name": "量筒（10mL）",
+      "quantity": 5,
+      "storage_location": "器材柜中层隔板",
+      "material": "硼硅玻璃",
+      "notes": "刻度精度0.1mL"
+    },
+    {
+      "name": "量筒（25mL）",
+      "quantity": 5,
+      "storage_location": "器材柜中层隔板",
+      "material": "硼硅玻璃",
+      "notes": "刻度精度0.5mL"
+    },
+    {
+      "name": "量筒（50mL）",
+      "quantity": 5,
+      "storage_location": "器材柜中层隔板",
+      "material": "硼硅玻璃",
+      "notes": "刻度精度1mL"
+    },
+    {
+      "name": "量筒（100mL）",
+      "quantity": 3,
+      "storage_location": "器材柜中层隔板",
+      "material": "硼硅玻璃",
+      "notes": "刻度精度1mL"
+    },
+    {
+      "name": "容量瓶（100mL）",
+      "quantity": 5,
+      "storage_location": "器材柜下层隔板",
+      "material": "硼硅玻璃",
+      "notes": "带磨口玻璃塞"
+    },
+    {
+      "name": "容量瓶（250mL）",
+      "quantity": 5,
+      "storage_location": "器材柜下层隔板",
+      "material": "硼硅玻璃",
+      "notes": "带磨口玻璃塞"
+    },
+    {
+      "name": "锥形瓶（125mL）",
+      "quantity": 10,
+      "storage_location": "器材柜中层隔板",
+      "material": "硼硅玻璃"
+    },
+    {
+      "name": "锥形瓶（250mL）",
+      "quantity": 8,
+      "storage_location": "器材柜中层隔板",
+      "material": "硼硅玻璃"
+    },
+    {
+      "name": "胶头滴管",
+      "quantity": 20,
+      "storage_location": "器材柜抽屉内滴管架上",
+      "material": "玻璃管身+橡胶胶头",
+      "notes": "长约15cm，胶头挤压可吸取液体，每滴约0.05mL"
+    },
+    {
+      "name": "滴管（不含胶头）",
+      "quantity": 20,
+      "storage_location": "器材柜抽屉",
+      "material": "玻璃"
+    },
+    {
+      "name": "移液管（1mL）",
+      "quantity": 10,
+      "storage_location": "器材柜抽屉内移液管架上",
+      "material": "玻璃",
+      "notes": "刻度精度0.01mL，需配合洗耳球使用"
+    },
+    {
+      "name": "移液管（5mL）",
+      "quantity": 10,
+      "storage_location": "器材柜抽屉内移液管架上",
+      "material": "玻璃",
+      "notes": "刻度精度0.05mL，需配合洗耳球使用"
+    },
+    {
+      "name": "移液管（10mL）",
+      "quantity": 10,
+      "storage_location": "器材柜抽屉内移液管架上",
+      "material": "玻璃",
+      "notes": "刻度精度0.1mL，需配合洗耳球使用"
+    },
+    {
+      "name": "洗耳球",
+      "quantity": 10,
+      "storage_location": "器材柜抽屉",
+      "material": "橡胶"
+    },
+    {
+      "name": "玻璃棒",
+      "quantity": 15,
+      "storage_location": "器材柜抽屉",
+      "material": "玻璃",
+      "notes": "长约20cm，直径6mm，两端圆滑"
+    },
+    {
+      "name": "漏斗（短颈）",
+      "quantity": 5,
+      "storage_location": "器材柜中层",
+      "material": "玻璃",
+      "notes": "口径约6cm"
+    },
+    {
+      "name": "漏斗（长颈）",
+      "quantity": 3,
+      "storage_location": "器材柜中层",
+      "material": "玻璃",
+      "notes": "口径约6cm，颈长15cm"
+    },
+    {
+      "name": "滤纸（定性）",
+      "quantity": "充足",
+      "storage_location": "器材柜抽屉",
+      "material": "纸",
+      "notes": "直径9cm和12.5cm两种规格"
+    },
+    {
+      "name": "蒸发皿",
+      "quantity": 8,
+      "storage_location": "器材柜中层",
+      "material": "瓷"
+    },
+    {
+      "name": "坩埚",
+      "quantity": 5,
+      "storage_location": "器材柜中层",
+      "material": "瓷",
+      "notes": "容量约30mL"
+    },
+    {
+      "name": "研钵（含研杵）",
+      "quantity": 3,
+      "storage_location": "器材柜下层",
+      "material": "瓷",
+      "notes": "口径约10cm"
+    },
+    {
+      "name": "表面皿（7cm）",
+      "quantity": 10,
+      "storage_location": "器材柜中层",
+      "material": "玻璃"
+    },
+    {
+      "name": "表面皿（10cm）",
+      "quantity": 10,
+      "storage_location": "器材柜中层",
+      "material": "玻璃"
+    },
+    {
+      "name": "水浴锅",
+      "quantity": 1,
+      "storage_location": "实验台",
+      "notes": "恒温水浴，控温范围室温+5°C至99°C"
+    },
+    {
+      "name": "酒精灯",
+      "quantity": 5,
+      "storage_location": "器材柜下层",
+      "notes": "内装工业酒精，灯芯为棉线"
+    },
+    {
+      "name": "本生灯",
+      "quantity": 1,
+      "storage_location": "实验台",
+      "notes": "连接燃气，火焰温度可达1500°C，可用于焰色反应"
+    },
+    {
+      "name": "铁架台",
+      "quantity": 8,
+      "storage_location": "器材柜旁地面",
+      "notes": "配铁圈和铁夹"
+    },
+    {
+      "name": "试管夹",
+      "quantity": 10,
+      "storage_location": "器材柜抽屉",
+      "material": "木质"
+    },
+    {
+      "name": "试管架",
+      "quantity": 6,
+      "storage_location": "器材柜上层",
+      "material": "木质/塑料",
+      "notes": "10孔和20孔两种"
+    },
+    {
+      "name": "试管刷",
+      "quantity": 10,
+      "storage_location": "水槽旁",
+      "notes": "不同口径"
+    },
+    {
+      "name": "冷凝管（回流）",
+      "quantity": 3,
+      "storage_location": "器材柜中层",
+      "material": "玻璃",
+      "notes": "球形内管，用于回流加热实验"
+    },
+    {
+      "name": "滴定管（酸式）",
+      "quantity": 3,
+      "storage_location": "器材柜中层，滴定管架上",
+      "material": "玻璃，聚四氟乙烯旋塞",
+      "notes": "容量50mL，刻度精度0.1mL"
+    },
+    {
+      "name": "滴定管（碱式）",
+      "quantity": 3,
+      "storage_location": "器材柜中层，滴定管架上",
+      "material": "玻璃，橡胶管+玻璃珠",
+      "notes": "容量50mL，刻度精度0.1mL"
+    },
+    {
+      "name": "毛细管（熔点管）",
+      "quantity": 0,
+      "storage_location": "器材柜抽屉",
+      "material": "玻璃",
+      "notes": "[已禁用-专家难度-配套仪器已禁用] 内径约1mm，一端密封，用于熔点测定"
+    },
+    {
+      "name": "沸点管",
+      "quantity": 0,
+      "storage_location": "器材柜抽屉",
+      "material": "玻璃",
+      "notes": "[已禁用-专家难度-配套仪器已禁用] 微量沸腾管，内含毛细管，用于沸点测定"
+    },
+    {
+      "name": "燃烧匙",
+      "quantity": 5,
+      "storage_location": "器材柜抽屉",
+      "material": "铜/铁",
+      "notes": "勺状金属匙，用于固体燃烧实验"
+    },
+    {
+      "name": "石棉网",
+      "quantity": 10,
+      "storage_location": "器材柜中层"
+    },
+    {
+      "name": "蒸馏装置",
+      "quantity": 1,
+      "storage_location": "器材柜中层（组件分开放置）",
+      "notes": "含蒸馏烧瓶、冷凝管、接收瓶、温度计、连接管，用于水蒸气蒸馏实验"
+    },
+    {
+      "name": "三角架",
+      "quantity": 8,
+      "storage_location": "器材柜下层",
+      "material": "铁"
+    },
+    {
+      "name": "温度计（0-100°C）",
+      "quantity": 10,
+      "storage_location": "器材柜抽屉内温度计盒"
+    },
+    {
+      "name": "温度计（0-360°C）",
+      "quantity": 5,
+      "storage_location": "器材柜抽屉内温度计盒"
+    },
+    {
+      "name": "pH试纸（广泛）",
+      "quantity": "充足",
+      "storage_location": "器材柜抽屉",
+      "notes": "pH范围1-14，精度约1pH单位"
+    },
+    {
+      "name": "pH试纸（精密）",
+      "quantity": "充足",
+      "storage_location": "器材柜抽屉",
+      "notes": "多种范围（0.5-5.0、5.5-9.0等），精度约0.5pH单位"
+    },
+    {
+      "name": "石蕊试纸（红色）",
+      "quantity": "充足",
+      "storage_location": "器材柜抽屉"
+    },
+    {
+      "name": "石蕊试纸（蓝色）",
+      "quantity": "充足",
+      "storage_location": "器材柜抽屉"
+    },
+    {
+      "name": "淀粉碘化钾试纸",
+      "quantity": "充足",
+      "storage_location": "器材柜抽屉"
+    },
+    {
+      "name": "磁铁（条形）",
+      "quantity": 3,
+      "storage_location": "器材柜抽屉",
+      "notes": "长约10cm"
+    },
+    {
+      "name": "铂丝",
+      "quantity": 5,
+      "storage_location": "器材柜抽屉内专用盒",
+      "material": "铂",
+      "notes": "直径约0.5mm，一端嵌于玻璃棒中，用于焰色反应"
+    },
+    {
+      "name": "钴玻璃片",
+      "quantity": 5,
+      "storage_location": "器材柜抽屉",
+      "notes": "蓝色，尺寸约5cm×5cm，用于焰色反应过滤黄光"
+    },
+    {
+      "name": "洗瓶",
+      "quantity": 3,
+      "storage_location": "水槽旁",
+      "material": "塑料",
+      "notes": "内装蒸馏水，500mL"
+    },
+    {
+      "name": "药匙",
+      "quantity": 10,
+      "storage_location": "器材柜抽屉",
+      "material": "不锈钢",
+      "notes": "一端为勺状，一端为铲状"
+    },
+    {
+      "name": "镊子",
+      "quantity": 5,
+      "storage_location": "器材柜抽屉",
+      "material": "不锈钢"
+    },
+    {
+      "name": "旋光管（1dm）",
+      "quantity": 3,
+      "storage_location": "旋光仪旁专用盒",
+      "notes": "长度1dm（100mm），两端有玻璃盖帽，用于旋光仪"
+    },
+    {
+      "name": "旋光管（2dm）",
+      "quantity": 3,
+      "storage_location": "旋光仪旁专用盒",
+      "notes": "长度2dm（200mm），两端有玻璃盖帽，用于旋光仪"
+    },
+    {
+      "name": "擦镜纸",
+      "quantity": "充足",
+      "storage_location": "折光仪旁",
+      "notes": "用于擦拭折光仪棱镜和旋光管外壁"
+    },
+    {
+      "name": "称量纸",
+      "quantity": "充足",
+      "storage_location": "天平旁抽屉"
+    },
+    {
+      "name": "带火星木条",
+      "quantity": "充足",
+      "storage_location": "器材柜抽屉"
+    },
+    {
+      "name": "火柴",
+      "quantity": "充足",
+      "storage_location": "器材柜抽屉"
+    },
+    {
+      "name": "冰",
+      "quantity": "充足",
+      "storage_location": "冰箱冷冻室",
+      "notes": "碎冰，用于冰浴和冷却实验"
+    },
+    {
+      "name": "载玻片",
+      "quantity": 0,
+      "storage_location": "显微镜旁盒中",
+      "material": "玻璃",
+      "notes": "[已禁用-专家难度-配套仪器已禁用] "
+    },
+    {
+      "name": "盖玻片",
+      "quantity": 0,
+      "storage_location": "显微镜旁盒中",
+      "material": "玻璃",
+      "notes": "[已禁用-专家难度-配套仪器已禁用] "
+    },
+    {
+      "name": "防护手套（耐化学品）",
+      "quantity": "充足",
+      "storage_location": "通风橱旁抽屉",
+      "material": "丁腈橡胶",
+      "notes": "一次性，耐酸碱和有机溶剂，取用腐蚀性或有毒试剂时佩戴"
+    },
+    {
+      "name": "护目镜",
+      "quantity": 10,
+      "storage_location": "通风橱旁抽屉",
+      "material": "聚碳酸酯",
+      "notes": "防化学飞溅，涉及浓酸/浓碱/有毒试剂/加热操作时佩戴"
+    },
+    {
+      "name": "沸石",
+      "quantity": "充足",
+      "storage_location": "器材柜抽屉",
+      "material": "瓷",
+      "notes": "碎瓷片，加热液体至沸腾时加入防止暴沸"
+    },
+    {
+      "name": "废液缸",
+      "quantity": 3,
+      "storage_location": "水槽旁地面",
+      "material": "塑料",
+      "notes": "分别标注「酸性废液」「碱性废液」「有机废液」，实验结束后废液倒入对应缸中"
+    },
+    {
+      "name": "橡皮塞（配10mL试管）",
+      "quantity": 20,
+      "storage_location": "器材柜抽屉",
+      "material": "橡胶",
+      "notes": "用于密封10mL试管，适配外径15mm试管"
+    },
+    {
+      "name": "橡皮塞（配25mL试管）",
+      "quantity": 15,
+      "storage_location": "器材柜抽屉",
+      "material": "橡胶",
+      "notes": "用于密封25mL试管，适配外径25mm试管"
+    },
+    {
+      "name": "坩埚钳",
+      "quantity": 3,
+      "storage_location": "器材柜中层",
+      "material": "铁，镀铬",
+      "notes": "用于夹取高温坩埚、蒸发皿等"
+    }
+  ],
+  "reagents": [
+    {
+      "name": "蒸馏水",
+      "alias": [
+        "水",
+        "纯水",
+        "H₂O"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "塑料洗瓶（500mL）和玻璃大瓶（5L），玻璃大瓶带磨口玻璃塞",
+      "storage_location": "水槽旁洗瓶架 + 试剂架通用区（大瓶）",
+      "hazards": null
+    },
+    {
+      "name": "稀盐酸",
+      "alias": [
+        "稀HCl",
+        "HCl(aq)",
+        "盐酸"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约2mol/L",
+      "container": "透明玻璃试剂瓶（500mL），带磨口玻璃塞",
+      "storage_location": "试剂架酸性试剂区",
+      "hazards": "腐蚀性液体。避免与皮肤、眼睛接触；与金属反应放出氢气"
+    },
+    {
+      "name": "浓盐酸",
+      "alias": [
+        "浓HCl",
+        "37%盐酸"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约37%（约12mol/L）",
+      "container": "透明玻璃试剂瓶（500mL），带磨口玻璃塞",
+      "storage_location": "通风橱内试剂架酸性试剂区",
+      "hazards": "强腐蚀性、强挥发性。在空气中发烟（HCl气体），具有强烈刺激性气味。必须在通风橱中打开和使用。"
+    },
+    {
+      "name": "稀硫酸",
+      "alias": [
+        "稀H₂SO₄",
+        "H₂SO₄(aq)"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约2mol/L",
+      "container": "透明玻璃试剂瓶（500mL），带磨口玻璃塞",
+      "storage_location": "试剂架酸性试剂区",
+      "hazards": "腐蚀性液体"
+    },
+    {
+      "name": "浓硫酸",
+      "alias": [
+        "浓H₂SO₄",
+        "98%硫酸"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约98%（约18mol/L）",
+      "container": "透明玻璃试剂瓶（500mL），带磨口玻璃塞，瓶身置于防漏托盘上",
+      "storage_location": "试剂架酸性试剂区底层（重瓶低位存放）",
+      "hazards": "强腐蚀性、强氧化性、强脱水性。与水混合时剧烈放热——必须将浓硫酸沿容器壁缓缓加入水中并不断搅拌，严禁将水加入浓硫酸（水沸腾溅射）。对皮肤和衣物有极强的炭化和腐蚀作用。"
+    },
+    {
+      "name": "稀硝酸",
+      "alias": [
+        "稀HNO₃",
+        "HNO₃(aq)"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约2mol/L",
+      "container": "透明玻璃试剂瓶（500mL），带磨口玻璃塞",
+      "storage_location": "试剂架酸性试剂区",
+      "hazards": "腐蚀性液体，具有氧化性"
+    },
+    {
+      "name": "浓硝酸",
+      "alias": [
+        "浓HNO₃",
+        "68%硝酸"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约68%（约15mol/L）",
+      "container": "棕色玻璃试剂瓶（500mL），带磨口玻璃塞",
+      "storage_location": "通风橱内试剂架酸性试剂区",
+      "hazards": "强腐蚀性、强氧化性。在空气中发烟（NO₂，红棕色有毒气体），具有强烈刺激性。与有机物接触可能起火。必须在通风橱中打开和使用。"
+    },
+    {
+      "name": "冰醋酸",
+      "alias": [
+        "乙酸",
+        "醋酸",
+        "CH₃COOH"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约99%（约17.4mol/L）",
+      "container": "透明玻璃试剂瓶（500mL），带磨口玻璃塞",
+      "storage_location": "试剂架有机酸区",
+      "hazards": "腐蚀性，具有强烈刺激性气味（酸味），易燃液体。纯乙酸在低于16.6°C时凝固为冰状固体。"
+    },
+    {
+      "name": "氢氧化钠溶液",
+      "alias": [
+        "NaOH",
+        "NaOH溶液",
+        "NaOH(aq)",
+        "烧碱溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约2mol/L",
+      "container": "透明塑料试剂瓶（500mL），带塑料螺旋盖（碱液不能用磨口玻璃塞）",
+      "storage_location": "试剂架碱性试剂区",
+      "hazards": "腐蚀性碱液。对皮肤有滑腻感和灼伤作用。与酸剧烈中和放热。"
+    },
+    {
+      "name": "浓氢氧化钠溶液",
+      "alias": [
+        "浓NaOH",
+        "浓NaOH溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约6mol/L",
+      "container": "透明塑料试剂瓶（500mL），带塑料螺旋盖",
+      "storage_location": "试剂架碱性试剂区底层",
+      "hazards": "强腐蚀性。高浓度碱液对皮肤和玻璃均有腐蚀作用，长期存放于玻璃瓶中会使瓶塞粘固。"
+    },
+    {
+      "name": "氨水",
+      "alias": [
+        "NH₃·H₂O",
+        "氨溶液",
+        "稀氨水"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约2mol/L",
+      "container": "透明玻璃试剂瓶（500mL），带磨口玻璃塞",
+      "storage_location": "试剂架碱性试剂区",
+      "hazards": "具有强烈刺激性气味（氨味）。挥发出氨气，与浓盐酸蒸气相遇生成白色烟雾（NH₄Cl）。刺激眼睛和呼吸道。"
+    },
+    {
+      "name": "硝酸银溶液",
+      "alias": [
+        "硝酸银",
+        "AgNO₃溶液",
+        "AgNO₃(aq)"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约0.1mol/L",
+      "container": "棕色玻璃滴瓶（100mL），带胶头滴管一体式瓶盖",
+      "storage_location": "试剂架通用试剂区，避光保存",
+      "hazards": "氧化性。接触皮肤会使皮肤变黑（还原出银单质）。避光保存，见光分解。"
+    },
+    {
+      "name": "氯化钡溶液",
+      "alias": [
+        "氯化钡",
+        "BaCl₂溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约0.5mol/L",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": "有毒。钡盐摄入有毒——严禁入口，操作后洗手。"
+    },
+    {
+      "name": "氯化钙溶液",
+      "alias": [
+        "氯化钙",
+        "CaCl₂溶液",
+        "无水氯化钙"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约1mol/L",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": null
+    },
+    {
+      "name": "硫酸铜溶液",
+      "alias": [
+        "硫酸铜",
+        "CuSO₄溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约0.5mol/L",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": "对水生生物有毒。避免皮肤接触。"
+    },
+    {
+      "name": "硫酸镁溶液",
+      "alias": [
+        "硫酸镁",
+        "MgSO₄溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约1mol/L",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": null
+    },
+    {
+      "name": "碳酸钠溶液",
+      "alias": [
+        "碳酸钠",
+        "Na₂CO₃溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约1mol/L",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架碱性试剂区",
+      "hazards": "碱性，对皮肤有轻微刺激"
+    },
+    {
+      "name": "碳酸氢钠溶液",
+      "alias": [
+        "碳酸氢钠",
+        "NaHCO₃",
+        "NaHCO₃溶液",
+        "小苏打溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约1mol/L",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": null
+    },
+    {
+      "name": "氯化钠溶液",
+      "alias": [
+        "氯化钠",
+        "NaCl溶液",
+        "食盐水"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约1mol/L",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": null
+    },
+    {
+      "name": "高锰酸钾溶液",
+      "alias": [
+        "高锰酸钾",
+        "KMnO₄溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约0.01mol/L",
+      "container": "棕色玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架氧化剂区",
+      "hazards": "氧化性。紫色溶液，会染色皮肤和衣物，难以洗去。"
+    },
+    {
+      "name": "酸化高锰酸钾溶液",
+      "alias": [
+        "酸化高锰酸钾",
+        "酸性高锰酸钾",
+        "酸性KMnO₄"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约0.01mol/L KMnO₄ + 1mol/L H₂SO₄",
+      "container": "棕色玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架氧化剂区",
+      "hazards": "强氧化性。含硫酸成分，有腐蚀性。"
+    },
+    {
+      "name": "酸化重铬酸钾溶液",
+      "alias": [
+        "酸化重铬酸钾",
+        "酸性重铬酸钾"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约0.1mol/L K₂Cr₂O₇ + 1mol/L H₂SO₄",
+      "container": "棕色玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架氧化剂区",
+      "hazards": "强氧化性。六价铬化合物——有毒，致癌。含硫酸成分，有腐蚀性。避免皮肤接触。"
+    },
+    {
+      "name": "三氯化铁溶液",
+      "alias": [
+        "三氯化铁",
+        "氯化铁",
+        "FeCl₃溶液",
+        "FeCl₃",
+        "FeCl₃(aq)"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约0.5mol/L",
+      "container": "棕色玻璃滴瓶（100mL），带胶头滴管一体式瓶盖",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": "酸性（水解产生HCl）。黄色至棕黄色溶液。会染色衣物。",
+      "notes": ""
+    },
+    {
+      "name": "硫氰化钾溶液",
+      "alias": [
+        "硫氰化钾",
+        "KSCN溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约0.5mol/L",
+      "container": "透明玻璃滴瓶（100mL），带胶头滴管一体式瓶盖",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": "与酸接触释放有毒气体HSCN。避免皮肤接触。"
+    },
+    {
+      "name": "费林试剂",
+      "alias": [
+        "Fehling试剂",
+        "斐林试剂"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "费林A（CuSO₄溶液）和费林B（酒石酸钾钠+NaOH溶液）分装在两个透明玻璃试剂瓶（各250mL）中，均为磨口玻璃塞。临用前等体积混合。",
+      "storage_location": "费林A在试剂架通用区；费林B在试剂架碱性试剂区",
+      "hazards": "费林B含NaOH，有腐蚀性。混合后的费林试剂为深蓝色溶液。",
+      "notes": ""
+    },
+    {
+      "name": "品红亚硫酸试剂",
+      "alias": [
+        "Schiff试剂",
+        "席夫试剂"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "棕色玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架有机试剂区，避光",
+      "hazards": "含SO₂。无色至淡粉色溶液，遇醛基变为紫红色。避光、密闭保存，防止SO₂逸散失效。"
+    },
+    {
+      "name": "Lucas试剂",
+      "alias": [
+        "卢卡斯试剂"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架有机试剂区",
+      "hazards": "含浓盐酸和ZnCl₂——强酸性腐蚀性液体。必须在通风橱中打开和使用。",
+      "notes": ""
+    },
+    {
+      "name": "2,4-二硝基苯肼溶液",
+      "alias": [
+        "2,4-DNPH",
+        "2,4‑DNPH",
+        "二硝基苯肼"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "棕色玻璃滴瓶（100mL），带胶头滴管一体式瓶盖",
+      "storage_location": "通风橱内专用试剂区",
+      "hazards": "含磷酸和乙醇——易燃有毒。2,4-二硝基苯肼本身为有毒化合物。必须在通风橱中使用，远离明火。",
+      "notes": ""
+    },
+    {
+      "name": "苯肼溶液",
+      "alias": [
+        "苯肼",
+        "苯肼试剂"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "棕色玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "通风橱内专用试剂区",
+      "hazards": "有毒。苯肼及其衍生物为可疑致癌物。必须在通风橱中使用。"
+    },
+    {
+      "name": "间苯二酚溶液",
+      "alias": [
+        "间苯二酚"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约1%乙醇溶液",
+      "container": "棕色玻璃滴瓶（100mL），带胶头滴管一体式瓶盖",
+      "storage_location": "试剂架有机试剂区",
+      "hazards": "含乙醇——易燃。"
+    },
+    {
+      "name": "饱和亚硫酸氢钠溶液",
+      "alias": [
+        "饱和亚硫酸氢钠",
+        "亚硫酸氢钠"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": "与酸接触释放SO₂气体（刺激性）。"
+    },
+    {
+      "name": "碘化钾-碘溶液",
+      "alias": [
+        "I₂-KI",
+        "碘-碘化钾",
+        "碘液",
+        "碘溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "棕色玻璃滴瓶（100mL），带胶头滴管一体式瓶盖",
+      "storage_location": "试剂架通用试剂区，避光",
+      "hazards": "深棕色溶液，含碘——有毒。会染色皮肤和衣物，难以洗去。"
+    },
+    {
+      "name": "淀粉溶液",
+      "alias": [
+        "淀粉",
+        "淀粉指示剂"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约1%",
+      "container": "透明玻璃滴瓶（100mL），带胶头滴管一体式瓶盖",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": "水溶液久置易变质发霉，需新鲜配制"
+    },
+    {
+      "name": "酚酞溶液",
+      "alias": [
+        "酚酞",
+        "酚酞指示剂"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约1%乙醇溶液",
+      "container": "棕色玻璃滴瓶（50mL），带胶头滴管一体式瓶盖",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": "含乙醇——易燃。酚酞遇碱变为紫红色（变色范围pH 8.2-10.0）。"
+    },
+    {
+      "name": "石灰水",
+      "alias": [
+        "Ca(OH)₂溶液",
+        "氢氧化钙溶液",
+        "澄清石灰水"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "透明玻璃试剂瓶（250mL），带橡皮塞（碱液不能用磨口玻璃塞）",
+      "storage_location": "试剂架碱性试剂区",
+      "hazards": "碱性。Ca(OH)₂微溶于水，久置瓶底有白色沉淀属正常现象，取用时取上层清液。"
+    },
+    {
+      "name": "漂白粉溶液",
+      "alias": [
+        "漂白粉",
+        "次氯酸钙溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "棕色玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架氧化剂区，避光",
+      "hazards": "氧化性、漂白性。与酸接触放出有毒氯气。避免皮肤接触。"
+    },
+    {
+      "name": "乙酰氯",
+      "alias": [
+        "acetyl chloride"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞（瓶塞必须严密）",
+      "storage_location": "通风橱内专用试剂区",
+      "hazards": "与水剧烈反应放出HCl气体和大量热。在潮湿空气中发烟。对呼吸道和皮肤有强烈刺激性。易燃。必须在通风橱中打开和使用，确保瓶塞随时盖紧。"
+    },
+    {
+      "name": "亚硝酸钠溶液",
+      "alias": [
+        "NaNO₂溶液",
+        "亚硝酸钠"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约1mol/L",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": "有毒。亚硝酸盐摄入有毒——严禁入口。氧化性。"
+    },
+    {
+      "name": "β-萘酚碱溶液",
+      "alias": [
+        "β-萘酚碱溶液",
+        "2-萘酚碱溶液"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "棕色玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架有机试剂区，避光",
+      "hazards": "含NaOH——有腐蚀性。β-萘酚可疑致癌。"
+    },
+    {
+      "name": "对硝基苯胺重氮盐溶液",
+      "alias": [
+        "对硝基苯胺重氮盐"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "透明玻璃试剂瓶（100mL），临用前在冰浴中配制（对硝基苯胺+亚硝酸钠+稀盐酸，0-5°C反应），当日用完",
+      "storage_location": "冰箱冷藏室（配制后短时存放）",
+      "hazards": "重氮盐干燥状态下易爆炸。必须保持在低温溶液中。临用前配制，用完当日酸性废液处理。"
+    },
+    {
+      "name": "硼酸溶液",
+      "alias": [
+        "硼酸"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约4%水溶液",
+      "container": "透明玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "试剂架通用试剂区",
+      "hazards": null
+    },
+    {
+      "name": "过氧化物试验试纸",
+      "alias": [
+        "过氧化物试纸"
+      ],
+      "state": "固体",
+      "quantity": "充足",
+      "container": "密封塑料瓶，内装试纸条",
+      "storage_location": "器材柜抽屉",
+      "hazards": null
+    },
+    {
+      "name": "溴水",
+      "alias": [
+        "Br₂水",
+        "溴的四氯化碳溶液",
+        "bromine water"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "棕色玻璃滴瓶（100mL），带磨口玻璃塞+胶头滴管一体式瓶盖，瓶身置于防漏托盘上",
+      "storage_location": "通风橱内专用试剂区",
+      "hazards": "溴具有强腐蚀性、强氧化性和高毒性。溴蒸气（红棕色）对眼睛和呼吸道有强烈的刺激性——必须在通风橱中打开和使用。溴水接触皮肤会造成严重的化学灼伤，取用时应戴防护手套。"
+    },
+    {
+      "name": "Tollens试剂",
+      "alias": [
+        "银氨溶液",
+        "Tollens' reagent",
+        "多伦试剂"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "无色玻璃试剂瓶（100mL），临用前配制——取硝酸银溶液，逐滴加入稀氨水至生成的沉淀刚好溶解为止。当日配制，当日用完。",
+      "storage_location": "通风橱内专用试剂区，当天配制处（不可存放）",
+      "hazards": "强氧化性。用完后的废液和残留物必须立即用稀硝酸酸化处理——久置或蒸干后生成爆炸性氮化银（Ag₃N），轻微碰触即可引爆。严禁将Tollens试剂存放过夜或蒸干。",
+      "notes": ""
+    },
+    {
+      "name": "碘液",
+      "alias": [
+        "碘溶液",
+        "I₂溶液",
+        "碘试剂"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "棕色玻璃滴瓶（100mL），带胶头滴管一体式瓶盖",
+      "storage_location": "试剂架通用试剂区，避光",
+      "hazards": "含碘——有毒，会染色皮肤和衣物。"
+    },
+    {
+      "name": "二甲基乙二醛肟",
+      "alias": [
+        "丁二酮肟",
+        "DMG"
+      ],
+      "state": "固体",
+      "quantity": "充足",
+      "container": "白色塑料试剂瓶（50g），带螺旋盖",
+      "storage_location": "试剂架有机试剂区",
+      "hazards": "配成约1%乙醇溶液后使用——含乙醇，易燃。用于Ni²⁺离子检测。",
+      "notes": "使用时需先配成1%乙醇溶液"
+    },
+    {
+      "name": "氢碘酸",
+      "alias": [
+        "HI"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约57%水溶液",
+      "container": "棕色玻璃试剂瓶（250mL），带磨口玻璃塞，避光",
+      "storage_location": "通风橱内试剂架酸性试剂区",
+      "hazards": "强腐蚀性酸。在空气中被氧化放出碘蒸气（紫色）。必须在通风橱中使用。"
+    },
+    {
+      "name": "无水硫酸铜",
+      "alias": [
+        "无水CuSO₄",
+        "无水硫酸铜粉末"
+      ],
+      "state": "固体",
+      "quantity": "充足",
+      "container": "白色塑料试剂瓶（100g），带螺旋盖，内置干燥剂小袋",
+      "storage_location": "干燥器内",
+      "hazards": "白色粉末。极易吸潮变为蓝色五水合硫酸铜——取用后必须立即盖紧瓶盖，放回干燥器中。用于检测水分（遇水由白变蓝）。"
+    },
+    {
+      "name": "氯仿",
+      "alias": [
+        "三氯甲烷",
+        "CHCl₃",
+        "trichloromethane"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "棕色玻璃试剂瓶（250mL），带磨口玻璃塞",
+      "storage_location": "通风橱内专用试剂区",
+      "hazards": "有毒，可疑致癌物。吸入蒸气有麻醉作用。在光和空气中分解产生光气（剧毒）——必须避光密闭保存。必须在通风橱中使用。"
+    },
+    {
+      "name": "氢氧化钾乙醇溶液",
+      "alias": [
+        "KOH乙醇溶液",
+        "KOH酒精溶液",
+        "KOH/EtOH"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "concentration": "约1mol/L KOH的乙醇溶液",
+      "container": "透明塑料试剂瓶（250mL），带塑料螺旋盖",
+      "storage_location": "试剂架碱性试剂区",
+      "hazards": "强碱性，腐蚀性。含乙醇——易燃，远离明火。用于异腈试验。"
+    },
+    {
+      "name": "苯磺酰氯",
+      "alias": [
+        "benzenesulfonyl chloride",
+        "Hinsberg试剂"
+      ],
+      "state": "液体",
+      "quantity": "充足",
+      "container": "透明玻璃试剂瓶（100mL），带磨口玻璃塞",
+      "storage_location": "通风橱内专用试剂区",
+      "hazards": "腐蚀性，对湿气敏感，遇水缓慢分解。在通风橱中使用，远离水汽。",
+      "special_storage": "密封防潮保存",
+      "notes": "用于Hinsberg反应——伯/仲/叔胺的区分检测"
+    }
+  ],
+  "_reagent_note": "以上试剂清单为补充试剂。固体纯物质和液体纯物质（如氯化钠、蔗糖、乙醇、丙酮等）记录在 material_lib.json 和 substance_knowledge_base.json 中，同样视为实验室可用。所有试剂默认取用量由实验者根据实验需要自行决定，系统不做限制。"
+}

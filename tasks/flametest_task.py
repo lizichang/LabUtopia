@@ -58,17 +58,17 @@ class FlameTestTask(BaseTask):
     WIRE_TIP_OFFSET = np.array([0.095, 0.0, -0.055])
 
     # ---- 各物体抓取点（夹爪 TCP 位置，世界坐标）----
-    # 滴管：origin 在管口(0.416,-0.14,0.812)，玻璃管 z[0.812,0.932]，夹在 z=0.872
+    # 滴管：origin 在管口(0.3591,-0.0205,0.812)，玻璃管 z[0.812,0.932]，夹在 z=0.872
     # 瓶塞：世界中心 z=0.8735，夹在近顶部 z=0.877
-    # 火柴(rotY=180)：杆中心世界 (0.4585, 0.24, 0.803)
+    # 火柴(rotY=180)：杆中心世界 (0.5000, 0.24, 0.803)
     # 灯帽：世界中心 (0.46,0.28,0.81)，夹在近顶部 z=0.815
     GRASP_POINTS = {
-        "dish":           np.array([0.32,   -0.22, 0.803]),
-        "hcl_stopper":    np.array([0.12,    0.02, 0.877]),
-        "dropper":        np.array([0.416,  -0.14, 0.872]),
-        "sample_stopper": np.array([0.20,    0.12, 0.877]),
-        "match":          np.array([0.4585,  0.24, 0.803]),
-        "cap":            np.array([0.46,    0.28, 0.815]),
+        "dish":           np.array([0.6682, -0.2200, 0.8030]),
+        "hcl_stopper":    np.array([0.1200,  0.0200, 0.8770]),
+        "dropper":        np.array([0.3591, -0.0205, 0.8720]),
+        "sample_stopper": np.array([0.2000,  0.1200, 0.8770]),
+        "match":          np.array([0.5000,  0.2400, 0.8030]),
+        "cap":            np.array([0.4600,  0.2800, 0.8150]),
     }
 
     # ---- 物体静止位置（世界坐标，对于子物体指几何中心）----
@@ -128,7 +128,7 @@ class FlameTestTask(BaseTask):
     DROPPER_NOZZLE_OFFSET = np.array([0.0, 0.0, -0.06])
     # 铂丝 WIRE_TIP_OFFSET=(0.095,0,-0.055)，环中心 = gripper + offset
     # 火柴 MATCH_TIP_OFFSET 不变
-    DISH_CENTER = np.array([0.20, 0.02])
+    DISH_CENTER = np.array([0.5482, 0.0000])
     HCL_MOUTH = np.array([0.12, 0.02])
     SAMPLE_MOUTH = np.array([0.20, 0.12])
     WASH_NOZZLE = np.array([0.40, -0.10])

@@ -275,8 +275,6 @@ python tests/test_config_files.py
 
 - `main.py` 的 `--config-name` 默认值为 `level3_Heat_Liquid`，与配置文件
   `level3_HeatLiquid.yaml` 不一致，**不传会直接报错**；运行时必须显式传 `--config-name`
-- `main.py` 虽然解析了 `--headless`，但当前 `SimulationApp` 初始化仍写死为
-  `"headless": False`；不要假设这个参数已经生效
 - **registry key 大小写不统一**：`OpenTransportPour`、`LiquidMixing` 是 CamelCase，
   `dissolve`、`ignitelamp`、`flametest`、`heatlamp`、`openclose` 等是 snake_case；
   写配置前先 grep `factories/*_factory.py` 确认实际注册值，不要照搬其他 yaml
