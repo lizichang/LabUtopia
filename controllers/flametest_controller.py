@@ -6,6 +6,11 @@ v21 修正（修复多物体同时附着）：
   - task 层 GRIP_CLOSED_THRESH 裕量从 2mm 收紧至 1mm
   - yaml max_steps 从 15000 增至 30000
 
+v22 修正（对齐修复后的 v17 USD，见 scripts/fix_flametest_v17.py）：
+  - 表面皿移回可及位置 (0.32,-0.22)（v17 的 0.6682 超出 Franka 工作半径，
+    RMP 卡在 x≈0.48 导致 P1 抓不到盘子、夹爪闭着扫过滴管误吸附）
+  - 夹爪宽度按 mesh extent 实测：dish grip 0.0035、wire grip 0.0055
+
 v20 修正（试管架移入工作空间 + 夹爪开合 = 物体直径）：
   - joint7 = 物体直径 / 2（总宽 = 2×joint7 = 物体直径），不再夹到比物体更窄
   - 从 USD mesh extent 提取精确直径：
@@ -39,7 +44,7 @@ class FlameTestTaskController(TaskBaseController):
 
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
-        print("[flametest] controller VERSION v21 (one-obj-at-a-time, tight z_thresh, max_steps=30000)")
+        print("[flametest] controller VERSION v22 (v17 structure fix, reachable dish, measured grip)")
         self.orient = euler_angles_to_quat(np.array([0, np.pi, 0]))
         self._build_phases()
         self.phase_idx = 0
@@ -67,20 +72,22 @@ class FlameTestTaskController(TaskBaseController):
 
         # ---- per-object 夹爪闭合宽度（joint7 = 单指位移，米）----
         # 总宽 = 2 * joint7 = 物体直径（从 USD mesh extent 精确提取）
-        # 物体直径（USD 实测）：
-        #   表面皿边缘 4.2mm  瓶塞 25.2mm  滴管玻璃管 8mm
-        #   火柴杆 3mm       铂丝手柄 8mm   灯帽 34mm
-        GRIP_DISH    = 0.0021  # total 4.2mm, 表面皿边缘厚度 4.2mm
+        # 物体直径（USD 实测，v22 修正）：
+        #   表面皿 slab 厚 6.5mm  瓶塞 25.2mm  滴管玻璃管 8mm
+        #   火柴杆 3mm            铂丝手柄 11mm  灯帽 34mm
+        GRIP_DISH    = 0.0035  # total 7mm, v17 表面皿+粉末 slab 厚 6.5mm
         GRIP_STOPPER = 0.0126  # total 25.2mm, 瓶塞直径 25.2mm
         GRIP_DROPPER = 0.004   # total 8mm, 滴管玻璃管直径 8mm
         GRIP_MATCH   = 0.0015  # total 3mm, 火柴杆直径 3mm
-        GRIP_WIRE    = 0.004   # total 8mm, 铂丝手柄直径 8mm (handle radius=0.004 at grasp z)
+        GRIP_WIRE    = 0.0055  # total 11mm, 铂丝手柄直径 11mm (mesh extent 实测)
         GRIP_CAP     = 0.017   # total 34mm, 灯帽直径 34mm
         GRIP_OPEN    = self.GRIP_OPEN
 
         # ---- 抓取点（与 task.GRASP_POINTS 精确对齐）----
-        DISH_GRASP    = (0.6682, -0.2200, 0.8030)
-        DISH_CENTER   = (0.5482,  0.0000, 0.8030)
+        # v22 修正：表面皿移回可及位置 (0.32,-0.22)（v17 USD 的 0.6682 超出
+        # Franka 桌面高度工作半径，RMP 卡在 x≈0.48 抓不到盘子）
+        DISH_GRASP    = (0.3200, -0.2200, 0.8030)
+        DISH_CENTER   = (0.2000,  0.0200, 0.8030)
         STO_GRASP     = (0.1200,  0.0200, 0.8770)
         STO_SIDE      = (0.1600,  0.0600, 0.8770)
         DROP_GRASP    = (0.3591, -0.0205, 0.8720)  # 滴管在试管架上
@@ -297,7 +304,7 @@ class FlameTestTaskController(TaskBaseController):
             # ================================================================
             [
                 seg(FLAME_APPROACH, "hold", 20),
-                seg(FLAME_HOLD, "hold", 300),
+                seg(FLAME_HOLD, "hold", 400),   # v23：加长灼烧，确保黄色焰色在相机里停留足够长
                 seg(COOL_POS),
             ],
             # ================================================================
@@ -459,7 +466,8 @@ class FlameTestTaskController(TaskBaseController):
                 self.hold_frames = 0
             if not seg_done and self.seg_frame >= seg["dwell"] + 400:
                 seg_done = True
-                print(f"[flametest] seg force-done t={self.seg_frame} (dwell={seg['dwell']})")
+                print(f"[flametest] seg force-done t={self.seg_frame} (dwell={seg['dwell']}) "
+                      f"target={seg['pos']} gripper={np.round(gripper_pos, 3)} dist={dist:.3f}")
 
         if seg_done:
             self.seg_frame = 0

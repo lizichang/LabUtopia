@@ -15,6 +15,18 @@ v21 修正（修复多物体同时附着 + 一次只抓一个 + 收紧 z 阈值�
   - 修复：伸入盐酸瓶时瓶塞误附着（瓶塞阈值 0.015 过宽松）
   - max_steps 从 15000 增至 30000（确保 13 phase 全部完成）
 
+v22 修正（场景结构 + 可及性 + 夹爪宽度，配套 scripts/fix_flametest_v17.py）：
+  - v17 USD 修复为 defaultPrim token "World"（否则 kit 的 add_reference 解析失败）
+  - 子 prim 路径对齐 v17 实际命名：stopper_020 / stopper_021 / cap_004_011 /
+    powder_002_002
+  - 表面皿从不可及 x=0.6682 移回 (0.32,-0.22)（超出 Franka 桌面高度工作半径）
+  - 夹爪宽度按 mesh extent 实测修正：dish 6.5mm、wire 11mm（原误记 8mm）
+
+v23 修正（焰色可见性）：
+  - 受染时火焰本体变成本色（yellow），不再只显示尖端染色锥——原染色锥
+    r=6mm 被不透明白/蓝火焰（该高度 r≈8-10mm）完全包住，相机里看不到黄色
+  - 熄灭/离开火焰/重置时恢复蓝色（FLAME_BASE_COLORS 常量）
+
 v20 修正（试管架移入工作空间 + 夹爪开合 = 物体直径）：
   - controller joint7 = 物体直径 / 2（从 USD mesh extent 精确提取）
   - 场景用 lab_flametest_v17.usd（含 TestTubeRack at (0.38,-0.14,0.80)）
@@ -36,12 +48,17 @@ class FlameTestTask(BaseTask):
     """Task definition for the 13-step flame test (焰色反应) on a bunsen burner."""
 
     FLAME_COLORS = {
-        "yellow": (1.00, 0.85, 0.30),
+        "yellow": (1.00, 0.72, 0.12),   # v23：钠焰饱和黄（原 0.85,0.30 渲染后偏白）
         "purple": (0.80, 0.45, 1.00),
         "green": (0.35, 0.95, 0.40),
         "red": (1.00, 0.35, 0.25),
         "orange": (1.00, 0.60, 0.15),
         "blue": (0.30, 0.60, 1.00),
+    }
+    # 火焰基色（与 v17 移植的 flame_outer_mat / flame_inner_mat 一致）
+    FLAME_BASE_COLORS = {
+        "outer": (0.35, 0.65, 1.0),
+        "inner": (0.75, 0.9, 1.0),
     }
 
     TABLE_Z = 0.80
@@ -58,12 +75,15 @@ class FlameTestTask(BaseTask):
     WIRE_TIP_OFFSET = np.array([0.095, 0.0, -0.055])
 
     # ---- 各物体抓取点（夹爪 TCP 位置，世界坐标）----
+    # v22 修正：表面皿从 v17 USD 的 (0.6682,-0.22) 移回 (0.32,-0.22)。
+    # 原因：x=0.6682 超出 Franka（base x=-0.3）在桌面高度的实际工作半径
+    # （约 x≤0.5），RMP 会卡在 x≈0.48 无法到位，导致 P1 抓不到表面皿。
     # 滴管：origin 在管口(0.3591,-0.0205,0.812)，玻璃管 z[0.812,0.932]，夹在 z=0.872
     # 瓶塞：世界中心 z=0.8735，夹在近顶部 z=0.877
     # 火柴(rotY=180)：杆中心世界 (0.5000, 0.24, 0.803)
     # 灯帽：世界中心 (0.46,0.28,0.81)，夹在近顶部 z=0.815
     GRASP_POINTS = {
-        "dish":           np.array([0.6682, -0.2200, 0.8030]),
+        "dish":           np.array([0.3200, -0.2200, 0.8030]),
         "hcl_stopper":    np.array([0.1200,  0.0200, 0.8770]),
         "dropper":        np.array([0.3591, -0.0205, 0.8720]),
         "sample_stopper": np.array([0.2000,  0.1200, 0.8770]),
@@ -73,7 +93,7 @@ class FlameTestTask(BaseTask):
 
     # ---- 物体静止位置（世界坐标，对于子物体指几何中心）----
     REST_POS = {
-        "dish":           np.array([0.6682, -0.2200, 0.8000]),
+        "dish":           np.array([0.3200, -0.2200, 0.8000]),
         "hcl_stopper":    np.array([0.1200,  0.0200, 0.8735]),
         "dropper":        np.array([0.3591, -0.0205, 0.8120]),
         "sample_stopper": np.array([0.2000,  0.1200, 0.8735]),
@@ -105,21 +125,24 @@ class FlameTestTask(BaseTask):
     # ---- 每物体夹爪闭合阈值（joint7 单指位移 < 此值才算夹紧）----
     # controller 设置 joint7 = grip_val（= 物体直径/2）；总宽 = 2*joint7
     # 阈值 = grip值 + 1mm 裕量（v21 收紧，原 2mm 导致多物体误触发）
-    # grip 值：dish 0.0021, stopper 0.0126, dropper 0.004, match 0.0015, cap 0.017, wire 0.004
+    # grip 值：dish 0.0035, stopper 0.0126, dropper 0.004, match 0.0015, cap 0.017, wire 0.0055
+    # v22 实测修正（按 v17 USD mesh extent，总宽 = 2*grip）：
+    #   dish  slab 厚 6.5mm（旧 4.2mm），grip=0.0035
+    #   wire  手柄直径 11mm（旧误记 8mm），grip=0.0055
     GRIP_CLOSED_THRESH = {
-        "dish":           0.0031,
+        "dish":           0.0045,
         "hcl_stopper":    0.0136,
         "dropper":        0.005,
         "sample_stopper": 0.0136,
         "match":          0.0025,
         "cap":            0.018,
-        "wire":           0.005,
+        "wire":           0.0065,
     }
 
     # ---- 关键点 ----
     BURNER_POS = np.array([0.36, 0.18, 0.80])
     # 缩小后火焰：外焰 z[0.958, 1.004]，外焰有效区 z[0.968, 1.000]
-    FLAME_Z = (0.968, 1.000)
+    FLAME_Z = (0.960, 1.005)   # v23：放宽 0.5cm，容忍 RMP 到位抖动
     IGNITE_POS = np.array([0.36, 0.18, 0.96])
     # 火柴 rotY=180：头在 origin -x 方向 0.0894；HELD_OFFSET x=0.0415
     # 头相对夹爪 = 0.0415 - 0.0894 = -0.0479
@@ -128,7 +151,7 @@ class FlameTestTask(BaseTask):
     DROPPER_NOZZLE_OFFSET = np.array([0.0, 0.0, -0.06])
     # 铂丝 WIRE_TIP_OFFSET=(0.095,0,-0.055)，环中心 = gripper + offset
     # 火柴 MATCH_TIP_OFFSET 不变
-    DISH_CENTER = np.array([0.5482, 0.0000])
+    DISH_CENTER = np.array([0.20, 0.02])
     HCL_MOUTH = np.array([0.12, 0.02])
     SAMPLE_MOUTH = np.array([0.20, 0.12])
     WASH_NOZZLE = np.array([0.40, -0.10])
@@ -141,13 +164,13 @@ class FlameTestTask(BaseTask):
 
         self.dish_path = cfg.dish_path
         self.hcl_path = cfg.hcl_path
-        self.hcl_stopper_path = self.hcl_path + "/stopper"
+        self.hcl_stopper_path = self.hcl_path + "/stopper_020"
         self.dropper_path = cfg.dropper_path
         self.wire_path = cfg.wire_path
         self.sample_path = cfg.sample_path
-        self.sample_stopper_path = self.sample_path + "/stopper"
+        self.sample_stopper_path = self.sample_path + "/stopper_021"
         self.burner_path = cfg.burner_path
-        self.cap_path = self.burner_path + "/cap"
+        self.cap_path = self.burner_path + "/cap_004_011"
         self.match_path = cfg.match_path
         self.droplet_path = cfg.droplet_path
         self.jet_path = cfg.jet_path
@@ -193,7 +216,7 @@ class FlameTestTask(BaseTask):
         self._set_visibility(self.droplet_path, False)
         self._set_visibility(self.jet_path, False)
         self._set_visibility(self.dish_acid_path, False)
-        self._set_visibility(self.dish_path + "/powder", False)
+        self._set_visibility(self.dish_path + "/powder_002_002", False)
 
         self.wire_state = "rest"
         self.flame_on = False
@@ -378,7 +401,7 @@ class FlameTestTask(BaseTask):
         # ---- 3. 受染：铂丝尖端在外焰 -> 局部黄色光晕跟随尖端 ----
         if self.flame_on and self.wire_state == "attached":
             tip = gripper_pos + self.WIRE_TIP_OFFSET
-            in_flame = (np.linalg.norm(tip[:2] - self.BURNER_POS[:2]) < 0.035
+            in_flame = (np.linalg.norm(tip[:2] - self.BURNER_POS[:2]) < 0.05
                         and self.FLAME_Z[0] < tip[2] < self.FLAME_Z[1])
             if in_flame:
                 self.stain_counter += 1
@@ -519,6 +542,31 @@ class FlameTestTask(BaseTask):
                 f"{self.burner_path}/flame_stain_{self.flame_color}")
             if prim.IsValid():
                 set_prim_visibility(prim, True)
+            # v23：受染时火焰本身变成本色（焰色反应的核心视觉）。
+            # 之前只有尖端染色锥（r=6mm），被不透明白/蓝火焰（该高度 r≈8-10mm）
+            # 完全包住，相机里黄色不可见。
+            self._set_flame_color(self.FLAME_COLORS[self.flame_color])
+        else:
+            self._set_flame_color(self.FLAME_BASE_COLORS["outer"], kind="outer")
+            self._set_flame_color(self.FLAME_BASE_COLORS["inner"], kind="inner")
+
+    # ---- 火焰材质颜色（v23 新增：受染变黄 / 恢复蓝）----
+    # 基色用 FLAME_BASE_COLORS 常量（与场景材质定义一致）
+
+    def _flame_shader(self, kind: str):
+        path = f"{self.burner_path}/flame_{kind}_mat/Shader"
+        prim = self.stage.GetPrimAtPath(path)
+        return prim if prim.IsValid() else None
+
+    def _set_flame_color(self, color, kind=None) -> None:
+        for k in (("outer", "inner") if kind is None else (kind,)):
+            shader = self._flame_shader(k)
+            if shader is None:
+                continue
+            for attr_name in ("inputs:diffuseColor", "inputs:emissiveColor"):
+                attr = shader.GetAttribute(attr_name)
+                if attr is not None:
+                    attr.Set(Gf.Vec3f(*color))
 
     def _set_visibility(self, path, visible):
         try:
