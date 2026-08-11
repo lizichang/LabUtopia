@@ -399,11 +399,17 @@ STAIN_COLORS = {
 # v26 染色锥烘焙几何尺寸（原 height/radius × scale 2.2）：让锥体不再依赖
 # xformOp:scale（RTX 对 Cone prim 的 scale 在某些合成上下文下不渲染）。
 # v30.2 缩小：用户反馈"火焰没那么大"——原 r=26mm h=66mm 的染色锥比真火焰还
-# 大一圈，被当成"建模里的火焰太大"。缩成贴铂丝尖端的局部色晕（r=10mm、
-# h=30mm，直径 20mm），只在灯芯焰区一圈显色，不再像巨型火焰。
+# 大一圈，被当成"建模里的火焰太大"。
+# v30.4 水滴形：用户反馈"染色锥形状不对，要像火焰那样上尖下圆，大小只比铂丝
+# 头部的球（7mm）大一点点"。不再是直线锥 Cone，改用 _teardrop_flame_mesh 的
+# 水滴 lathe 曲面（下圆上尖）。
+# v30.5 放大 1.5 倍 + 定位铂丝尖端：用户反馈"有点小，放大 1.5 倍；初始定位不该
+# 在酒精灯上，应在铂丝尖端"。尺寸 15mm 直径×22.5mm 高；translate 对齐铂丝头球
+# 世界坐标 (0.5456,-0.0417,0.8101)。运行时浸入灯焰时 task 的 _position_stain_at_tip
+# 会同步到实时尖端（保持 /World 独立 prim，不改父级）。
 STAIN_GEOM = {
-    "height": 0.030,          # 火焰高度内的细长锥
-    "radius": 0.010,          # 20mm 直径局部色晕
+    "height": 0.0225,         # 水滴火焰高 ×1.5（22.5mm）
+    "radius": 0.0075,         # 最宽处半径 ×1.5（直径 15mm）
 }
 
 
@@ -482,14 +488,28 @@ def rebuild_stain_materials(target_layer):
     for color, base in STAIN_COLORS.items():
         cone_path = f"/World/flame_stain_{color}"
         mat_path = f"/World/flame_stain_{color}_mat"
-        # 锥体：删掉 CopySpec 来的旧 prim，重建为全新 Cone（几何烘焙，translate 默认在铂丝尖端）
+        # 锥体：删掉旧 prim，重建为全新水滴 Mesh（v30.4：上尖下圆、只比铂丝头球
+        # 7mm 大一点；几何烘焙，translate 对齐当前灯位）
         old_cone = stage.GetPrimAtPath(cone_path)
         if old_cone.IsValid():
             stage.RemovePrim(cone_path)
-        cone = UsdGeom.Cone.Define(stage, cone_path)
-        cone.GetHeightAttr().Set(STAIN_GEOM["height"])
-        cone.GetRadiusAttr().Set(STAIN_GEOM["radius"])
-        UsdGeom.Xformable(cone).AddTranslateOp().Set(Gf.Vec3d(0.36, 0.18, 0.918))
+        pts, counts, idx, nrm = _teardrop_flame_mesh(
+            STAIN_GEOM["height"], STAIN_GEOM["radius"])
+        cone = UsdGeom.Mesh.Define(stage, cone_path)
+        cone.GetPointsAttr().Set([Gf.Vec3f(*p) for p in pts])
+        cone.GetFaceVertexCountsAttr().Set(counts)
+        cone.GetFaceVertexIndicesAttr().Set(idx)
+        cone.GetNormalsAttr().Set([Gf.Vec3f(*n) for n in nrm])
+        cone.SetNormalsInterpolation("faceVarying")
+        xs = [p[0] for p in pts]; ys = [p[1] for p in pts]; zs = [p[2] for p in pts]
+        cone.GetExtentAttr().Set([(min(xs), min(ys), min(zs)),
+                                  (max(xs), max(ys), max(zs))])
+        cone.GetDoubleSidedAttr().Set(True)
+        cone.GetSubdivisionSchemeAttr().Set("none")
+        # v30.5：translate 对齐铂丝头球（用户反馈初始定位不该在酒精灯上，应在
+        # 铂丝尖端）。球心世界坐标 (0.5456,-0.0417,0.8101)。运行时浸入灯焰时
+        # task 的 _position_stain_at_tip 会同步到实时尖端，烘焙值只作静止位。
+        UsdGeom.Xformable(cone).AddTranslateOp().Set(Gf.Vec3d(0.5456, -0.0417, 0.8101))
         # 材质：删旧重建（近黑 diffuse + 强 emissive）
         old_mat = stage.GetPrimAtPath(mat_path)
         if old_mat.IsValid():
@@ -502,12 +522,13 @@ def rebuild_stain_materials(target_layer):
             Gf.Vec3f(0.01, 0.01, 0.01))
         shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
             Gf.Vec3f(*emissive))
-        shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1.0)
+        shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(0.5)  # v30.5: 小火焰有点透明
         shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.3)  # 同皿内蓝盘/实测锥
         shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
         mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
         UsdShade.MaterialBindingAPI(cone).Bind(mat)
-    print("[lamp] rebuilt stain cones+material fresh (Cone.Define + dish recipe)")
+    print("[lamp] rebuilt stain flames fresh (v30.4 teardrop Mesh + dish recipe, "
+          f"{STAIN_GEOM['height']*1000:.0f}mm tall x {STAIN_GEOM['radius']*2000:.0f}mm wide)")
 
 
 def rebuild_flame_cones(target_layer):
@@ -678,23 +699,27 @@ def tune_lamp_materials(target_layer):
     # 中空薄壁玻璃壳，RTX 无视其 diffuse/opacity 只认 emissive，把 emissive 压到
     # 极弱（仅够描出壶形轮廓、不被当成透明空气），琥珀色由内部实心酒精液
     # （liquid，HDR 亮黄自发光）透过壶身透出 → "玻璃壶装酒精"的真实观感）。
+    # v30.3 用户反馈"玻璃不够透明、酒精淡黄诡异"：玻璃 opacity 0.45->0.35 更透；
+    # 同时酒精液 emissive 从 HDR 1.15 压到 ~0.28（不再整壶发亮黄）、opacity 1.0
+    # ->0.7 半透明、diffuse 暖化，像"透明玻璃壶装淡琥珀酒精"而非发光黄块。
     _set_shader_params(target_layer, f"{base}/glass",
                        diffuse=(0.82, 0.85, 0.90), emissive=(0.05, 0.06, 0.07),
-                       opacity=0.45, roughness=0.1)
+                       opacity=0.35, roughness=0.1)
     _set_shader_params(target_layer, f"{base}/capglass",
                        diffuse=(0.82, 0.85, 0.90), emissive=(0.05, 0.06, 0.07),
-                       opacity=0.45, roughness=0.1)
+                       opacity=0.35, roughness=0.1)
     _set_shader_params(target_layer, f"{base}/cotton",
                        diffuse=(0.96, 0.95, 0.92), roughness=1.0, metallic=0.0)
     _set_shader_params(target_layer, f"{base}/char",
                        diffuse=(0.12, 0.12, 0.12), roughness=0.8, metallic=0.0)
-    # 酒精液：实心圆柱，用 HDR 自发光保持饱和亮黄（染色锥同款配方）。
-    # 之前 (1.0,0.80,0.20)/diffuse 在强光下过曝成白色，快照里看不出黄液；
-    # (0.60,0.42,0.08)+emissive 0.42 依然偏白。染色锥（低 diffuse + HDR
-    # emissive>1）实测渲染饱和。液面改低 diffuse + HDR 亮黄自发光。
+    # 酒精液：实心圆柱。之前用 HDR 自发光(1.15,0.88,0.14)保持饱和亮黄，但那
+    # 也是"整壶淡黄、不像玻璃装酒精"的元凶——HDR 强发光透过半透明玻璃壳把
+    # 整个灯身照成黄色。v30.3：emissive 压到 ~0.28（非发光，仅微增亮），
+    # diffuse 暖琥珀 + opacity 0.7 半透明 → 透明玻璃壶里能看到淡琥珀酒精液，
+    # 不再整壶发黄。染色锥的 HDR 配方只留给染色锥/火焰用。
     _set_shader_params(target_layer, f"{base}/liquid",
-                       diffuse=(0.20, 0.14, 0.03), emissive=(1.15, 0.88, 0.14),
-                       opacity=1.0, roughness=0.3)
+                       diffuse=(0.32, 0.27, 0.16), emissive=(0.28, 0.24, 0.14),
+                       opacity=0.7, roughness=0.3)
 
     # 玻璃身 / 灯帽 mesh 双面渲染（防内壁背向面被剔除全黑）
     stage = Usd.Stage.Open(target_layer)
@@ -836,6 +861,90 @@ def _solid_cylinder_mesh(radius, height, segments=32):
         am = (2.0 * np.pi * i / s) + np.pi / s        # 侧面四边中点角度
         idx += [2 + i, 2 + j, 2 + s + j, 2 + s + i]   # 侧面
         nrm += [(np.cos(am), np.sin(am), 0.0)] * 4
+    return pts, counts, idx, nrm
+
+
+def _teardrop_flame_mesh(height, radius, segments=12):
+    """生成水滴形火焰 mesh 的 (points, faceVertexCounts, faceVertexIndices, normals)。
+
+    v30.4：染色锥从直线 Cone 改为"上尖下圆"的水滴曲面（用户："形状应该就像火焰
+    那样子是一个水滴的形状上面尖下面圆"）。轴为 Z，底端在 z=0（火焰坐在灯芯/铂丝
+    尖上），顶端尖收在 z=height。
+
+    剖面轮廓（z 归一化, r 归一化）：
+      (0.00,0.30) 圆底
+      (0.28,1.00) 最宽处
+      (1.00,0.00) 尖端
+    lathe 曲面 + 底部封盘 + 顶部收尖。normals 为 faceVarying 平直法线，
+    与 _solid_cylinder_mesh 同款（必须带 normals + subdivisionScheme=none
+    才可靠渲染）。返回 (points, counts, idx, nrm)，由调用方写进 UsdGeom.Mesh。
+    """
+    import numpy as np
+    # (z, r) 剖面——水滴：下圆上尖
+    prof = [
+        (0.00, 0.30),
+        (0.10, 0.62),
+        (0.20, 0.88),
+        (0.28, 1.00),
+        (0.38, 0.94),
+        (0.50, 0.80),
+        (0.62, 0.62),
+        (0.74, 0.43),
+        (0.86, 0.24),
+        (0.94, 0.10),
+        (1.00, 0.00),
+    ]
+    n = segments
+    nr = len(prof) - 1            # 圆环行数（最后一行 r=0 是顶点）
+    # 顶点：底心 0，环行 0..nr-1 各 n 个，顶点收尾
+    pts = [(0.0, 0.0, 0.0)]       # 底心
+    for (zs, rs) in prof[:nr]:
+        z = zs * height
+        r = rs * radius
+        for i in range(n):
+            a = 2.0 * np.pi * i / n
+            pts.append((r * np.cos(a), r * np.sin(a), z))
+    apex_idx = len(pts)
+    pts.append((0.0, 0.0, height))  # 尖顶
+
+    counts, idx, nrm = [], [], []
+
+    def ring_off(rr):
+        return 1 + rr * n
+
+    # 底部封盘（法线朝下）
+    for i in range(n):
+        j = (i + 1) % n
+        counts.append(3)
+        idx += [0, 1 + i, 1 + j]
+        nrm += [(0.0, 0.0, -1.0)] * 3
+    # 每行剖面法线（(r,z) 平面内垂直于切线的平均方向）
+    prof_n = []
+    for i in range(nr):
+        i0 = max(i - 1, 0)
+        i1 = min(i + 1, nr)
+        dr = (prof[i1][1] - prof[i0][1]) * radius
+        dz = (prof[i1][0] - prof[i0][0]) * height
+        t = np.hypot(dz, dr)
+        prof_n.append((dz / t, -dr / t))
+    # 侧面：行 i -> 行 i+1 的四边
+    for i in range(nr - 1):
+        for k in range(n):
+            l = (k + 1) % n
+            am = (2.0 * np.pi * k / n) + np.pi / n   # 四边中点角度
+            nx, nz = prof_n[i]
+            counts.append(4)
+            idx += [ring_off(i) + k, ring_off(i) + l,
+                    ring_off(i + 1) + l, ring_off(i + 1) + k]
+            nrm += [(nx * np.cos(am), nx * np.sin(am), nz)] * 4
+    # 顶部收尖（最后一行 -> 顶点）
+    for k in range(n):
+        l = (k + 1) % n
+        am = (2.0 * np.pi * k / n) + np.pi / n
+        nx, nz = prof_n[nr - 1]
+        counts.append(3)
+        idx += [ring_off(nr - 1) + k, ring_off(nr - 1) + l, apex_idx]
+        nrm += [(nx * np.cos(am), nx * np.sin(am), nz)] * 3
     return pts, counts, idx, nrm
 
 

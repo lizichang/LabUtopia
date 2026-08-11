@@ -115,53 +115,49 @@ class FlameTestTaskController(TaskBaseController):
         GRIP_CAP     = 0.0185  # total 37mm, 酒精灯帽直径 37.2mm
         GRIP_OPEN    = self.GRIP_OPEN
 
-        # ---- 抓取点（与 task.GRASP_POINTS 精确对齐）----
+        # ---- 抓取点（与 task.GRASP_POINTS 精确对齐；v42：全量对齐用户宽敞布局）----
         STO_GRASP     = (0.1200,  0.0200, 0.8770)
         STO_SIDE      = (0.1600,  0.0600, 0.8770)
         # v24：滴管抓玻璃管最上端（胶头下方），先在架内提出再平移
-        DROP_GRASP    = (0.3591, -0.0205, 0.9310)
-        DROP_XY       = (0.3591, -0.0205)
-        SSTO_GRASP    = (0.2000,  0.1200, 0.8770)
-        SSTO_SIDE     = (0.2400,  0.0800, 0.8770)
-        # v31：火柴移到可及区 (0.42,0.26)（原 0.50,0.24 超出 Franka 工作半径 → RMP 乱动；
-        # y=0.26 避开酒精灯底座 footprint y<=0.224，火柴杆朝 -x 指向灯芯）
-        MATCH_GRASP   = (0.4200,  0.2600, 0.8150)  # v38：原 0.803 让手指 collider 底部(z=0.799)扎进桌面(z=0.80)卡死合爪；抬高 12mm
+        DROP_GRASP    = (0.5070, -0.0420, 0.9310)
+        DROP_XY       = (0.5070, -0.0420)
+        SSTO_GRASP    = (0.1153,  0.3021, 0.8770)
+        SSTO_SIDE     = (0.1553,  0.2621, 0.8770)
+        # 火柴（用户宽敞布局 (0.8868,0.5939)），杆朝 -x 指向灯芯
+        MATCH_GRASP   = (0.8868,  0.5939, 0.8150)  # 抬高 12mm 让手指离桌，避免 collider 扎进桌面卡爪
         # v24：铂丝抓手柄最上端（origin 附近）；抓取后先垂直提出试管架再平移
-        WIRE_GRASP    = (0.3977, -0.0201, 0.9770)
-        WIRE_XY       = (0.3977, -0.0201)
-        # v31：灯帽移到可及区 (0.46,0.20)（原 0.46,0.28 超出工作半径）
-        CAP_GRASP     = (0.4600,  0.2000, 0.9000)
-        CAP_XY        = (0.4600,  0.2000)
+        WIRE_GRASP    = (0.5456, -0.0417, 0.9770)
+        WIRE_XY       = (0.5456, -0.0417)
+        # 灯帽：酒精灯旁桌面 rest（灯位 (0.5132,0.5256) + 偏移 (0.10,0.02)）
+        CAP_GRASP     = (0.6132,  0.5456, 0.9000)
+        CAP_XY        = (0.6132,  0.5456)
 
         # 安全过渡高度（夹爪 z；持物时物品底端也高于所有障碍）
         H = 1.15
 
-        # ---- 功能位置 ----
+        # ---- 功能位置（v42：全量对齐用户宽敞布局）----
         # v24：滴管管口 = gripper_z - 0.119（抓管顶 0.931 后）
         DROP_LIFT = 1.07                     # 提出试管架：滴管底 0.812 > 架顶 0.917
-        HCL_DIP = (0.12, 0.02, 0.95)         # 管口 z=0.831，深入液面
-        DISH_DRIP = (0.20, 0.02, 0.97)       # 管口 z=0.851，正对表面皿中心滴液
+        HCL_DIP = (0.12, 0.02, 0.95)         # 管口 z=0.831，深入液面（盐酸瓶原位不动）
+        DISH_DRIP = (0.5174, 0.2407, 0.97)   # 管口 z=0.851，正对表面皿中心滴液
 
         # 火柴：MATCH_TIP_OFFSET=(-0.0894,0,0)，头在 gripper -x 8.94cm（rotY=180 杆端为 origin）
-        # v31：酒精灯芯顶 (0.36,0.18,0.9005) → gripper = (0.4494,0.18,0.9005)，火柴头视觉触达灯芯
-        IGNITE = (0.4494, 0.18, 0.9005)
+        # v42：酒精灯芯顶 (0.5132,0.5256,0.9005) → gripper = (0.6026,0.5256,0.9005)，火柴头视觉触达灯芯
+        IGNITE = (0.6026, 0.5256, 0.9005)
 
-        # v24：铂丝环 = gripper - 0.170（物理位置）；表面皿固定在 (0.20,0.02)
+        # v24：铂丝环 = gripper - 0.170（物理位置）
         WIRE_LIFT = 1.12                     # 提出试管架：环底 0.8066 > 架顶 0.917
-        ACID_DIP = (0.20, 0.02, 0.972)       # 环 z=0.802 浸入皿内酸液
-        POWDER_DIP = (0.20, 0.12, 1.015)     # 环 z=0.845 进入瓶内粉末
-        # 酒精灯火焰中心 (0.36,0.18,0.918) → gripper z = 0.918+0.170 = 1.088
-        FLAME_HOLD = (0.36, 0.18, 1.088)     # 环真正进入火焰内部
-        FLAME_APPROACH = (0.30, 0.16, 1.12)  # 高位接近，环 z=0.95 高于焰顶 0.936
-        # 冷却位：远离火焰（v31：原 0.40,0.18,1.18 超 Franka 工作半径 → IK FAIL；
-        # 移到 x=0.28（灯底座左侧，灯 x>=0.316）z=1.15，环底 0.98 高于焰顶 0.936）
-        COOL_POS = (0.28, 0.18, 1.15)
-        # 水柱冲洗：环 z=0.86 在水柱下 → gripper z = 0.86+0.170 = 1.03
-        WASH_POS = (0.40, -0.10, 1.03)
+        ACID_DIP = (0.5174, 0.2407, 0.972)   # 环 z=0.802 浸入皿内酸液
+        POWDER_DIP = (0.1153, 0.3021, 1.015) # 环 z=0.845 进入瓶内粉末
+        # 酒精灯火焰中心 (0.5132,0.5256,0.918) → gripper z = 0.918+0.170 = 1.088
+        FLAME_HOLD = (0.5132, 0.5256, 1.088) # 环真正进入火焰内部
+        FLAME_APPROACH = (0.4532, 0.5056, 1.12)  # 高位接近，环 z=0.95 高于焰顶 0.936
+        # 冷却位：远离火焰（灯左侧高位，环底 0.98 高于焰顶 0.936）
+        COOL_POS = (0.4332, 0.5256, 1.15)
 
         # 灯帽盖灭：帽中心 = gripper - 0.0085；帽底盖住灯芯（z≈0.905）
         # 盖灭时 gripper z = 0.905+0.0085+0.006 ≈ 0.92
-        CAP_BURNER = (0.36, 0.18, 0.92)
+        CAP_BURNER = (0.5132, 0.5256, 0.92)
 
         # 抓取前 settling 帧数（确保臂完全到位再合爪）
         SETTLE = 5
@@ -197,7 +193,7 @@ class FlameTestTaskController(TaskBaseController):
                 seg(HCL_DIP, "hold", 25),       # 管口 z=0.83，深入液面 1.15cm
                 seg((0.12, 0.02, 0.93)),       # 提回瓶口高度
                 # --- 移到表面皿上方滴 3 滴 ---
-                seg((0.20, 0.02, H)),
+                seg((0.5174, 0.2407, H)),
                 seg(DISH_DRIP, "hold", 200),    # 管口 z=0.85，停留滴 3 滴
                 # --- 滴管归架（放回试管架）---
                 seg((DROP_XY[0], DROP_XY[1], DROP_LIFT)),   # 高位回到架上方
@@ -219,7 +215,7 @@ class FlameTestTaskController(TaskBaseController):
             # P4 火柴点燃酒精灯
             # ================================================================
             [
-                seg((0.42, 0.26, 1.05)),   # v31：H=1.15 超工作半径，用 1.05
+                seg((0.8868, 0.5939, 1.05)),   # v31：H=1.15 超工作半径，用 1.05
                 seg(MATCH_GRASP),
                 seg(MATCH_GRASP, "hold", SETTLE),
                 # v38：MATCH_GRASP 抬高到 z=0.815——原 z=0.803 时手指 collider 底部
@@ -228,13 +224,13 @@ class FlameTestTaskController(TaskBaseController):
                 # v37：dwell 25→60——pos=None 分支改 np.nan 数组后夹爪 ~27 帧
                 # 才能从 0.04 到 <0.0025（火柴阈值最紧），25 帧不够。
                 seg(None, "close", 60, grip=GRIP_MATCH),
-                seg((0.42, 0.26, 0.90)),
+                seg((0.8868, 0.5939, 0.90)),
                 seg(IGNITE, "hold", 20),         # 火柴头触达灯芯点燃
-                seg((0.42, 0.26, 0.90)),
+                seg((0.8868, 0.5939, 0.90)),
                 # v36：释放不回 MATCH_GRASP（近奇异再驱会甩）；在安全高度 z=0.90
                 # 直接开爪，火柴 settle 回桌面。
-                seg((0.42, 0.26, 0.90), "open", 25),
-                seg((0.42, 0.26, 1.05)),   # v31：同上
+                seg((0.8868, 0.5939, 0.90), "open", 25),
+                seg((0.8868, 0.5939, 1.05)),   # v31：同上
             ],
             # ================================================================
             # P5 取铂丝（抓最上端，先提出试管架）-> 尖端浸入稀盐酸（表面皿中）
@@ -245,9 +241,9 @@ class FlameTestTaskController(TaskBaseController):
                 seg(WIRE_GRASP, "hold", SETTLE),
                 seg(WIRE_GRASP, "close", 25, grip=GRIP_WIRE),
                 seg((WIRE_XY[0], WIRE_XY[1], WIRE_LIFT)),   # 先垂直提出试管架
-                seg((0.20, 0.02, H)),
+                seg((0.5174, 0.2407, H)),
                 seg(ACID_DIP, "hold", 25),       # 环浸入皿内酸液
-                seg((0.20, 0.02, H)),
+                seg((0.5174, 0.2407, H)),
             ],
             # ================================================================
             # P6 酒精灯火焰灼烧（60 帧，清洗铂丝，无特征色）
@@ -261,21 +257,21 @@ class FlameTestTaskController(TaskBaseController):
             # P7 反复蘸酸+灼烧 3 次
             # ================================================================
             [
-                seg((0.20, 0.02, H)),
+                seg((0.5174, 0.2407, H)),
                 seg(ACID_DIP, "hold", 20),
-                seg((0.20, 0.02, H)),
+                seg((0.5174, 0.2407, H)),
                 seg(FLAME_APPROACH, "hold", 20),
                 seg(FLAME_HOLD, "hold", 60),
                 seg(COOL_POS),
-                seg((0.20, 0.02, H)),
+                seg((0.5174, 0.2407, H)),
                 seg(ACID_DIP, "hold", 20),
-                seg((0.20, 0.02, H)),
+                seg((0.5174, 0.2407, H)),
                 seg(FLAME_APPROACH, "hold", 20),
                 seg(FLAME_HOLD, "hold", 60),
                 seg(COOL_POS),
-                seg((0.20, 0.02, H)),
+                seg((0.5174, 0.2407, H)),
                 seg(ACID_DIP, "hold", 20),
-                seg((0.20, 0.02, H)),
+                seg((0.5174, 0.2407, H)),
                 seg(FLAME_APPROACH, "hold", 20),
                 seg(FLAME_HOLD, "hold", 60),
                 seg(COOL_POS),
@@ -296,15 +292,15 @@ class FlameTestTaskController(TaskBaseController):
                 seg(WIRE_GRASP, "open", 25),
                 seg((WIRE_XY[0], WIRE_XY[1], H)),
                 # 开样品瓶塞
-                seg((0.20, 0.12, H)),
+                seg((0.1153, 0.3021, H)),
                 seg(SSTO_GRASP),
                 seg(SSTO_GRASP, "hold", SETTLE),
                 seg(SSTO_GRASP, "close", 25, grip=GRIP_STOPPER),
-                seg((0.20, 0.12, 0.93)),
-                seg((0.24, 0.08, 0.93)),
+                seg((0.1153, 0.3021, 0.93)),
+                seg((0.1553, 0.2621, 0.93)),
                 seg(SSTO_SIDE),
                 seg(SSTO_SIDE, "open", 25),
-                seg((0.24, 0.08, H)),
+                seg((0.1553, 0.2621, H)),
                 # 再取铂丝（从试管架）
                 seg((WIRE_XY[0], WIRE_XY[1], H)),
                 seg(WIRE_GRASP),
@@ -312,11 +308,11 @@ class FlameTestTaskController(TaskBaseController):
                 seg(WIRE_GRASP, "close", 25, grip=GRIP_WIRE),
                 seg((WIRE_XY[0], WIRE_XY[1], WIRE_LIFT)),
                 # 蘸粉末
-                seg((0.20, 0.12, H)),
-                seg((0.20, 0.12, 1.03)),     # 环在瓶口上方 (z=0.86)
+                seg((0.1153, 0.3021, H)),
+                seg((0.1153, 0.3021, 1.03)),     # 环在瓶口上方 (z=0.86)
                 seg(POWDER_DIP, "hold", 20),  # 环 z=0.845 进入瓶内粉末
-                seg((0.20, 0.12, 1.03)),     # 提回瓶口上方
-                seg((0.20, 0.12, H)),
+                seg((0.1153, 0.3021, 1.03)),     # 提回瓶口上方
+                seg((0.1153, 0.3021, H)),
             ],
             # ================================================================
             # P10 灼烧 2-5s（受染，黄色光晕出现在铂丝尖端）
@@ -336,38 +332,21 @@ class FlameTestTaskController(TaskBaseController):
                 seg(WIRE_GRASP, "open", 25),
                 seg((WIRE_XY[0], WIRE_XY[1], H)),
                 # 取灯帽
-                seg((0.46, 0.20, 1.00)),   # v31：H=1.15 超工作半径，用 1.00
+                seg((0.6132, 0.5456, 1.00)),   # v31：H=1.15 超工作半径，用 1.00
                 seg(CAP_GRASP),
                 seg(CAP_GRASP, "hold", SETTLE),
                 seg(CAP_GRASP, "close", 25, grip=GRIP_CAP),
-                seg((0.46, 0.20, 1.00)),   # v31：原 1.05 超工作半径
+                seg((0.6132, 0.5456, 1.00)),   # v31：原 1.05 超工作半径
                 seg(CAP_BURNER, "hold", 25),   # 帽底盖住灯芯，任务检测熄灭
-                seg((0.36, 0.18, 1.05), "open"),
-                seg((0.36, 0.18, H)),
-            ],
-            # ================================================================
-            # P12 冲洗铂丝 -> 归位
-            # ================================================================
-            [
-                seg((WIRE_XY[0], WIRE_XY[1], H)),
-                seg(WIRE_GRASP),
-                seg(WIRE_GRASP, "hold", SETTLE),
-                seg(WIRE_GRASP, "close", 25, grip=GRIP_WIRE),
-                seg((WIRE_XY[0], WIRE_XY[1], WIRE_LIFT)),
-                seg((0.40, -0.10, H)),
-                seg(WASH_POS, "hold", 80),     # 环在水柱下冲洗
-                seg((0.40, -0.10, H)),
-                seg((WIRE_XY[0], WIRE_XY[1], WIRE_LIFT)),
-                seg(WIRE_GRASP),
-                seg(WIRE_GRASP, "open", 25),
-                seg((WIRE_XY[0], WIRE_XY[1], H)),
+                seg((0.5132, 0.5256, 1.05), "open"),
+                seg((0.5132, 0.5256, H)),
             ],
         ]
         self.phase_names = [
             "P1 open hcl stopper", "P2 drip 3 drops", "P3 ignite alcohol lamp",
             "P4 dip wire in acid", "P5 burn (no color)", "P6 repeat dip+burn x3",
             "P7 cool 5s", "P8 dip powder", "P9 burn 2-5s (stain)",
-            "P10 extinguish", "P11 rinse & return wire",
+            "P10 extinguish",
         ]
 
     # ------------------------------------------------------------------
@@ -399,7 +378,7 @@ class FlameTestTaskController(TaskBaseController):
 
     def _step_collect(self, state):
         if self.phase_idx >= len(self.phases):
-            print("[flametest] all 11 phases done. success.")
+            print("[flametest] all 10 phases done. success.")
             self.data_collector.write_cached_data(state["joint_positions"][:-1])
             self._last_success = True
             self.reset_needed = True
@@ -418,8 +397,9 @@ class FlameTestTaskController(TaskBaseController):
 
         return action, False, False
 
-    # 每帧关节最大变化量（rad），~1.8 rad/s @60Hz，保证平滑且不触发 PD 振荡
-    MAX_JOINT_DELTA = 0.03
+    # 每帧关节最大变化量（rad），~0.9 rad/s @60Hz。问题 #1：原 0.03 太快，
+    # 整个流程臂像"扫"过去；降到 0.015（半速）后动作从容可辨。
+    MAX_JOINT_DELTA = 0.015
 
     def _lula_fk(self, joints7):
         """Lula FK of right_gripper for a 7-joint config (diagnostic)."""

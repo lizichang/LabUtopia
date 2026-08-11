@@ -73,8 +73,8 @@ class FlameTestTask(BaseTask):
     # 手柄 mesh local z[0,0.1195] → 世界 z[0.856,0.976]（从 origin 向下伸入试管架）
     # loop local z[0.162,0.169] → 世界 z[0.807,0.814]（环挂在最底端）
     # v24：抓手柄最上端（origin 附近），提出时环先离开架顶(0.917)再平移
-    WIRE_REST  = np.array([0.3977, -0.0201, 0.9756])
-    WIRE_GRASP = np.array([0.3977, -0.0201, 0.9770])
+    WIRE_REST  = np.array([0.5456, -0.0417, 0.9756])
+    WIRE_GRASP = np.array([0.5456, -0.0417, 0.9770])
     WIRE_HELD_OFFSET = WIRE_REST - WIRE_GRASP  # (0, 0, -0.0014)
     # v24：环中心相对夹爪 = (0, 0, -(0.169+0.001))，物理位置而非抽象点
     WIRE_TIP_OFFSET = np.array([0.0, 0.0, -0.170])
@@ -89,19 +89,19 @@ class FlameTestTask(BaseTask):
     # 酒精灯帽：桌面旁 rest 中心 (0.46,0.20,0.8915)，夹在近顶部 z=0.90（v31：原 y=0.28 超工作半径）
     GRASP_POINTS = {
         "hcl_stopper":    np.array([0.1200,  0.0200, 0.8770]),
-        "dropper":        np.array([0.3591, -0.0205, 0.9310]),
-        "sample_stopper": np.array([0.2000,  0.1200, 0.8770]),
-        "match":          np.array([0.4200,  0.2600, 0.8150]),  # v38：抬高 12mm 让手指离桌，避免 collider 扎进桌面卡爪
-        "cap":            np.array([0.4600,  0.2000, 0.9000]),
+        "dropper":        np.array([0.5070, -0.0420, 0.9310]),
+        "sample_stopper": np.array([0.1153,  0.3021, 0.8770]),
+        "match":          np.array([0.8868,  0.5939, 0.8150]),  # 抬高 12mm 让手指离桌，避免 collider 扎进桌面卡爪
+        "cap":            np.array([0.6132,  0.5456, 0.9000]),
     }
 
     # ---- 物体静止位置（世界坐标，对于子物体指几何中心）----
     REST_POS = {
         "hcl_stopper":    np.array([0.1200,  0.0200, 0.8735]),
-        "dropper":        np.array([0.3591, -0.0205, 0.8120]),
-        "sample_stopper": np.array([0.2000,  0.1200, 0.8735]),
-        "match":          np.array([0.4200,  0.2600, 0.8133]),  # v38：随 GRASP 抬 12mm，保持 HELD_OFFSET z=-0.0017
-        "cap":            np.array([0.4600,  0.2000, 0.8915]),
+        "dropper":        np.array([0.5070, -0.0420, 0.8120]),
+        "sample_stopper": np.array([0.1153,  0.3021, 0.8735]),
+        "match":          np.array([0.8868,  0.5939, 0.8133]),  # 随 GRASP 抬 12mm，保持 HELD_OFFSET z=-0.0017
+        "cap":            np.array([0.6132,  0.5456, 0.8915]),
     }
 
     # ---- 子物体局部几何中心偏移（raw mesh center relative to prim origin）----
@@ -147,25 +147,23 @@ class FlameTestTask(BaseTask):
 
     # ---- 关键点 ----
     # v24：酒精灯位置与火焰区域（火焰 z 0.9005-0.9355，放宽一点容忍抖动）
-    LAMP_POS = np.array([0.36, 0.18, 0.80])
+    LAMP_POS = np.array([0.5132, 0.5256, 0.80])
     FLAME_Z = (0.898, 0.940)
-    IGNITE_POS = np.array([0.36, 0.18, 0.9005])   # 灯芯顶端（火柴头触达点）
+    IGNITE_POS = np.array([0.5132, 0.5256, 0.9005])   # 灯芯顶端（火柴头触达点）
     # 火柴 rotY=180：杆端为 origin，头在 origin -x 方向 0.0894；HELD_OFFSET x=0
     # 头相对夹爪 = 0 - 0.0894 = -0.0894（v31：修正原 -0.048 与几何不符，头视觉触达灯芯）
     MATCH_TIP_OFFSET = np.array([-0.0894, 0.0, 0.0])
     # v24：滴管抓在 z=0.931（管顶），管口(z=0.812) 相对夹爪 z=-0.119
     DROPPER_NOZZLE_OFFSET = np.array([0.0, 0.0, -0.119])
-    DISH_CENTER = np.array([0.20, 0.02])
+    DISH_CENTER = np.array([0.5174, 0.2407])
     # v30：液滴可见性——flash 帧数（8->22）与下坠距离，滴酸肉眼可辨
     DROPLET_FLASH_FRAMES = 22
     DROPLET_FALL_DIST = 0.045   # 从滴管口到皿面的下坠距离
     DISH_TOP_Z = 0.805          # 液滴落到底的 z（皿内粉末面），防止穿过皿
     HCL_MOUTH = np.array([0.12, 0.02])
-    SAMPLE_MOUTH = np.array([0.20, 0.12])
-    WASH_NOZZLE = np.array([0.40, -0.10])
-    JET_POS = np.array([0.40, -0.10, 0.885])
+    SAMPLE_MOUTH = np.array([0.1153, 0.3021])
     # v24：盖灭后灯帽落在酒精灯口（帽中心 z=0.8915，帽底 z=0.876 盖住灯芯）
-    CAP_SETTLED_POS = np.array([0.36, 0.18, 0.8915])
+    CAP_SETTLED_POS = np.array([0.5132, 0.5256, 0.8915])
 
     # ---- 真刚体（防穿模第 2 步）：瓶塞×2 + 灯帽 ----
     # RigidBodyAPI+CollisionAPI 在父 xform 下的第一个 Mesh prim 上（fix 脚本
@@ -176,8 +174,8 @@ class FlameTestTask(BaseTask):
     # 落座成功判定（LiquidMixing 式读物理位姿）：目标几何中心 + 允许误差
     RIGID_SETTLE_TARGET = {
         "hcl_stopper":    (np.array([0.1200, 0.0200, 0.8735]), 0.025),
-        "sample_stopper": (np.array([0.2000, 0.1200, 0.8735]), 0.025),
-        "cap":            (np.array([0.3600, 0.1800, 0.8915]), 0.025),
+        "sample_stopper": (np.array([0.1153, 0.3021, 0.8735]), 0.025),
+        "cap":            (np.array([0.5132, 0.5256, 0.8915]), 0.025),
     }
 
     def __init__(self, cfg, world, stage, robot):
@@ -245,7 +243,6 @@ class FlameTestTask(BaseTask):
         self._set_flame_visible(False)
         self._set_stain(False)
         self._set_visibility(self.droplet_path, False)
-        self._set_visibility(self.jet_path, False)
         self._set_visibility(self.dish_acid_path, False)
         # v24：表面皿是固定静态器材，始终保持可见（之前 reset 时隐藏导致
         # 快照/视频里"玻璃皿看不见"，用户多次反馈）
@@ -267,8 +264,6 @@ class FlameTestTask(BaseTask):
         self.n_dropped = 0
         self.droplet_flash = 0
         self.droplet_start = np.zeros(3)   # v30：液滴下落起点
-        self.jet_counter = 0
-        self.jet_on = False
         self._reset_kin_states()
 
     def step(self):
@@ -499,7 +494,7 @@ class FlameTestTask(BaseTask):
         # ---- 4. 灭焰 ----
         if self.flame_on and self.kin_objs["cap"]["state"] == "attached":
             # v24：帽底盖住灯芯（灯口 z≈0.905）
-            if np.linalg.norm(gripper_pos - np.array([0.36, 0.18, 0.905])) < 0.04:
+            if np.linalg.norm(gripper_pos - np.array([0.5132, 0.5256, 0.905])) < 0.04:
                 self.extinguish_counter += 1
                 if self.extinguish_counter >= self.extinguish_dwell_frames:
                     self.flame_on = False
@@ -515,24 +510,7 @@ class FlameTestTask(BaseTask):
             else:
                 self.extinguish_counter = 0
 
-        # ---- 5. 水柱 ----
-        jet_cond = False
-        if self.wire_state == "attached":
-            tip = gripper_pos + self.WIRE_TIP_OFFSET
-            if (np.linalg.norm(tip[:2] - self.WASH_NOZZLE) < 0.035
-                    and tip[2] < 0.88):
-                jet_cond = True
-        if jet_cond:
-            self.jet_counter += 1
-            if self.jet_counter >= 5 and not self.jet_on:
-                self.jet_on = True
-                self._set_obj_world_plain(self.jet_path, self.JET_POS)
-                self._set_visibility(self.jet_path, True)
-        else:
-            self.jet_counter = 0
-            if self.jet_on:
-                self.jet_on = False
-                self._set_visibility(self.jet_path, False)
+        # ---- 5.（v42：WaterJet 已删，P12 冲洗取消，水柱逻辑移除）----
 
     # ------------------------------------------------------------------
     # 辅助

@@ -62,7 +62,7 @@ cameras:
     # 只能看到灯+皿；原 (0.75,0.3,1.35)@focal14 灯仅 ~16px 又太小。
     translation: [0.50, 0.30, 1.15]
     resolution: [512, 512]
-    focal_length: 28
+    focal_length: 10
     orientation: [0.38519, 0.13095, 0.29403, 0.86489]
     image_type: "rgb"
 
@@ -73,7 +73,7 @@ cameras:
     # 皿占满画幅、滴管上端/液滴起点常出画。
     translation: [0.26, -0.06, 1.24]
     resolution: [512, 512]
-    focal_length: 20
+    focal_length: 10
     orientation: [0.9425, 0.10815, 0.03605, 0.31417]
     image_type: "rgb"
 
@@ -84,7 +84,7 @@ cameras:
 
 robot:
   type: "franka"
-  position: [-0.3, -0, 0.71]
+  position: [0.36, 0.38, 0.71]   # 底座挪到物品簇中心偏前，全部物品进 0.855m 臂展（最远 Match 0.57m）
 
 collector:
   type: "default"
