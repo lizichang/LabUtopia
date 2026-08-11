@@ -6,8 +6,9 @@ controller_type: "flametest"
 mode: "collect"
 
 # 场景：lab_flametest（V7 C1 焰色反应专用布局，桌面 z=0.80）
-# 铂丝 rotateY(120°) 斜置：手柄中心 (0.417,-0.14,0.867)，环中心 (0.511,-0.14,0.812)
-# 试管架 (0.38,-0.14,0.80)，滴管竖直在架孔中 (0.416,-0.14,0.812)
+# v24：本生灯 → 酒精灯（/World/AlcoholLamp，火焰 z 0.900-0.936，灯芯顶 0.9005）
+# 铂丝/滴管竖直在试管架孔中：铂丝手柄顶 (0.3977,-0.0201,0.9756)、
+# 滴管管顶 (0.3591,-0.0205,0.931)；表面皿固定 (0.20,0.02,0.80) 不再搬动
 usd_path: "assets/chemistry_lab/lab_flametest/lab_flametest_v17.usd"
 
 max_episodes: 1
@@ -25,12 +26,12 @@ infer:
   max_retries: 3
 
 # ---- 器材路径（FlameTestTask 使用，均为 /World 下顶层 prim）----
-dish_path: "/World/SampleDish"          # 表面皿（P1 移中央 / P13 清洗归位）
+dish_path: "/World/SampleDish"          # 表面皿（v24：固定于 (0.20,0.02,0.80)）
 hcl_path: "/World/HClBottle"            # 稀盐酸瓶（P2 旋塞 / P5 蘸酸）
 dropper_path: "/World/Dropper"          # 胶头滴管（P3 吸酸滴 2-3 滴）
-wire_path: "/World/PlatinumWire"        # 铂丝（P5-P12）
+wire_path: "/World/PlatinumWire"        # 铂丝（P5-P12，抓最上端）
 sample_path: "/World/SampleBottle"      # 待测固体样品瓶（P9 蘸粉末）
-burner_path: "/World/BunsenBurner"      # 本生灯（P4 点燃 / P6-P10 灼烧 / P11 盖灭）
+burner_path: "/World/AlcoholLamp"       # 酒精灯（P4 点燃 / P6-P10 灼烧 / P11 盖灭）
 match_path: "/World/Match"              # 火柴（P4 点燃）
 droplet_path: "/World/Droplet"          # 盐酸滴效果 prim（隐藏）
 jet_path: "/World/WaterJet"             # 洗瓶水柱效果 prim（隐藏）
@@ -56,26 +57,24 @@ task:
 cameras:
   - prim_path: "/World/Camera1"
     name: "camera_1"
-    # 特写视角对准本生灯口火焰（火焰 z 0.962-1.038，4cm 宽 7.6cm 高）。
-    # v17.2 修复：focal 15mm 时火焰与浅蓝玻璃管同色系混淆、变黄区仅 23px；
-    # 改 focal 25mm（距 0.54m 不变）火焰放大至约 93px，黄色铂丝手柄移出画面。
-    # v17.3：focal 从 25 微调到 20，视角稍广以容纳更多操作区域。
-    # orientation 四元数顺序 (w,x,y,z)！看向 (0.36,0.18,0.99)
-    translation: [0.75, 0.3, 1.35]
+    # v30.2 中景+广角：用户反馈"视野调大"。focal 40->28（FOV ~48°->~66°），
+    # 眼位/朝向不变，同框容纳灯+皿+试管架更多全局上下文。原 focal40 太窄、
+    # 只能看到灯+皿；原 (0.75,0.3,1.35)@focal14 灯仅 ~16px 又太小。
+    translation: [0.50, 0.30, 1.15]
     resolution: [512, 512]
-    focal_length: 14
-    orientation: [0.54151, 0.24438, 0.33089, 0.73318]
+    focal_length: 28
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
     image_type: "rgb"
 
   - prim_path: "/World/Camera2"
     name: "camera_2"
-    # 俯视全局视角：z 从 2.5 降到 1.5（距桌面 0.7m），focal 从 5 增到 12（FOV ~82°）
-    # 桌面覆盖范围从 ~7m 缩小到 ~1.2m，正好覆盖焰色反应工作区（x:-0.3~0.75, y:-0.22~0.28）
-    # 相机 x 从 0.1 移到 0.25，对准工作区中心
-    translation: [0.25, 0, 1.5]
+    # v30.2 皿区广角：用户反馈"视野调大"。focal 28->20（FOV ~65°->~84°），
+    # 眼位/朝向不变，皿+滴管+下坠液滴全程入画、四缘留白。原 focal28 太贴，
+    # 皿占满画幅、滴管上端/液滴起点常出画。
+    translation: [0.26, -0.06, 1.24]
     resolution: [512, 512]
-    focal_length: 12
-    orientation: [0.70711, 0, 0, -0.70711]
+    focal_length: 20
+    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
     image_type: "rgb"
 
   - prim_path: "/World/Franka/panda_hand/arm_camera"

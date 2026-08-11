@@ -209,3 +209,6 @@ __marimo__/
 outputs/
 .vscode/
 test_outputs/
+
+# Claude Code local settings (personal, per-machine)
+.claude/settings.local.json

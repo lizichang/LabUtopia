@@ -25,7 +25,18 @@ v22 修正（场景结构 + 可及性 + 夹爪宽度，配套 scripts/fix_flamet
 v23 修正（焰色可见性）：
   - 受染时火焰本体变成本色（yellow），不再只显示尖端染色锥——原染色锥
     r=6mm 被不透明白/蓝火焰（该高度 r≈8-10mm）完全包住，相机里看不到黄色
-  - 熄灭/离开火焰/重置时恢复蓝色（FLAME_BASE_COLORS 常量）
+  - （v24 已改为"只局部变黄"并恢复蓝焰，见下）
+
+v24 修正（酒精灯替换本生灯 + 抓取/焰色物理修正）：
+  - 本生灯换成酒精灯（/World/AlcoholLamp，火焰 z 0.900-0.936）
+  - 表面皿固定在 (0.20,0.02,0.80)，删除 P1 搬盘 / P13 洗盘
+  - 铂丝/滴管改为抓"最上端"（手柄顶 0.977 / 玻璃管顶 0.931），抓取后先垂直提出
+    试管架（铂丝 1.12 / 滴管 1.07，保证物品底端高于架顶 0.917）再平移
+  - WIRE_TIP_OFFSET 修正为物理环位置 (0,0,-0.170)（旧 0.095,0,-0.055 是抽象点，
+    实际环在夹爪正下方 17cm，导致尖端从未进入火焰而是在旁边绕）
+  - DROPPER_NOZZLE_OFFSET 修正为 (0,0,-0.119)（管口在夹爪下方 11.9cm）
+  - 焰色恢复"只有铂丝周围局部变黄"：染色锥迁到酒精灯下并放大到 1.5
+    （r=18mm 探出酒精灯火焰 r=9mm），不再整焰变色
 
 v20 修正（试管架移入工作空间 + 夹爪开合 = 物体直径）：
   - controller joint7 = 物体直径 / 2（从 USD mesh extent 精确提取）
@@ -55,66 +66,56 @@ class FlameTestTask(BaseTask):
         "orange": (1.00, 0.60, 0.15),
         "blue": (0.30, 0.60, 1.00),
     }
-    # 火焰基色（与 v17 移植的 flame_outer_mat / flame_inner_mat 一致）
-    FLAME_BASE_COLORS = {
-        "outer": (0.35, 0.65, 1.0),
-        "inner": (0.75, 0.9, 1.0),
-    }
 
     TABLE_Z = 0.80
 
-    # ---- 铂丝（rotateY=120°，手柄穿过试管架孔板，丝/环挂在下方）----
-    # origin 在手柄底部(0.368,-0.14,0.895)，在孔板顶上方 8mm
-    # sin120=0.866, cos120=-0.5
-    # 手柄中心 local(0,0,0.056) → 旋转后(0.0485,0,-0.028) → 世界(0.417,-0.14,0.867)
-    # loop local(0,0,0.1655) → 旋转后(0.1433,0,-0.0828) → 世界(0.511,-0.14,0.812)
+    # ---- 铂丝（v17 USD：rotY=180，origin=手柄顶 (0.3977,-0.0201,0.9756)）----
+    # 手柄 mesh local z[0,0.1195] → 世界 z[0.856,0.976]（从 origin 向下伸入试管架）
+    # loop local z[0.162,0.169] → 世界 z[0.807,0.814]（环挂在最底端）
+    # v24：抓手柄最上端（origin 附近），提出时环先离开架顶(0.917)再平移
     WIRE_REST  = np.array([0.3977, -0.0201, 0.9756])
-    WIRE_GRASP = np.array([0.3977, -0.0201, 0.9476])
-    WIRE_HELD_OFFSET = WIRE_REST - WIRE_GRASP  # (-0.049, 0, 0.028)
-    # loop 相对夹爪 = (0.1433-0.0485, 0, -0.0828+0.028) = (0.0948, 0, -0.0548)
-    WIRE_TIP_OFFSET = np.array([0.095, 0.0, -0.055])
+    WIRE_GRASP = np.array([0.3977, -0.0201, 0.9770])
+    WIRE_HELD_OFFSET = WIRE_REST - WIRE_GRASP  # (0, 0, -0.0014)
+    # v24：环中心相对夹爪 = (0, 0, -(0.169+0.001))，物理位置而非抽象点
+    WIRE_TIP_OFFSET = np.array([0.0, 0.0, -0.170])
+    # 抓取后先把整根铂丝垂直提出试管架（环底 0.8066 > 架顶 0.917）的安全高度
+    WIRE_LIFT_Z = 1.12
 
     # ---- 各物体抓取点（夹爪 TCP 位置，世界坐标）----
-    # v22 修正：表面皿从 v17 USD 的 (0.6682,-0.22) 移回 (0.32,-0.22)。
-    # 原因：x=0.6682 超出 Franka（base x=-0.3）在桌面高度的实际工作半径
-    # （约 x≤0.5），RMP 会卡在 x≈0.48 无法到位，导致 P1 抓不到表面皿。
-    # 滴管：origin 在管口(0.3591,-0.0205,0.812)，玻璃管 z[0.812,0.932]，夹在 z=0.872
+    # v24：滴管改抓玻璃管最上端 z=0.931（胶头 z 0.927-0.962 上方）
     # 瓶塞：世界中心 z=0.8735，夹在近顶部 z=0.877
-    # 火柴(rotY=180)：杆中心世界 (0.5000, 0.24, 0.803)
-    # 灯帽：世界中心 (0.46,0.28,0.81)，夹在近顶部 z=0.815
+    # 火柴(rotY=180)：杆端(origin)世界 (0.42, 0.26, 0.803)，头朝 -x（v31：原 0.50,0.24 超工作半径；
+    # y=0.26 避开酒精灯底座 y<=0.224，火柴杆朝 -x 指向灯芯）
+    # 酒精灯帽：桌面旁 rest 中心 (0.46,0.20,0.8915)，夹在近顶部 z=0.90（v31：原 y=0.28 超工作半径）
     GRASP_POINTS = {
-        "dish":           np.array([0.3200, -0.2200, 0.8030]),
         "hcl_stopper":    np.array([0.1200,  0.0200, 0.8770]),
-        "dropper":        np.array([0.3591, -0.0205, 0.8720]),
+        "dropper":        np.array([0.3591, -0.0205, 0.9310]),
         "sample_stopper": np.array([0.2000,  0.1200, 0.8770]),
-        "match":          np.array([0.5000,  0.2400, 0.8030]),
-        "cap":            np.array([0.4600,  0.2800, 0.8150]),
+        "match":          np.array([0.4200,  0.2600, 0.8150]),  # v38：抬高 12mm 让手指离桌，避免 collider 扎进桌面卡爪
+        "cap":            np.array([0.4600,  0.2000, 0.9000]),
     }
 
     # ---- 物体静止位置（世界坐标，对于子物体指几何中心）----
     REST_POS = {
-        "dish":           np.array([0.3200, -0.2200, 0.8000]),
         "hcl_stopper":    np.array([0.1200,  0.0200, 0.8735]),
         "dropper":        np.array([0.3591, -0.0205, 0.8120]),
         "sample_stopper": np.array([0.2000,  0.1200, 0.8735]),
-        "match":          np.array([0.5000,  0.2400, 0.8013]),
-        "cap":            np.array([0.4600,  0.2800, 0.8100]),
+        "match":          np.array([0.4200,  0.2600, 0.8133]),  # v38：随 GRASP 抬 12mm，保持 HELD_OFFSET z=-0.0017
+        "cap":            np.array([0.4600,  0.2000, 0.8915]),
     }
 
     # ---- 子物体局部几何中心偏移（raw mesh center relative to prim origin）----
     # stoppers 的 mesh 顶点在局部 z[0.068,0.079]，中心 0.0735；cap 的圆柱以原点为中心
     LOCAL_GEOM_OFFSET = {
-        "dish":           np.array([0.0, 0.0, 0.0]),
         "hcl_stopper":    np.array([0.0, 0.0, 0.0735]),
         "dropper":        np.array([0.0, 0.0, 0.0]),
         "sample_stopper": np.array([0.0, 0.0, 0.0735]),
         "match":          np.array([0.0, 0.0, 0.0]),
-        "cap":            np.array([0.0, 0.0, 0.0]),
+        "cap":            np.array([0.0, 0.0, 0.0915]),
     }
 
     # ---- 夹持偏移：物体 prim 原点相对夹爪的位置 = REST_POS - GRASP_POINT ----
     HELD_OFFSETS = {
-        "dish":           REST_POS["dish"]           - GRASP_POINTS["dish"],
         "hcl_stopper":    REST_POS["hcl_stopper"]    - GRASP_POINTS["hcl_stopper"],
         "dropper":        REST_POS["dropper"]        - GRASP_POINTS["dropper"],
         "sample_stopper": REST_POS["sample_stopper"] - GRASP_POINTS["sample_stopper"],
@@ -125,39 +126,59 @@ class FlameTestTask(BaseTask):
     # ---- 每物体夹爪闭合阈值（joint7 单指位移 < 此值才算夹紧）----
     # controller 设置 joint7 = grip_val（= 物体直径/2）；总宽 = 2*joint7
     # 阈值 = grip值 + 1mm 裕量（v21 收紧，原 2mm 导致多物体误触发）
-    # grip 值：dish 0.0035, stopper 0.0126, dropper 0.004, match 0.0015, cap 0.017, wire 0.0055
-    # v22 实测修正（按 v17 USD mesh extent，总宽 = 2*grip）：
-    #   dish  slab 厚 6.5mm（旧 4.2mm），grip=0.0035
-    #   wire  手柄直径 11mm（旧误记 8mm），grip=0.0055
+    # grip 值：stopper 0.0126, dropper 0.004, match 0.0015, cap 0.018, wire 0.0055
     GRIP_CLOSED_THRESH = {
-        "dish":           0.0045,
         "hcl_stopper":    0.0136,
         "dropper":        0.005,
         "sample_stopper": 0.0136,
         "match":          0.0025,
-        "cap":            0.018,
+        "cap":            0.0195,   # v24：酒精灯帽 grip 0.0185 + 1mm
         "wire":           0.0065,
     }
 
+    # ---- 每物体释放阈值（joint7 单指位移 > 此值才判定松手）----
+    # 通用阈值 gripper_open_threshold=0.03。灯帽在 P10 起升瞬间被确定性推到
+    # 0.03381（夹爪与 kinematic 帽的碰撞解算），若用 0.03 会误判松手导致
+    # 灭焰条件永不成立。帽阈值取 0.038：高于实测峰值 0.03381（含裕量），
+    # 低于 controller 主动张开的 GRIP_OPEN=0.04，故主动松帽仍正常触发。
+    RELEASE_THRESH = {
+        "cap": 0.038,
+    }
+
     # ---- 关键点 ----
-    BURNER_POS = np.array([0.36, 0.18, 0.80])
-    # 缩小后火焰：外焰 z[0.958, 1.004]，外焰有效区 z[0.968, 1.000]
-    FLAME_Z = (0.960, 1.005)   # v23：放宽 0.5cm，容忍 RMP 到位抖动
-    IGNITE_POS = np.array([0.36, 0.18, 0.96])
-    # 火柴 rotY=180：头在 origin -x 方向 0.0894；HELD_OFFSET x=0.0415
-    # 头相对夹爪 = 0.0415 - 0.0894 = -0.0479
-    MATCH_TIP_OFFSET = np.array([-0.048, 0.0, 0.0])
-    # 滴管管口在 origin(z=0.812)，夹在 z=0.872，管口相对夹爪 z = -0.06
-    DROPPER_NOZZLE_OFFSET = np.array([0.0, 0.0, -0.06])
-    # 铂丝 WIRE_TIP_OFFSET=(0.095,0,-0.055)，环中心 = gripper + offset
-    # 火柴 MATCH_TIP_OFFSET 不变
+    # v24：酒精灯位置与火焰区域（火焰 z 0.9005-0.9355，放宽一点容忍抖动）
+    LAMP_POS = np.array([0.36, 0.18, 0.80])
+    FLAME_Z = (0.898, 0.940)
+    IGNITE_POS = np.array([0.36, 0.18, 0.9005])   # 灯芯顶端（火柴头触达点）
+    # 火柴 rotY=180：杆端为 origin，头在 origin -x 方向 0.0894；HELD_OFFSET x=0
+    # 头相对夹爪 = 0 - 0.0894 = -0.0894（v31：修正原 -0.048 与几何不符，头视觉触达灯芯）
+    MATCH_TIP_OFFSET = np.array([-0.0894, 0.0, 0.0])
+    # v24：滴管抓在 z=0.931（管顶），管口(z=0.812) 相对夹爪 z=-0.119
+    DROPPER_NOZZLE_OFFSET = np.array([0.0, 0.0, -0.119])
     DISH_CENTER = np.array([0.20, 0.02])
+    # v30：液滴可见性——flash 帧数（8->22）与下坠距离，滴酸肉眼可辨
+    DROPLET_FLASH_FRAMES = 22
+    DROPLET_FALL_DIST = 0.045   # 从滴管口到皿面的下坠距离
+    DISH_TOP_Z = 0.805          # 液滴落到底的 z（皿内粉末面），防止穿过皿
     HCL_MOUTH = np.array([0.12, 0.02])
     SAMPLE_MOUTH = np.array([0.20, 0.12])
     WASH_NOZZLE = np.array([0.40, -0.10])
     JET_POS = np.array([0.40, -0.10, 0.885])
-    # 盖灭后灯帽放在灯管上（帽底 z=0.958，中心 z=0.968）
-    CAP_SETTLED_POS = np.array([0.36, 0.18, 0.968])
+    # v24：盖灭后灯帽落在酒精灯口（帽中心 z=0.8915，帽底 z=0.876 盖住灯芯）
+    CAP_SETTLED_POS = np.array([0.36, 0.18, 0.8915])
+
+    # ---- 真刚体（防穿模第 2 步）：瓶塞×2 + 灯帽 ----
+    # RigidBodyAPI+CollisionAPI 在父 xform 下的第一个 Mesh prim 上（fix 脚本
+    # make_stopper_cap_rigid 落盘）。流程期保持 kinematic（每帧 teleport 生效，
+    # 变换不被物理覆盖）；落座用"盖到位后 kinematic 锁住"折中（瓶口凸包不建
+    # 口洞，动态落座会把瓶塞顶飞，见 diag_rigid.py）。火柴/滴管/铂丝不在此列。
+    RIGID_KIN_NAMES = ("hcl_stopper", "sample_stopper", "cap")
+    # 落座成功判定（LiquidMixing 式读物理位姿）：目标几何中心 + 允许误差
+    RIGID_SETTLE_TARGET = {
+        "hcl_stopper":    (np.array([0.1200, 0.0200, 0.8735]), 0.025),
+        "sample_stopper": (np.array([0.2000, 0.1200, 0.8735]), 0.025),
+        "cap":            (np.array([0.3600, 0.1800, 0.8915]), 0.025),
+    }
 
     def __init__(self, cfg, world, stage, robot):
         super().__init__(cfg, world, stage, robot)
@@ -169,8 +190,11 @@ class FlameTestTask(BaseTask):
         self.wire_path = cfg.wire_path
         self.sample_path = cfg.sample_path
         self.sample_stopper_path = self.sample_path + "/stopper_021"
-        self.burner_path = cfg.burner_path
-        self.cap_path = self.burner_path + "/cap_004_011"
+        self.burner_path = cfg.burner_path   # v24：仍叫 burner_path，但指向 /World/AlcoholLamp
+        # v26：染色锥迁到 /World 顶层（RTX 对引用灯下 over 子 prim 不渲染），
+        # STAIN_ROOT 指向顶层作用域，染色锥路径 = STAIN_ROOT + "/flame_stain_{color}"
+        self.STAIN_ROOT = "/World"
+        self.cap_path = self.burner_path + "/cap"
         self.match_path = cfg.match_path
         self.droplet_path = cfg.droplet_path
         self.jet_path = cfg.jet_path
@@ -188,7 +212,6 @@ class FlameTestTask(BaseTask):
         self.n_drops = int(getattr(cfg, "n_drops", 3))
 
         self.kin_objs = {
-            "dish":           {"path": self.dish_path,           "parent": None},
             "hcl_stopper":    {"path": self.hcl_stopper_path,    "parent": self.hcl_path},
             "dropper":        {"path": self.dropper_path,        "parent": None},
             "sample_stopper": {"path": self.sample_stopper_path, "parent": self.sample_path},
@@ -197,6 +220,10 @@ class FlameTestTask(BaseTask):
         }
         self.wire_state = "rest"
         self._reset_kin_states()
+        # v28（任务 #4）：夹爪连续处于抓取点近窗的帧数。>=GRASP_NEAR_FRAMES 才允许
+        # 附着——防止臂从目标旁"路过"时（RMP 未收敛、close 段提前触发）误抓路过物体。
+        self.GRASP_NEAR_FRAMES = 3
+        self._grasp_near_frames = {name: 0 for name in self.kin_objs}
 
     def _reset_kin_states(self):
         for name in self.kin_objs:
@@ -205,22 +232,33 @@ class FlameTestTask(BaseTask):
     def reset(self):
         super().reset()
         self.robot.initialize()
+        self._min_gripper_z = 1e9   # 临时诊断：整集夹爪最低 z
+        self._grasp_near_frames = {name: 0 for name in self.kin_objs}
 
         self.object_utils.set_object_position(
             object_path=self.wire_path, position=self.WIRE_REST.copy()
         )
         for name in self.kin_objs:
             self._set_obj_world(name, self.REST_POS[name])
+            if name in self.RIGID_KIN_NAMES:
+                self._set_kinematic(name, True)   # 真刚体保持 kinematic，静止位不被物理覆盖
         self._set_flame_visible(False)
         self._set_stain(False)
         self._set_visibility(self.droplet_path, False)
         self._set_visibility(self.jet_path, False)
         self._set_visibility(self.dish_acid_path, False)
-        self._set_visibility(self.dish_path + "/powder_002_002", False)
+        # v24：表面皿是固定静态器材，始终保持可见（之前 reset 时隐藏导致
+        # 快照/视频里"玻璃皿看不见"，用户多次反馈）
+        self._set_visibility(self.dish_path + "/powder_002_002", True)
 
         self.wire_state = "rest"
         self.flame_on = False
         self.stain_on = False
+        self.powder_dipped = False   # v24：蘸过待测粉末后才允许显色
+        # 里程碑完成标记：仅当点燃/显色/灭焰全部真实发生才判 success（任务 #14）
+        self._ignite_fired = False
+        self._stain_fired = False
+        self._extinguish_fired = False
         self.ignite_counter = 0
         self.stain_counter = 0
         self.extinguish_counter = 0
@@ -228,6 +266,7 @@ class FlameTestTask(BaseTask):
         self.drop_interval = 0
         self.n_dropped = 0
         self.droplet_flash = 0
+        self.droplet_start = np.zeros(3)   # v30：液滴下落起点
         self.jet_counter = 0
         self.jet_on = False
         self._reset_kin_states()
@@ -253,6 +292,8 @@ class FlameTestTask(BaseTask):
     # ------------------------------------------------------------------
     def _update_objects_and_events(self):
         gripper_pos = self.robot.get_gripper_position()
+        if gripper_pos is not None:
+            self._min_gripper_z = min(self._min_gripper_z, float(gripper_pos[2]))
         joint_positions = self.robot.get_joint_positions()
         if gripper_pos is None or joint_positions is None:
             return
@@ -304,24 +345,42 @@ class FlameTestTask(BaseTask):
             if obj["state"] == "rest":
                 # v21: 一次只抓一个物体——已有物体附着时不抓新的
                 if self._any_obj_attached():
+                    # review: 附着期间臂被占用，其它物体的近窗计数必须清零，
+                    # 否则会被"跨附着急冻"绕过连续帧门禁（MEDIUM #3）。
+                    self._grasp_near_frames[name] = 0
                     continue
                 # v21: 只抓最近的物体（防止滴管/铂丝误抓）
                 closest_type, closest_name = self._find_closest_graspable(gripper_pos)
                 if closest_type != "kin" or closest_name != name:
+                    # review: 非最近即清零，保证 GRASP_NEAR_FRAMES 真正连续（MEDIUM #3）
+                    self._grasp_near_frames[name] = 0
                     continue
                 grasp = self.GRASP_POINTS[name]
                 closed_thresh = self.GRIP_CLOSED_THRESH[name]
-                if self._near_grasp(gripper_pos, grasp) and gripper_opening < closed_thresh:
+                near = self._near_grasp(gripper_pos, grasp)
+                # 连续近窗计数：非近窗即清零。>=GRASP_NEAR_FRAMES 才允许附着，
+                # 防止臂从物体旁"路过"时误抓（v28，任务 #4）。
+                self._grasp_near_frames[name] = self._grasp_near_frames[name] + 1 if near else 0
+                # v28（任务 #4）：夹爪开始合拢且已进入近窗时先把物体平滑拉向夹爪，
+                # 消除"悬空合爪（闭合瞬间物体纹丝不动）+闪现吸附（瞬间 teleport）"。
+                # 只在 near（附着可达）时 ease：避免合爪未遂时把物体拖离原位
+                # 残留为"悬空物体"（review MEDIUM #2）。
+                held = gripper_pos + self.HELD_OFFSETS[name]
+                if near and gripper_opening < self.gripper_open_threshold:
+                    self._ease_obj_world(name, held)
+                if (near and self._grasp_near_frames[name] >= self.GRASP_NEAR_FRAMES
+                        and gripper_opening < closed_thresh):
                     obj["state"] = "attached"
-                    self._set_obj_world(name, gripper_pos + self.HELD_OFFSETS[name])
+                    self._set_obj_world(name, held)
                     print(f"[flametest] attached {name} (grip={gripper_opening:.4f} < {closed_thresh})")
 
             elif obj["state"] == "attached":
                 self._set_obj_world(name, gripper_pos + self.HELD_OFFSETS[name])
-                if gripper_opening > self.gripper_open_threshold:
+                rel_thresh = self.RELEASE_THRESH.get(name, self.gripper_open_threshold)
+                if gripper_opening > rel_thresh:
                     obj["state"] = "released"
                     self._settle_object(name)
-                    print(f"[flametest] released {name}")
+                    print(f"[flametest] released {name} (grip={gripper_opening:.5f} > {rel_thresh})")
 
     def _update_wire(self, gripper_pos, gripper_opening):
         if self.wire_state == "rest":
@@ -363,8 +422,9 @@ class FlameTestTask(BaseTask):
                     self.ignite_counter += 1
                     if self.ignite_counter >= self.ignite_dwell_frames:
                         self.flame_on = True
+                        self._ignite_fired = True
                         self._set_flame_visible(True)
-                        print("[flametest] flame ignited (blue)")
+                        print("[flametest] flame ignited (alcohol lamp)")
                 else:
                     self.ignite_counter = 0
             else:
@@ -382,9 +442,10 @@ class FlameTestTask(BaseTask):
                     if self.drop_interval >= self.drop_interval_frames:
                         self.n_dropped += 1
                         self.drop_interval = 0
-                        self.droplet_flash = 8
-                        self._set_obj_world_plain(
-                            self.droplet_path, nozzle + np.array([0.0, 0.0, -0.02]))
+                        # v30：flash 8->22 帧 + 记录下落起点，液滴肉眼可辨
+                        self.droplet_flash = self.DROPLET_FLASH_FRAMES
+                        self.droplet_start = nozzle + np.array([0.0, 0.0, -0.02])
+                        self._set_obj_world_plain(self.droplet_path, self.droplet_start)
                         if self.n_dropped >= self.n_drops:
                             self._set_visibility(self.dish_acid_path, True)
                         print(f"[flametest] drop {self.n_dropped}/{self.n_drops}")
@@ -395,19 +456,33 @@ class FlameTestTask(BaseTask):
             self.drop_counter = 0
             self.drop_interval = 0
         if self.droplet_flash > 0:
+            # v30：液滴下落动画——从滴管口坠向皿面，clamp 在皿内粉末面之上
             self.droplet_flash -= 1
+            frac = 1.0 - self.droplet_flash / float(self.DROPLET_FLASH_FRAMES)
+            z = self.droplet_start[2] - frac * self.DROPLET_FALL_DIST
+            z = max(z, self.DISH_TOP_Z)
+            self._set_obj_world_plain(
+                self.droplet_path, np.array([self.droplet_start[0],
+                                             self.droplet_start[1], z]))
         self._set_visibility(self.droplet_path, self.droplet_flash > 0)
 
         # ---- 3. 受染：铂丝尖端在外焰 -> 局部黄色光晕跟随尖端 ----
         if self.flame_on and self.wire_state == "attached":
             tip = gripper_pos + self.WIRE_TIP_OFFSET
-            in_flame = (np.linalg.norm(tip[:2] - self.BURNER_POS[:2]) < 0.05
+            # v24：检测蘸粉末（环进入样品瓶内）→ 解锁显色
+            if (np.linalg.norm(tip[:2] - self.SAMPLE_MOUTH) < 0.05
+                    and 0.80 < tip[2] < 0.86):
+                if not self.powder_dipped:
+                    self.powder_dipped = True
+                    print("[flametest] powder dipped (stain unlocked)")
+            in_flame = (np.linalg.norm(tip[:2] - self.LAMP_POS[:2]) < 0.05
                         and self.FLAME_Z[0] < tip[2] < self.FLAME_Z[1])
-            if in_flame:
+            if in_flame and self.powder_dipped:
                 self.stain_counter += 1
                 if self.stain_counter >= self.stain_dwell_frames:
                     if not self.stain_on:
                         self.stain_on = True
+                        self._stain_fired = True
                         self._set_stain(True)
                         print(f"[flametest] stain {self.flame_color} revealed")
                     self._position_stain_at_tip(tip)
@@ -423,15 +498,19 @@ class FlameTestTask(BaseTask):
 
         # ---- 4. 灭焰 ----
         if self.flame_on and self.kin_objs["cap"]["state"] == "attached":
-            if np.linalg.norm(gripper_pos - np.array([0.36, 0.18, 0.97])) < 0.04:
+            # v24：帽底盖住灯芯（灯口 z≈0.905）
+            if np.linalg.norm(gripper_pos - np.array([0.36, 0.18, 0.905])) < 0.04:
                 self.extinguish_counter += 1
                 if self.extinguish_counter >= self.extinguish_dwell_frames:
                     self.flame_on = False
                     self.stain_on = False
+                    self._extinguish_fired = True
                     self._set_flame_visible(False)
                     self._set_stain(False)
                     self._set_obj_world("cap", self.CAP_SETTLED_POS)
+                    self._set_kinematic("cap", True)   # 灯帽盖到位后 kinematic 锁住（折中）
                     self.kin_objs["cap"]["state"] = "settled"
+                    self._verify_settle("cap", self.CAP_SETTLED_POS)
                     print("[flametest] flame extinguished, cap on burner")
             else:
                 self.extinguish_counter = 0
@@ -443,9 +522,6 @@ class FlameTestTask(BaseTask):
             if (np.linalg.norm(tip[:2] - self.WASH_NOZZLE) < 0.035
                     and tip[2] < 0.88):
                 jet_cond = True
-        if (self.kin_objs["dish"]["state"] == "attached"
-                and np.linalg.norm(gripper_pos[:2] - self.WASH_NOZZLE) < 0.035):
-            jet_cond = True
         if jet_cond:
             self.jet_counter += 1
             if self.jet_counter >= 5 and not self.jet_on:
@@ -489,84 +565,133 @@ class FlameTestTask(BaseTask):
     def _set_obj_world_plain(self, path, world):
         self.object_utils.set_object_position(object_path=path, position=world)
 
+    def _ease_obj_world(self, name, target, k=0.18):
+        """把物体几何中心逐帧向 target 平滑移动（k = 每帧进度）。
+
+        v28（任务 #4）：抓取时物体不再静止到闭合瞬间再 teleport（闪现吸附），
+        而是夹爪开始合拢且够近时逐帧逼近夹爪持物位，视觉上是平滑提起。
+        """
+        cur = self._get_obj_world(name)
+        nxt = cur + (target - cur) * k
+        self._set_obj_world(name, nxt)
+
+    # ------------------------------------------------------------------
+    # 真刚体辅助（防穿模第 2 步）：瓶塞/灯帽在 fix 脚本 make_stopper_cap_rigid
+    # 里已转成真刚体（RigidBodyAPI+CollisionAPI+凸包，默认 kinematic）。
+    # 流程期保持 kinematic，让每帧 teleport 不被物理覆盖；落座（盖回瓶口/灯口）
+    # 用"盖到位后 kinematic 锁住"折中：瓶口的凸包碰撞不建模口洞，真动态落座
+    # 会把瓶塞顶飞（diag_rigid.py 实测 err=0.099，z 顶到 0.951），所以落座
+    # 一律 kinematic 锁位，成功判定读物理位姿（LiquidMixing 式）。
+    # ------------------------------------------------------------------
+    def _find_rigid_body_prim(self, parent_path):
+        """父 xform 下第一个 Mesh prim（RigidBodyAPI 所在）。"""
+        parent = self.stage.GetPrimAtPath(parent_path)
+        if parent.IsValid():
+            for child in parent.GetChildren():
+                if child.GetTypeName() == "Mesh":
+                    return child
+        fallback = self.stage.GetPrimAtPath(
+            parent_path + "/" + parent_path.rsplit("/", 1)[-1])
+        return fallback if fallback.IsValid() else None
+
+    def _set_kinematic(self, name, enabled):
+        """开/关真刚体的 physics:kinematicEnabled（在 mesh prim 上）。"""
+        if name not in self.RIGID_KIN_NAMES:
+            return
+        prim = self._find_rigid_body_prim(self.kin_objs[name]["path"])
+        if prim is None or not prim.IsValid():
+            return
+        attr = prim.GetAttribute("physics:kinematicEnabled")
+        if attr is None or not attr.IsValid():
+            return
+        attr.Set(bool(enabled))
+
+    def _get_rigid_world(self, name):
+        """读真刚体 mesh 的物理世界位姿（几何中心，带 LOCAL_GEOM_OFFSET 补偿）。
+        读 mesh 自身 xform（body 所在），比 _get_obj_world 读父 xform 更贴近
+        物理实际摆放。"""
+        prim = self._find_rigid_body_prim(self.kin_objs[name]["path"])
+        if prim is None or not prim.IsValid():
+            return self._get_obj_world(name)
+        wm = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(
+            Usd.TimeCode.Default())
+        return np.array(wm.ExtractTranslation()) + self.LOCAL_GEOM_OFFSET[name]
+
+    def _verify_settle(self, name, expected):
+        """LiquidMixing 式成功判定：读真刚体物理位姿与期望位比对。
+        落座是 kinematic 锁位（见上），读的是锁定位姿；若 teleport 未生效或
+        物体被撞偏，err 会超阈值并被 WARN 出来。"""
+        pos = self._get_rigid_world(name)
+        tol = self.RIGID_SETTLE_TARGET[name][1]
+        err = float(np.linalg.norm(pos - expected))
+        ok = err < tol
+        print(f"[flametest] settle {name}: physical={tuple(np.round(pos, 4))} "
+              f"target={tuple(np.round(expected, 4))} err={err:.4f} "
+              f"{'OK' if ok else 'WARN'}")
+        return ok
+
     def _settle_object(self, name):
-        if name == "dish":
-            cur = self._get_obj_world(name)
-            cur[2] = self.TABLE_Z
-            self._set_obj_world(name, cur)
-            self._set_visibility(self.dish_acid_path, False)
-        elif name == "hcl_stopper":
+        if name == "hcl_stopper":
             cur = self._get_obj_world(name)
             if np.linalg.norm(cur[:2] - self.HCL_MOUTH) < 0.03:
-                cur[:] = self.REST_POS[name]
+                # 盖回瓶口：kinematic 锁位 + 物理位姿判定（凸包不建口洞，勿动态落座）
+                self._set_obj_world(name, self.REST_POS[name])
+                self._set_kinematic(name, True)
+                self._verify_settle(name, self.REST_POS[name])
             else:
+                # 倒放桌面：保持 kinematic 锁定（P3 还要再抓，位置必须与抓取点一致）
                 cur[2] = self.TABLE_Z + 0.006
-            self._set_obj_world(name, cur)
+                self._set_obj_world(name, cur)
+                self._set_kinematic(name, True)
         elif name == "sample_stopper":
             cur = self._get_obj_world(name)
             if np.linalg.norm(cur[:2] - self.SAMPLE_MOUTH) < 0.03:
-                cur[:] = self.REST_POS[name]
+                self._set_obj_world(name, self.REST_POS[name])
+                self._set_kinematic(name, True)
+                self._verify_settle(name, self.REST_POS[name])
             else:
+                # 倒放桌面：避免 6mm 落下翻倒，保持 kinematic 锁定
                 cur[2] = self.TABLE_Z + 0.006
-            self._set_obj_world(name, cur)
+                self._set_obj_world(name, cur)
+                self._set_kinematic(name, True)
         elif name in ("dropper", "match"):
             self._set_obj_world(name, self.REST_POS[name])
         self.kin_objs[name]["state"] = "rest"
 
     def _set_flame_visible(self, visible: bool) -> None:
+        # v30.2：火焰锥迁到 /World 顶层（引用灯下 over 子 prim 在 RTX 不渲染，
+        # 见 fix 脚本 rebuild_flame_cones），路径从 burner_path 下改到顶层。
         for prim_name in ("flame_outer", "flame_inner"):
-            prim = self.stage.GetPrimAtPath(f"{self.burner_path}/{prim_name}")
+            prim = self.stage.GetPrimAtPath(f"/World/{prim_name}")
             if prim.IsValid():
                 set_prim_visibility(prim, visible)
 
     def _position_stain_at_tip(self, tip_world):
-        """将受染锥中心定位到铂丝尖端（burner 局部坐标）。
-        stain xform op 顺序为 [translate, scale]，中心 = translate。"""
-        local = tip_world - self.BURNER_POS
+        """将受染锥中心定位到铂丝尖端（世界坐标）。
+        v26：染色锥迁到 /World 顶层（RTX 对引用灯下 over 子 prim 不渲染），
+        因此 translate 直接用世界坐标，不再减 LAMP_POS。"""
         prim = self.stage.GetPrimAtPath(
-            f"{self.burner_path}/flame_stain_{self.flame_color}")
+            f"{self.STAIN_ROOT}/flame_stain_{self.flame_color}")
         if prim.IsValid():
             xform = UsdGeom.Xformable(prim)
             for op in xform.GetOrderedXformOps():
                 if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
-                    op.Set(Gf.Vec3d(float(local[0]), float(local[1]), float(local[2])))
+                    op.Set(Gf.Vec3d(float(tip_world[0]), float(tip_world[1]),
+                                    float(tip_world[2])))
                     break
 
     def _set_stain(self, visible: bool) -> None:
         for color in self.FLAME_COLORS:
-            prim = self.stage.GetPrimAtPath(f"{self.burner_path}/flame_stain_{color}")
+            prim = self.stage.GetPrimAtPath(f"{self.STAIN_ROOT}/flame_stain_{color}")
             if prim.IsValid():
                 set_prim_visibility(prim, False)
         if visible:
             prim = self.stage.GetPrimAtPath(
-                f"{self.burner_path}/flame_stain_{self.flame_color}")
+                f"{self.STAIN_ROOT}/flame_stain_{self.flame_color}")
             if prim.IsValid():
                 set_prim_visibility(prim, True)
-            # v23：受染时火焰本身变成本色（焰色反应的核心视觉）。
-            # 之前只有尖端染色锥（r=6mm），被不透明白/蓝火焰（该高度 r≈8-10mm）
-            # 完全包住，相机里黄色不可见。
-            self._set_flame_color(self.FLAME_COLORS[self.flame_color])
-        else:
-            self._set_flame_color(self.FLAME_BASE_COLORS["outer"], kind="outer")
-            self._set_flame_color(self.FLAME_BASE_COLORS["inner"], kind="inner")
-
-    # ---- 火焰材质颜色（v23 新增：受染变黄 / 恢复蓝）----
-    # 基色用 FLAME_BASE_COLORS 常量（与场景材质定义一致）
-
-    def _flame_shader(self, kind: str):
-        path = f"{self.burner_path}/flame_{kind}_mat/Shader"
-        prim = self.stage.GetPrimAtPath(path)
-        return prim if prim.IsValid() else None
-
-    def _set_flame_color(self, color, kind=None) -> None:
-        for k in (("outer", "inner") if kind is None else (kind,)):
-            shader = self._flame_shader(k)
-            if shader is None:
-                continue
-            for attr_name in ("inputs:diffuseColor", "inputs:emissiveColor"):
-                attr = shader.GetAttribute(attr_name)
-                if attr is not None:
-                    attr.Set(Gf.Vec3f(*color))
+        # v26：焰色只做局部——染色锥 r=26mm 探出酒精灯火焰（r=9mm），
+        # 只有铂丝周围那一圈火焰变黄，不再整焰变色。
 
     def _set_visibility(self, path, visible):
         try:
@@ -575,3 +700,16 @@ class FlameTestTask(BaseTask):
                 set_prim_visibility(prim, visible)
         except Exception:
             pass
+
+    def on_task_complete(self, success: bool) -> None:
+        """任务 #14：成功必须以真实里程碑为准（点燃+显色+灭焰都发生），
+        不能由 controller 走完所有分段就判成功。另保留夹爪最低 z 诊断。"""
+        real = (getattr(self, '_ignite_fired', False)
+                and getattr(self, '_stain_fired', False)
+                and getattr(self, '_extinguish_fired', False))
+        print(f"[flametest] episode done success={real} (controller_said={success}) "
+              f"ignite={getattr(self, '_ignite_fired', False)} "
+              f"stain={getattr(self, '_stain_fired', False)} "
+              f"extinguish={getattr(self, '_extinguish_fired', False)} "
+              f"min_gripper_z={getattr(self, '_min_gripper_z', float('nan')):.4f}")
+        super().on_task_complete(real)
