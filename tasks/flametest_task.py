@@ -169,8 +169,11 @@ class FlameTestTask(BaseTask):
     DISH_TOP_Z = 0.805          # 液滴落到底的 z（皿内粉末面），防止穿过皿
     HCL_MOUTH = np.array([0.12, -0.28])
     SAMPLE_MOUTH = np.array([-0.05, 0.30])
-    # v24：盖灭后灯帽落在酒精灯口（帽中心 z=0.8915，帽底 z=0.876 盖住灯芯）
-    CAP_SETTLED_POS = np.array([0.5132, 0.5256, 0.8915])
+    # v46：盖灭后灯帽落在酒精灯口。实测 v17：帽 mesh 半高 0.0155，灯体顶 0.8895；
+    # 原 0.8915 → 帽底 0.876，下沉 13.5mm 嵌进灯体 = "没盖上去"。帽底贴灯口顶
+    # 0.8895 → 帽中心 = 0.8895+0.0155 = 0.905，帽体盖住灯芯（芯顶 0.9005）。
+    # 与控制器 CAP_BURNER(0.9135) 对齐：held 帽中心 = 0.9135-0.0085 = 0.905，零瞬移。
+    CAP_SETTLED_POS = np.array([0.5132, 0.5256, 0.905])
 
     # ---- 真刚体（防穿模第 2 步）：瓶塞×2 + 灯帽 ----
     # RigidBodyAPI+CollisionAPI 在父 xform 下的第一个 Mesh prim 上（fix 脚本
@@ -182,7 +185,7 @@ class FlameTestTask(BaseTask):
     RIGID_SETTLE_TARGET = {
         "hcl_stopper":    (np.array([0.1200, -0.2800, 0.8735]), 0.025),
         "sample_stopper": (np.array([-0.05, 0.30, 0.8735]), 0.025),
-        "cap":            (np.array([0.5132, 0.5256, 0.8915]), 0.025),
+        "cap":            (np.array([0.5132, 0.5256, 0.905]), 0.025),
     }
 
     def __init__(self, cfg, world, stage, robot):
