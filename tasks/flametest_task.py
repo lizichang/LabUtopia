@@ -78,8 +78,6 @@ class FlameTestTask(BaseTask):
     WIRE_HELD_OFFSET = WIRE_REST - WIRE_GRASP  # (0, 0, -0.0014)
     # v24：环中心相对夹爪 = (0, 0, -(0.169+0.001))，物理位置而非抽象点
     WIRE_TIP_OFFSET = np.array([0.0, 0.0, -0.170])
-    # 抓取后先把整根铂丝垂直提出试管架（环底 0.8066 > 架顶 0.917）的安全高度
-    WIRE_LIFT_Z = 1.12
 
     # ---- 各物体抓取点（夹爪 TCP 位置，世界坐标）----
     # v24：滴管改抓玻璃管最上端 z=0.931（胶头 z 0.927-0.962 上方）
@@ -205,7 +203,6 @@ class FlameTestTask(BaseTask):
         self.cap_path = self.burner_path + "/cap"
         self.match_path = cfg.match_path
         self.droplet_path = cfg.droplet_path
-        self.jet_path = cfg.jet_path
         self.dish_acid_path = cfg.dish_acid_path
 
         self.flame_color = getattr(cfg, "flame_color", "yellow")
@@ -387,19 +384,6 @@ class FlameTestTask(BaseTask):
                     obj["state"] = "attached"
                     self._set_obj_world(name, held)
                     print(f"[flametest] attached {name} (grip={gripper_opening:.4f} < {closed_thresh})")
-
-                # v45 诊断：记录瓶塞合爪尝试期最小 opening（即使 attach 失败也能看到停位）
-                if name in ("hcl_stopper", "sample_stopper"):
-                    _m = getattr(self, "_stopper_close_min", None)
-                    if _m is None:
-                        _m = {}
-                        self._stopper_close_min = _m
-                    if near and gripper_opening < self.gripper_open_threshold:
-                        prev = _m.get(name)
-                        _m[name] = gripper_opening if prev is None else min(prev, gripper_opening)
-                    elif name in _m:
-                        print(f"[flametest] stopper {name} close-attempt min opening={_m[name]:.4f}")
-                        del _m[name]
 
             elif obj["state"] == "attached":
                 self._set_obj_world(name, gripper_pos + self.HELD_OFFSETS[name])

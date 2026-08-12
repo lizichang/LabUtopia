@@ -34,7 +34,6 @@ sample_path: "/World/SampleBottle"      # 待测固体样品瓶（P9 蘸粉末�
 burner_path: "/World/AlcoholLamp"       # 酒精灯（P4 点燃 / P6-P10 灼烧 / P11 盖灭）
 match_path: "/World/Match"              # 火柴（P4 点燃）
 droplet_path: "/World/Droplet"          # 盐酸滴效果 prim（隐藏）
-jet_path: "/World/WaterJet"             # 洗瓶水柱效果 prim（隐藏）
 dish_acid_path: "/World/DishAcid"       # 皿内酸液效果 prim（隐藏）
 # 焰色：yellow(Na) / purple(K) / green(Cu) / red(Ca,Sr) / blue / orange
 flame_color: "yellow"

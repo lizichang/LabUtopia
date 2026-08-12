@@ -25,8 +25,7 @@ from .flametest_meta_actions import (
     OpenHclStopper, DripHclAcid, IgniteLamp, DipWireAcid, BurnClean,
     RepeatDipBurn, Cool, DipPowder, BurnStain, Extinguish,
 )
-
-GRIP_OPEN = 0.04
+from .flametest_meta_actions.constants import GRIP_OPEN
 
 
 class FlameTestTaskController(TaskBaseController):

@@ -5,7 +5,7 @@
 """
 from ._base import BaseMetaAction, mv, grip, hold
 from .constants import (H, SETTLE, GRIP_OPEN, GRIP_STOPPER, GRIP_DROPPER,
-                        STO_GRASP, STO_DESK, DROP_GRASP, DROP_XY, DROP_LIFT,
+                        STO_GRASP, STO_DESK, DROP_GRASP, DROP_LIFT,
                         HCL_DIP, DISH_DRIP)
 
 
