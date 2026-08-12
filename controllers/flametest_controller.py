@@ -111,6 +111,11 @@ class FlameTestTaskController(TaskBaseController):
             if meta.is_done():
                 print(f"[flametest] meta {self._meta_idx} done: {self.meta_names[self._meta_idx]}")
                 self._meta_idx += 1
+                if self._meta_idx < len(self.meta_actions):
+                    # 修 bug6：跨元动作夹爪目标传递——铂丝跨 ④⑤⑥⑦⑧⑨ 持握，
+                    # 无 GripAction 的元动作继承上一段的夹爪状态，否则灼烧/冷却中
+                    # 爪子张开、铂丝悬空吸附（用户报"夹紧后又松开"）。
+                    self.meta_actions[self._meta_idx].grip_target = meta.grip_target
 
         self._h5_sample = (self._h5_sample + 1) % 4
         if self._h5_sample == 0 and "camera_data" in state:

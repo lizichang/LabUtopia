@@ -105,6 +105,9 @@ if self._start:
 - **结束后归位**：`_return_to_origin` 把动过的物体传回初始 translate（不要用 `_settle_on_table`——会把物体放错高度）
 - **IK 到位判定（verified IK + 3D 距离冻结）**：机械臂"乱动 / 固定偏移 / 夹不住"三症状的通用解法——解 IK 后跑 Lula FK 核对，FK 误差 >6mm 的解拒绝，且优先用当前关节作 warm start（近奇异抓点用固定 home 会偶发选到 FK 差 17cm 的坏分支、臂猛甩）；到位冻结用 **3D 距离 <1cm + 连续 3 帧**（勿用高度圆柱条件，会在目标上方 ~1.3cm 提前冻结 → 固定偏移 + 悬空合爪），冻结后保持关节不再追 IK（近奇异区同一 TCP 可被多个 IK 分支到达，追 IK 永不收敛）。详见 reference「机械臂 IK 控制与到位判定」
 - **抓取平滑 + 近窗门禁**：物体不再"静止到闭合瞬间再 teleport"（闪现吸附）——夹爪开始合拢且进入近窗时 task `_ease_obj_world`（k≈0.18）逐帧平滑拉向持物位；`GRASP_NEAR_FRAMES`（3）连续近窗计数（非近窗 / 非最近物体 / 有物体附着即清零）防臂"路过"误抓。详见 reference「刚体落座与防抓取闪现」
+- **垂直段约束（v46，修"斜着拿/穿模"）**：MoveAction 首帧检测"起点 xy≈目标 xy(<1.5cm)"即判定垂直段——xy 锁死目标值、z 每帧推进 VZ_STEP、逐帧沿这条竖直线重解 IK（cur7 warm start + FK 验证），TCP 贴严格直线。**VZ_STEP=0.002 必须小到 `MAX_JOINT_DELTA=0.015` 钳制不触发**——初版 0.008 时钳制触发、TCP 横向拖滞 4-9cm（欠追踪累积）。通用：逐帧逼近的 target，每帧变化量 < 钳制跟得上。详见 reference「机械臂 IK 控制与到位判定」④
+- **夹爪状态跨元动作传播（修"铂丝夹紧后爪子松开"）**：持握状态跨出单个元动作（铂丝跨 ④⑤⑥⑦⑧⑨）时必须提升到元动作之外——controller 在元动作切换处 `下一个.grip_target = 完成.grip_target`；否则无 GripAction 的元动作把夹爪张开、物体吸附挂空。详见 reference ⑤
+- **提出高度 = 被持物最低点 > 沿途最高障碍**：横向平移前，被持物最低点（TCP - HELD_OFFSET.z，如滴管嘴 = gripper-0.119）必须高于沿途最高障碍物 + 余量（吸液后提 H=1.15 → 嘴 1.031 > 瓶口 0.877），否则嘴拖过容器口穿模。详见 reference ⑥
 
 ## 常见坑（已踩过）
 
@@ -135,6 +138,9 @@ if self._start:
 25. **真刚体凸包不建模口洞 → 落座顶飞**：瓶塞/灯帽转真刚体（RigidBodyAPI+CollisionAPI+convexDecomposition+contactOffset 0.002+restOffset -0.001，默认 kinematic）后，瓶口凸包碰撞不建模口洞（凸包鼓出盖住口），真动态落座把瓶塞顶飞（diag_rigid 实测 err=0.099，z 顶到 0.951）。修复：流程期保持 kinematic（teleport 不被物理覆盖），落座改"盖到位后 kinematic 锁住"折中 + task `_verify_settle` 读物理位姿判定（容差 0.025）。刚体无需回退——diag_rmp 证明贴刚体的 hcl_mouth 目标照样收敛
 26. **抓取悬空合爪 + 闪现吸附**：物体静止到闭合瞬间再 teleport 到 gripper+HELD_OFFSET，RMP 2-8cm 误差下夹爪闭合时物体纹丝不动（悬空合爪）、随后一步跳进爪内（闪现吸附）。修复：task `_ease_obj_world`（k≈0.18 逐帧平滑拉向持物位，只在 near 时 ease 防合爪未遂拖走物体）+ `GRASP_NEAR_FRAMES=3` 连续近窗门禁（防臂路过误抓——P4 抓火柴路过灯帽曾误抓 cap）。diag_grasp 验证 max_jump=0.0054（旧码 ~0.03）
 27. **RMP 到位慢是长期问题（先隔离归因，非刚体回归）**：完整运行大量 seg force-done（gripper 卡 dist 0.2-0.3 不收敛）时，先用 diag 脚本逐帧跟踪隔离归因再动代码。diag_rmp 5 目标结论：远目标 match 0.178 FAIL 但单调收敛（0.504→0.219）、acid_dip/flame/hcl_mouth 0.012 收敛、cap_grasp 0.098 FAIL；FAIL 的都是低 z+远 x/y 目标、单调缓慢收敛非卡死。"真刚体干扰 RMP"被否定（贴刚体的 hcl_mouth 收敛、远离刚体的 match 反而不收敛）。→ RMP 到位慢（2-8cm）是长期问题，与任务自身改动无关，**不要为它回退已验证的刚体/IK 改动**
+28. **跨元动作持握物体夹爪状态不传播（"夹紧后又松开"）**：每个元动作实例 grip_target 从 GRIP_OPEN 起步、只被自己的 GripAction 更新 → 无 GripAction 的元动作（灼烧/冷却，铂丝跨 ④⑤⑥⑦⑧⑨ 持握）把夹爪命令张开，物体靠 task"开爪且近抓点"双条件判定不满足 → 吸附挂空。修：controller 元动作切换处 `下一个.grip_target = 完成.grip_target` 传播，并逐项核对各元动作末尾状态（持丝段=GRIP_WIRE、归架段显式 open 才到 GRIP_OPEN）。通用：持握状态跨元动作 → 提升到元动作外统一管理
+29. **垂直提取高度不够 → 尖端穿容器口**：滴管吸酸后只提 2cm（嘴 0.811 < 瓶口 0.877）就横移去皿 → 嘴拖过瓶口穿模、看似斜着取出。修：横移前 gripper z 使"嘴 = TCP - HELD_OFFSET.z > 容器口 + 余量"（提 H=1.15 → 嘴 1.031）。通用：横向平移前被持物最低点高于沿途最高障碍
+30. **垂直段 z 步长过大 → 钳制触发 → TCP 横向拖滞**：VZ_STEP=0.008 时每帧 z 步大、所需关节重配超 MAX_JOINT_DELTA(0.015) 钳制 → TCP 追不上目标横向拖 4-9cm（diag 轨迹 CSV 证实是欠追踪累积非单帧尖峰）。改 0.002（≈0.12m/s@60Hz）钳制不触发、贴线（dropper 0.7mm、cap 5mm）。通用：逐帧逼近的目标每帧变化量 < 钳制跟得上
 
 ## 检查清单
 
@@ -163,8 +169,11 @@ if self._start:
 - [ ] 真刚体落座用 kinematic 锁住 + _verify_settle 物理位姿判定（坑 25）
 - [ ] 抓取用 _ease_obj_world 平滑 + 连续近窗门禁防路过误抓（坑 26）
 - [ ] 冒烟大量 force-done 时已用 diag 脚本隔离归因（RMP 慢 vs 刚体 vs IK），未误回退（坑 27）
+- [ ] 跨元动作持握物体：controller 在元动作切换处传播 grip_target（坑 28）
+- [ ] 横向平移前被持物最低点高于沿途最高障碍（滴管嘴 > 瓶口，坑 29）
+- [ ] 垂直段 VZ_STEP 已小到 MAX_JOINT_DELTA 钳制不触发、无横向拖滞（坑 30）
 
 ## 附加资源
 
 - 动作类型详表、统一签名、DropperController/ScoopController/PourController 模板、夹爪契约速查、粘性标志代码、派生场景路径修复脚本、部署与冒烟、失败诊断三分法、DissolveTask 三层模板、yaml 结构 → [reference.md](reference.md)
-- 机械臂 IK 控制与到位判定（verified IK / 3D 距离冻结 / RMP 归因）、刚体落座与防抓取闪现（kinematic 锁住 / _ease_obj_world / 近窗门禁）→ [reference.md](reference.md)
+- 机械臂 IK 控制与到位判定（verified IK / 3D 距离冻结 / RMP 归因 / 垂直段约束 / 夹爪跨元动作传播 / 提出高度）、刚体落座与防抓取闪现（kinematic 锁住 / _ease_obj_world / 近窗门禁）、焰色反应整实验模板（小动作→10 元动作→整实验）→ [reference.md](reference.md)

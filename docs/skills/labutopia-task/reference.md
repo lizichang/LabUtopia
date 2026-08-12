@@ -431,6 +431,36 @@ if self.arrived_frames >= 3:
 
 **③ RMP 到位慢（长期问题，先隔离归因）**。完整运行大量 seg force-done（gripper 卡 dist 0.2-0.3 不收敛）时，先用 diag 脚本逐帧跟踪隔离归因再动代码。`scripts/diag_rmp.py`（RMP_FRAMES=300 每目标记录最小距离 + 单调性）已知结论：FAIL 的都是低 z+远 x/y 目标、单调缓慢收敛非卡死；与刚体碰撞无关（贴刚体的 hcl_mouth 收敛、远离刚体的 match 反而不收敛）。此类"慢收敛"确认为已知长期问题后（见 memory `flametest-v24-state`），不要为它回退已验证的刚体/IK 改动。
 
+**④ 垂直段约束（v46，修"斜着拿/穿模"，机械臂"按要求移动"的关键）**。单次解 IK + 每帧关节钳制的实现，joint 空间插值会把 TCP 拉成弧线——垂直下探/提出时斜着走、带抖动（用户报"斜着拿、穿模"）。v46 垂直约束：MoveAction 首帧检测"起点 xy 与目标 xy 偏差 <1.5cm"即判定垂直段——**xy 锁死目标值、z 每帧推进 VZ_STEP、逐帧沿这条竖直线重解 IK**（cur7 warm start + FK 验证），TCP 走严格直线。**调参关键 VZ_STEP=0.002**：每帧 z 步长必须小到 `MAX_JOINT_DELTA=0.015` 钳制不触发。初版 0.008 → z 步大 → 所需关节重配超过钳制 → 钳制后 TCP 横向拖滞 4~9cm（diag 轨迹 CSV 证实是"欠追踪累积"不是单帧尖峰）；0.002（≈0.12 m/s @60Hz）→ 钳制不触发 → dropper descend/lift 横向 0.7mm/0mm、cap 5mm/3.8mm。**通用规则：逐帧逼近的 target，每帧变化量必须小于钳制量所能跟上的幅度。**
+
+```python
+if not self._solved:
+    self._solved = True
+    self._vertical = float(np.linalg.norm(gp[:2] - self.pos[:2])) < 0.015
+    if self._vertical:
+        self._goal_z = gp[2]          # xy 锁死目标值，z 从当前开始
+    else:
+        self._ik_target = engine.solve_verified(self.pos, cur)
+# 垂直段：每帧沿 z 线推进 VZ_STEP 并重解 IK（cur7 warm start，TCP 贴直线）
+dz = self.pos[2] - self._goal_z
+step = VZ_STEP if dz > 0 else -VZ_STEP
+self._goal_z += step
+tgt = np.array([self.pos[0], self.pos[1], self._goal_z])
+ik = engine.solve_verified(tgt, cur)
+cmd = cur + np.clip(ik - cur, -engine.MAX_JOINT_DELTA, engine.MAX_JOINT_DELTA)
+```
+
+**⑤ 跨元动作夹爪状态传播（修"铂丝夹紧后爪子松开"）**。每个元动作实例 `grip_target` 从 GRIP_OPEN 起步、只被自己的 GripAction 更新。物体跨多个元动作持握（铂丝跨 ④蘸酸→⑤灼烧→⑥循环→⑦冷却→⑧蘸粉→⑨显色）时，⑤⑥⑦⑨ 无 GripAction → 夹爪被命令张开，物体靠 task"开爪且近抓点"双条件释放判定不满足 → 吸附挂空（用户见"夹紧后又松开、物体还吸着"）。**持握状态的生命周期跨出单个元动作时必须提升到元动作之外**：controller 在元动作切换处复制夹爪状态，并逐项核对各元动作末尾 grip_target（⑤⑥⑦⑨=GRIP_WIRE 持丝、归架段显式 open 才到 GRIP_OPEN，全链无误夹）：
+
+```python
+if meta.is_done():
+    self._meta_idx += 1
+    if self._meta_idx < len(self.meta_actions):
+        self.meta_actions[self._meta_idx].grip_target = meta.grip_target
+```
+
+**⑥ 提出高度 = 被持物最低点 > 沿途最高障碍（修"吸液后斜着穿瓶"）**。滴管吸完酸只提 2cm 就横向平移 → 嘴仍低于瓶口，穿模且看似斜着取出。滴管嘴 = TCP - 0.119（HELD_OFFSET.z），瓶口 0.877 → 横移前 gripper z 须 ≥ 1.0（实际提 H=1.15，嘴 1.031，高出 15cm）。**通用：横向平移前，被持物体最低点（TCP - HELD_OFFSET.z）必须高于沿途最高障碍物 + 余量。**
+
 ## 刚体落座与防抓取闪现（flametest 已验证）
 
 **① 真刚体凸包不建模口洞 → 落座顶飞**。瓶塞/灯帽转真刚体（fix 脚本 `make_stopper_cap_rigid`：RigidBodyAPI+CollisionAPI+physics:approximation=convexDecomposition+contactOffset 0.002+restOffset -0.001，默认 kinematic）后，瓶口凸包碰撞不建模口洞（凸包鼓出盖住口），真动态落座把瓶塞顶飞（diag_rigid 实测 err=0.099，z 顶到 0.951）。修复：流程期保持 kinematic（每帧 teleport 不被物理覆盖），落座用"盖到位后 kinematic 锁住"折中，成功判定读物理位姿（LiquidMixing 式）：
@@ -458,3 +488,19 @@ if (near and self._grasp_near_frames[name] >= self.GRASP_NEAR_FRAMES
 ```
 
 验证：`scripts/diag_grasp.py`（模拟 RMP 偏移 ~3cm 的抓取，判据 max_jump<0.010 且 attached）；`scripts/diag_rigid.py`（三个落座物理位姿 err≈0）。
+
+## 焰色反应整实验模板（v44 分层：小动作 → 10 元动作 → 整个实验）
+
+大任务 = "**整个实验 = 10 个元动作顺序执行**"（比"一个 phase = 一个元动作"更高一层）。三层分层（v44 定型，用户两次纠正），**机械臂按要求移动的全部经验（①②③④⑤⑥）都在这一层**：
+
+| 层 | 位置 | 职责 |
+|---|---|---|
+| 小动作（运动原语） | `controllers/atomic_actions/flametest/` | IkMotionEngine + MoveAction / GripAction / HoldAction（Lula IK 驱动） |
+| 元动作 | `controllers/flametest_meta_actions/` | **一类一文件**（open_hcl_stopper / drip_hcl_acid / ignite_lamp / dip_wire_acid / burn_clean / repeat_dip_burn / cool / dip_powder / burn_stain / extinguish），每个 = 一串原子动作 |
+| 整个实验 | `controllers/flametest_controller.py` | 瘦排序器：实例化 10 元动作、按序 forward、is_done 切换 + 夹爪状态传播（⑤）、全完成 → success |
+
+- **小动作 3 类 = 9 个运动原语的参数化实例**：`approach=Move((pt.xy,H))`、`descend=Move(pt)`、`translate=Move(pt)`、`lift_vertical=Move((pt.xy,z),dwell)`、`dip_hold=Move(pt,n)`、`close=Grip(grip,n)`（原地合爪，臂不动）、`open=Grip(GRIP_OPEN,n)`、`settle=Hold(n)`、`hold=Hold(n)`。共享 IkMotionEngine（Lula IK + FK<6mm 验证 + MAX_JOINT_DELTA 钳制 + 到达冻结）。
+- **元动作 = BaseMetaAction 子类实现 `_build_actions()` 返回原子动作列表**；`forward(state)` 顺序推进、`grip_target` 内部持久（GripAction 完成时记 width，Move/Hold 每帧发送）；`reset()` 从头重跑整串（序列确定，非运行时循环，reset 语义与其它元动作一致）。工厂函数 `mv(pos,dwell=0)` / `grip(width,dwell=25)` / `hold(n)`。
+- **controller 只做"整个实验"**：`_step_collect` 对当前元动作 `forward`，`is_done()` 后 `self._meta_idx += 1` 并传播 grip_target（⑤）；`is_success()` = 全部跑完。坐标常量集中 `constants.py`（H/SETTLE/GRIP_*/抓点）。
+- **为什么这样分**：10 类各一文件高内聚可读；每个元动作组合一组可复用的小动作；controller 瘦到只剩排序；跨元动作共享状态（夹爪、坐标）在 controller/constants.py 统一管理，不散落。
+- **验证（完整运行 ~285s，exit 0）**：10 元动作全过、0 force-done、0 IK FAIL、0 settle WARN、`success=True ignite=True stain=True extinguish=True`；垂直段铁证看 freeze 行 `gripper=[x,y,z]` 的 xy 与目标逐位相同。环境注意：`PYTHONUNBUFFERED=1`（否则 print 丢失）、GPU 需提权、`--config-name level2_FlameTest` 显式传。

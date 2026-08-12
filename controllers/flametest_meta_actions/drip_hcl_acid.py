@@ -26,7 +26,7 @@ class DripHclAcid(BaseMetaAction):
             mv(e, (hx, hy, H)),
             mv(e, (hx, hy, 0.93)),
             mv(e, HCL_DIP, 25),                 # 下探吸液
-            mv(e, (hx, hy, 0.93)),
+            mv(e, (hx, hy, H), 5),              # 修 bug6：垂直提出瓶口再平移（嘴 1.031 > 瓶口 0.877）
             # C 滴液（task 每 30 帧滴 1 滴 ×3）
             mv(e, (ddx, ddy, H)),
             mv(e, DISH_DRIP, 200),
