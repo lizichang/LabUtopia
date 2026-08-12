@@ -584,6 +584,25 @@ python main.py --config config/level2_FlameTest.yaml --snapshot 2
 - 关键物体清晰可辨（如火焰颜色、器材轮廓）
 - 相机未穿过桌面/物体（穿模会导致画面异常）
 
+### 视觉可见性验证（判定全绿 ≠ 视觉可见）
+
+任务判定成功不代表渲染可见：FlameTest 首次冒烟判定 2/2 全绿，但三相机零黄色像素——火焰锥半径 2cm 高 7.6cm 在 256×256、focal 5mm 相机里只有 1-4 像素，且 camera_1 在 2m 高水平视完全看不到 1m 高的桌面。**验证视觉性必须数据驱动**——把物体世界坐标用相机外参（quat 注意 [w,x,y,z]）+ 内参投影到像素，采样质心邻域颜色确认符合预期：
+
+```python
+# pinhole 投影：f_px = focal(mm)/36 * width
+f_px = focal_mm / 36.0 * width
+cam_R = quat_to_rotmat(orientation_quat)          # 四元数顺序 [w,x,y,z]！
+cam_T = np.array(translation)
+p_cam = cam_R.T @ (world_pos - cam_T)             # 世界 → 相机系（Z 向前约定按相机 axes）
+u, v = cx + f_px * p_cam[0]/p_cam[2], cy - f_px * p_cam[1]/p_cam[2]
+# 采样 (u,v) 邻域 RGB，与预期色比对（火焰区域实测 (241,227,140) 黄）
+```
+
+要点：
+- 物体太小就放大几何（火焰放大 2.5x → φ10cm×19cm）并拉近相机对准目标
+- 相机高度要接近目标高度、视线对准目标（2m 高水平视看不到 1m 桌面上的灯口），位置不能落在物体包围盒内
+- 静态发光体（酒精灯油琥珀 emissive）会透过蓝玻璃渲染成亮黄、被火焰色掩码误判成"火焰"——真火焰检测要同时满足位置/闪烁/时序，不能只看颜色
+
 ---
 
 ## USD 资产引用架构（场景组装进阶）
@@ -692,6 +711,81 @@ from pxr import Usd, UsdGeom
 table = stage.GetPrimAtPath("/World/table")
 UsdGeom.Imageable(table).MakeVisible()  # 等价于 visibility = "inherited"
 ```
+
+---
+
+## 移动物体位置同步清单（防 fix 脚本复位）
+
+焰色场景 `assets/chemistry_lab/lab_flametest/lab_flametest_v17.usd` 由幂等管线 `scripts/fix_flametest_v17.py` 生成（改完 USD 后必跑）。位置的"真相"在 USD 的 `xformOp:translate`，但有几类代码会**覆盖或与它不同步**。
+
+**核心陷阱（reset trap，2026-08-12 血泪案例）**：fix 脚本里凡有 `reposition_<obj>()` 的物体会被强制拉回其 `*_FIXED_POS` 常量。只改 USD 不更新常量 → 下次跑脚本就把你改的位置复位。实例：玻璃皿被挪到宽敞布局 `(0.5174,0.2407)`，`DISH_FIXED_POS` 仍是旧值 `(0.20,0.02)` → 跑 fix 脚本皿被拽回旧位，而皿内酸液 `/World/DishAcid` 原地不动，皿与酸液错位。修复：常量改为 `(0.5174,0.2407,0.80)`。**潜在同类**：`rebuild_dish_acid_pool()` 硬编码 DishAcid 建在 `(0.2,0.02,0.807)`，有 `if not prim.IsValid()` 保护——仅酸液池 prim 不存在时用旧位重建，从新基础重建场景会中招，改位置时应同步该常量。**火焰锥同类（同日再爆）**：`flame_inner`/`flame_outer` 在 `/World` 顶层、由 `rebuild_flame_cones()` 每次运行删掉重建，translate 曾硬编码旧灯位 `(0.36,0.18)` → 灯挪到 `(0.5132,0.5256)` 后火焰仍在旧位、离灯 ~0.38m。修复：改用 `LAMP_POS[:2]`（`LAMP_POS=(0.5132,0.5256,0.80)` 已与 task/controller 对齐）。**挪灯/挪任一被 fix 重建的物体，必须先查 fix 脚本里重建它的硬编码 translate**。
+
+**移动一个物体必须同步的 6 处**：
+
+| # | 位置 | 要改什么 |
+|---|---|---|
+| 1 | USD（真相） | `lab_flametest_v17.usd` 物体 prim 的 `xformOp:translate`（LFS 二进制，用下方命令模板） |
+| 2 | fix 脚本（防复位） | `scripts/fix_flametest_v17.py` 对应 `*_FIXED_POS` 常量（现存 `LAMP_POS`/`DISH_FIXED_POS`）及创建函数硬编码 translate |
+| 3 | task | `tasks/flametest_task.py`：`GRASP_POINTS`/`REST_POS`/`HCL_MOUTH`/`SAMPLE_MOUTH`/`RIGID_SETTLE_TARGET`（`HELD_OFFSETS` 由 `REST_POS-GRASP_POINTS` 自动推导，勿手改） |
+| 4 | controller | `controllers/flametest_controller.py` `_build_phases`：`STO_GRASP`/`STO_SIDE`/`HCL_DIP`/`DISH_DRIP`/`ACID_DIP`/`POWDER_DIP`/`FLAME_HOLD`/`CAP_BURNER`…及各 phase 内联 `seg((x,y,z))` 坐标（最容易漏） |
+| 5 | diag 脚本 | `scripts/diag_ik_offset.py` / `scripts/diag_rmp.py` 的 `TARGETS` 对应条目 |
+| 6 | config | `config/level2_FlameTest.yaml`：`robot.position`（最远物品须在 0.855m 臂展内）/ `cameras`（挪相机取景） |
+
+**工作流**：① 侦查（usd-core 查物体当前世界坐标 + `grep -rn "旧坐标" --include="*.py"` 找全部引用）；② 按 1→6 改；③ 跑 `python scripts/fix_flametest_v17.py` 落盘（幂等，遵守 `stage.Export` 非 `stage.Save` 约定）；④ 重新 dump 世界坐标确认等于新位置、其余物体没被动。
+
+**usd-core 直接改 crate 坐标的命令模板**（v17 是 LFS 二进制，不能手编辑文本）：
+
+```bash
+PY=/media/dky/Disk2TB/lizichang/miniconda3/envs/labutopia/bin/python
+$PY -c "
+from pxr import Sdf, Gf
+import os
+V17 = 'assets/chemistry_lab/lab_flametest/lab_flametest_v17.usd'
+layer = Sdf.Layer.FindOrOpen(V17)
+spec = layer.GetPrimAtPath('/World/<OBJ>')
+tr = next((a for a in spec.attributes if a.name == 'xformOp:translate'), None)
+print('before:', tr.default)
+tr.default = Gf.Vec3d(<x>, <y>, <z>)
+tmp_usda = V17 + '.new.usda'; tmp_crate = V17 + '.new.usd'
+for p in (tmp_usda, tmp_crate):
+    if os.path.exists(p): os.remove(p)
+layer.Export(tmp_usda)
+with open(tmp_usda, encoding='utf-8') as f: text = f.read()
+text = text.replace('defaultPrim = \"/World\"', 'defaultPrim = \"World\"', 1)  # token 形式（坑 32）
+with open(tmp_usda, 'w', encoding='utf-8') as f: f.write(text)
+tl = Sdf.Layer.FindOrOpen(tmp_usda); tl.Export(tmp_crate)
+os.replace(tmp_crate, V17)
+if os.path.exists(tmp_usda): os.remove(tmp_usda)
+print('saved, after:', tr.default)
+"
+```
+
+**验证命令**（读世界坐标，确认新位置 + 其余物体未动）：
+
+```bash
+$PY -c "
+from pxr import Usd, UsdGeom
+st = Usd.Stage.Open('assets/chemistry_lab/lab_flametest/lab_flametest_v17.usd')
+for pp in ['/World/<OBJ>', ...]:
+    x = UsdGeom.Xformable(st.GetPrimAtPath(pp))
+    t = x.ComputeLocalToWorldTransform(Usd.TimeCode.Default()).ExtractTranslation()
+    print(pp, [round(v,4) for v in (t[0],t[1],t[2])])
+"
+```
+
+### v17 当前场景布局（2026-08 已验证，改位置对照）
+
+| 物体 | 世界坐标 (x,y,z) | 说明 |
+|---|---|---|
+| HClBottle | (0.120, 0.020, 0.800) | 盐酸瓶 |
+| SampleDish | (0.5174, 0.2407, 0.800) | 玻璃皿（宽敞布局）|
+| DishAcid | (0.5174, 0.2407, 0.807) | 皿内酸液池 |
+| SampleBottle | (-0.050, 0.300, 0.800) | 样品瓶 |
+| AlcoholLamp | (0.513, 0.526, 0.800) | 酒精灯 |
+| TestTubeRack | (0.528, -0.162, 0.896) | 试管架 |
+| Dropper | (0.507, -0.042, 0.812) | 胶头滴管 |
+| Match | (0.887, 0.594, 0.801) | 火柴 |
+| robot base | (0.25, 0.32) | `config` 的 `robot.position` |
 
 ---
 

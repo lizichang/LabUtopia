@@ -130,8 +130,8 @@ def main():
     if cone_prim.IsValid():
         UsdGeom.Cone(cone_prim).GetHeightAttr().Set(0.066)
         UsdGeom.Cone(cone_prim).GetRadiusAttr().Set(0.0264)
-    task._position_stain_at_tip(np.array([0.36, 0.18, 0.918]))
-    print("[diag] frame2: flame ON, cone real size, at wire tip in-flame [0.36,0.18,0.918]", flush=True)
+    task._position_stain_at_tip(np.array([0.5132, 0.5256, 0.918]))
+    print("[diag] frame2: flame ON, cone real size, at wire tip in-flame [0.5132,0.5256,0.918]", flush=True)
 
     # 打印染色锥实际状态（每一步独立 try，避免一处崩掉整段）
     sys.stdout.flush()

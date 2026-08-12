@@ -86,22 +86,23 @@ class FlameTestTask(BaseTask):
     # 瓶塞：世界中心 z=0.8735，夹在近顶部 z=0.877
     # 火柴(rotY=180)：杆端(origin)世界 (0.42, 0.26, 0.803)，头朝 -x（v31：原 0.50,0.24 超工作半径；
     # y=0.26 避开酒精灯底座 y<=0.224，火柴杆朝 -x 指向灯芯）
-    # 酒精灯帽：桌面旁 rest 中心 (0.46,0.20,0.8915)，夹在近顶部 z=0.90（v31：原 y=0.28 超工作半径）
+    # 酒精灯帽：桌面旁 rest 中心 (0.6132,0.5456,0.8155)（帽底 0.80 贴桌面，mesh 高 3.1cm），
+    # 夹在近顶部 z=0.824（v43：原 rest 0.8915/grasp 0.9000 用了"盖灯上"的高度，帽悬空 7.6cm）
     GRASP_POINTS = {
-        "hcl_stopper":    np.array([0.1200,  0.0200, 0.8770]),
+        "hcl_stopper":    np.array([0.1200, -0.2800, 0.8770]),
         "dropper":        np.array([0.5070, -0.0420, 0.9310]),
-        "sample_stopper": np.array([0.1153,  0.3021, 0.8770]),
+        "sample_stopper": np.array([-0.05,   0.30,   0.8770]),
         "match":          np.array([0.8868,  0.5939, 0.8150]),  # 抬高 12mm 让手指离桌，避免 collider 扎进桌面卡爪
-        "cap":            np.array([0.6132,  0.5456, 0.9000]),
+        "cap":            np.array([0.6132,  0.5456, 0.8240]),
     }
 
     # ---- 物体静止位置（世界坐标，对于子物体指几何中心）----
     REST_POS = {
-        "hcl_stopper":    np.array([0.1200,  0.0200, 0.8735]),
+        "hcl_stopper":    np.array([0.1200, -0.2800, 0.8735]),
         "dropper":        np.array([0.5070, -0.0420, 0.8120]),
-        "sample_stopper": np.array([0.1153,  0.3021, 0.8735]),
+        "sample_stopper": np.array([-0.05,   0.30,   0.8735]),
         "match":          np.array([0.8868,  0.5939, 0.8133]),  # 随 GRASP 抬 12mm，保持 HELD_OFFSET z=-0.0017
-        "cap":            np.array([0.6132,  0.5456, 0.8915]),
+        "cap":            np.array([0.6132,  0.5456, 0.8155]),
     }
 
     # ---- 子物体局部几何中心偏移（raw mesh center relative to prim origin）----
@@ -125,15 +126,21 @@ class FlameTestTask(BaseTask):
 
     # ---- 每物体夹爪闭合阈值（joint7 单指位移 < 此值才算夹紧）----
     # controller 设置 joint7 = grip_val（= 物体直径/2）；总宽 = 2*joint7
-    # 阈值 = grip值 + 1mm 裕量（v21 收紧，原 2mm 导致多物体误触发）
-    # grip 值：stopper 0.0126, dropper 0.004, match 0.0015, cap 0.018, wire 0.0055
+    # v45（本会话）：实测两指压住物体时 joint7 停在 grip_val+~1-2.3mm（PD 稳态
+    # 误差+接触反力）。塞体最粗（~30mm），v45 完整运行实测停位 0.0149——旧阈值
+    # grip+1mm(0.0136) 比停位还低 1.3mm，P1 瓶塞合爪永不触发 attach。改 grip+2~
+    # 3.5mm：attach 在"已夹住但未卡死"的稳态区触发；物理上物体先经 _ease_obj_world
+    # 平滑拉向夹爪（v28），无瞬移。v21 收紧到 +1mm 是为防试管架多物体误触发——
+    # v44 已有最近物检查 + 紧密近窗(z<0.015)，且合爪只在原地 GripAction
+    # （MoveAction 时手指全开 0.04），放宽安全。
+    # grip 值：stopper 0.0126, dropper 0.004, match 0.0015, cap 0.0185, wire 0.0055
     GRIP_CLOSED_THRESH = {
-        "hcl_stopper":    0.0136,
-        "dropper":        0.005,
-        "sample_stopper": 0.0136,
-        "match":          0.0025,
-        "cap":            0.0195,   # v24：酒精灯帽 grip 0.0185 + 1mm
-        "wire":           0.0065,
+        "hcl_stopper":    0.0160,   # 塞体 ~30mm，v45 实测停位 0.0149（+1.1mm 裕量）
+        "dropper":        0.006,    # grip 0.004 + 2mm
+        "sample_stopper": 0.0160,
+        "match":          0.0035,   # grip 0.0015 + 2mm
+        "cap":            0.022,    # 灯帽 v45 实测 attach 0.0203（grip 0.0185 + 3.5mm）
+        "wire":           0.0075,   # grip 0.0055 + 2mm
     }
 
     # ---- 每物体释放阈值（joint7 单指位移 > 此值才判定松手）----
@@ -160,8 +167,8 @@ class FlameTestTask(BaseTask):
     DROPLET_FLASH_FRAMES = 22
     DROPLET_FALL_DIST = 0.045   # 从滴管口到皿面的下坠距离
     DISH_TOP_Z = 0.805          # 液滴落到底的 z（皿内粉末面），防止穿过皿
-    HCL_MOUTH = np.array([0.12, 0.02])
-    SAMPLE_MOUTH = np.array([0.1153, 0.3021])
+    HCL_MOUTH = np.array([0.12, -0.28])
+    SAMPLE_MOUTH = np.array([-0.05, 0.30])
     # v24：盖灭后灯帽落在酒精灯口（帽中心 z=0.8915，帽底 z=0.876 盖住灯芯）
     CAP_SETTLED_POS = np.array([0.5132, 0.5256, 0.8915])
 
@@ -173,8 +180,8 @@ class FlameTestTask(BaseTask):
     RIGID_KIN_NAMES = ("hcl_stopper", "sample_stopper", "cap")
     # 落座成功判定（LiquidMixing 式读物理位姿）：目标几何中心 + 允许误差
     RIGID_SETTLE_TARGET = {
-        "hcl_stopper":    (np.array([0.1200, 0.0200, 0.8735]), 0.025),
-        "sample_stopper": (np.array([0.1153, 0.3021, 0.8735]), 0.025),
+        "hcl_stopper":    (np.array([0.1200, -0.2800, 0.8735]), 0.025),
+        "sample_stopper": (np.array([-0.05, 0.30, 0.8735]), 0.025),
         "cap":            (np.array([0.5132, 0.5256, 0.8915]), 0.025),
     }
 
@@ -304,6 +311,15 @@ class FlameTestTask(BaseTask):
         return (np.linalg.norm(gripper_pos[:2] - grasp_pos[:2]) < xy_thresh
                 and abs(gripper_pos[2] - grasp_pos[2]) < z_thresh)
 
+    def _grasp_point(self, name):
+        """当前最合适的抓取点（TCP 世界坐标）。物体 rest 时由当前位置推导：
+        grasp_z = cur_z - HELD_OFFSETS.z（夹近顶）。瓶口 rest → 0.877（同 GRASP_POINTS），
+        桌面放置 → 0.810（v44，修 bug5：瓶塞从桌面再抓起时近窗认桌面位置，不再
+        只认瓶口 → 机械臂空抓桌面、举空爪回瓶口瞬间塞子瞬移）。对所有 kin_obj
+        统一，无需为每种物体配第二近窗。"""
+        cur = self._get_obj_world(name)
+        return np.array([cur[0], cur[1], cur[2] - self.HELD_OFFSETS[name][2]])
+
     def _any_obj_attached(self):
         """检查是否已有任何 kin_obj 或 wire 处于 attached 状态（一次只抓一个）。"""
         if self.wire_state == "attached":
@@ -321,7 +337,7 @@ class FlameTestTask(BaseTask):
         candidates = []
         for name, obj in self.kin_objs.items():
             if obj["state"] == "rest":
-                grasp = self.GRASP_POINTS[name]
+                grasp = self._grasp_point(name)
                 dist = np.linalg.norm(gripper_pos - grasp)
                 candidates.append((dist, "kin", name))
         if self.wire_state == "rest":
@@ -350,7 +366,7 @@ class FlameTestTask(BaseTask):
                     # review: 非最近即清零，保证 GRASP_NEAR_FRAMES 真正连续（MEDIUM #3）
                     self._grasp_near_frames[name] = 0
                     continue
-                grasp = self.GRASP_POINTS[name]
+                grasp = self._grasp_point(name)
                 closed_thresh = self.GRIP_CLOSED_THRESH[name]
                 near = self._near_grasp(gripper_pos, grasp)
                 # 连续近窗计数：非近窗即清零。>=GRASP_NEAR_FRAMES 才允许附着，
@@ -368,6 +384,19 @@ class FlameTestTask(BaseTask):
                     obj["state"] = "attached"
                     self._set_obj_world(name, held)
                     print(f"[flametest] attached {name} (grip={gripper_opening:.4f} < {closed_thresh})")
+
+                # v45 诊断：记录瓶塞合爪尝试期最小 opening（即使 attach 失败也能看到停位）
+                if name in ("hcl_stopper", "sample_stopper"):
+                    _m = getattr(self, "_stopper_close_min", None)
+                    if _m is None:
+                        _m = {}
+                        self._stopper_close_min = _m
+                    if near and gripper_opening < self.gripper_open_threshold:
+                        prev = _m.get(name)
+                        _m[name] = gripper_opening if prev is None else min(prev, gripper_opening)
+                    elif name in _m:
+                        print(f"[flametest] stopper {name} close-attempt min opening={_m[name]:.4f}")
+                        del _m[name]
 
             elif obj["state"] == "attached":
                 self._set_obj_world(name, gripper_pos + self.HELD_OFFSETS[name])

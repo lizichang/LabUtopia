@@ -389,3 +389,72 @@ nohup timeout 420 /media/dky/Disk2TB/lizichang/miniconda3/envs/labutopia/bin/pyt
 - 诊断完还原 patch（`git checkout --`）再 pull 正式修复
 
 验证：`python -m py_compile <file>`；stub cspace_controller 走查每个事件进入条件（阈值/时长/夹爪值）与 task 检测区间对齐。
+
+## 机械臂 IK 控制与到位判定（flametest 已验证）
+
+焰色反应是长程复合任务（11 phase、8+ 抓取/落座/滴加），机械臂控制层的三条已验证经验：
+
+**① IK warm start 与坏分支（"乱动"根因）**。近奇异抓点（match/cap/stopper 低 z）用固定 home warm start 时，Lula `compute_inverse_kinematics(frame_name='right_gripper', warm_start=固定home)` 偶发选出"FK 位置摆到目标 17cm 外"的坏分支，臂朝错误方向猛甩后 force-done——表现为"抖动 + 夹不住"。解法（flametest_controller `_solve_ik_verified`）：依次尝试当前关节（连续性 → 段间平滑、消除分支跳变）与固定 home，且解出后跑 Lula FK 核对，FK 距目标 >6mm 的解拒绝：
+
+```python
+def _solve_ik_verified(self, target, cur7):
+    for ws in (cur7, self._ik_home):          # 当前关节优先，固定 home 兜底
+        try:
+            ik, ok = self._ik_solver.compute_inverse_kinematics(
+                frame_name="right_gripper",
+                target_position=target,
+                target_orientation=self.orient,
+                warm_start=np.asarray(ws, dtype=float))
+        except Exception:
+            continue
+        if not ok or ik is None:
+            continue
+        ik = np.asarray(ik, dtype=float)
+        fk_pos, _ = self._ik_solver.compute_forward_kinematics("right_gripper", ik)
+        err = float(np.linalg.norm(np.asarray(fk_pos) - target))
+        if err < 0.006:                         # FK 距目标 < 6mm 才接受
+            return ik
+    return None
+```
+
+**② 到位冻结判定（"固定偏移 + 夹不起来"根因）**。v34b"进圈即冻"用圆柱条件（z<1.5cm 且 xy<3cm），垂直下探时会于目标上方 ~1.3cm 提前冻结——夹爪与器材固定偏移、手指在空中合拢。v43 改为真正到位：3D 距离 <1cm 且连续 3 帧才冻结，冻结后保持关节不再追 IK（近奇异区同一 TCP 可被多个 IK 分支到达、关节永远收敛不到单一解，冻结即稳住抓点让 task attach 判定通过）：
+
+```python
+dist3d = np.linalg.norm(gripper_pos - seg["pos"])
+if dist3d < 0.010:
+    self.arrived_frames += 1
+else:
+    self.arrived_frames = 0
+if self.arrived_frames >= 3:
+    self._seg_hold_joints = joints[:7].copy()   # 冻结关节，等 dwell 结束
+```
+
+**③ RMP 到位慢（长期问题，先隔离归因）**。完整运行大量 seg force-done（gripper 卡 dist 0.2-0.3 不收敛）时，先用 diag 脚本逐帧跟踪隔离归因再动代码。`scripts/diag_rmp.py`（RMP_FRAMES=300 每目标记录最小距离 + 单调性）已知结论：FAIL 的都是低 z+远 x/y 目标、单调缓慢收敛非卡死；与刚体碰撞无关（贴刚体的 hcl_mouth 收敛、远离刚体的 match 反而不收敛）。此类"慢收敛"确认为已知长期问题后（见 memory `flametest-v24-state`），不要为它回退已验证的刚体/IK 改动。
+
+## 刚体落座与防抓取闪现（flametest 已验证）
+
+**① 真刚体凸包不建模口洞 → 落座顶飞**。瓶塞/灯帽转真刚体（fix 脚本 `make_stopper_cap_rigid`：RigidBodyAPI+CollisionAPI+physics:approximation=convexDecomposition+contactOffset 0.002+restOffset -0.001，默认 kinematic）后，瓶口凸包碰撞不建模口洞（凸包鼓出盖住口），真动态落座把瓶塞顶飞（diag_rigid 实测 err=0.099，z 顶到 0.951）。修复：流程期保持 kinematic（每帧 teleport 不被物理覆盖），落座用"盖到位后 kinematic 锁住"折中，成功判定读物理位姿（LiquidMixing 式）：
+
+```python
+def _verify_settle(self, name, expected):
+    pos = self._get_rigid_world(name)      # 读真刚体 mesh 物理世界位姿（带 LOCAL_GEOM_OFFSET 补偿）
+    tol = self.RIGID_SETTLE_TARGET[name][1]
+    err = float(np.linalg.norm(pos - expected))
+    return err < tol                       # 容差 0.025；teleport 未生效/被撞偏会 WARN
+```
+
+**② 抓取平滑 + 连续近窗门禁（消除悬空合爪 / 闪现吸附 / 路过误抓）**。
+
+- `_ease_obj_world`（k≈0.18）：夹爪开始合拢且进入近窗时，物体几何中心逐帧向持物位 `gripper + HELD_OFFSET` 平滑移动，消除"静止到闭合瞬间再 teleport"的闪现吸附。只在 near 时 ease（合爪未遂不把物体拖离原位）。
+- `GRASP_NEAR_FRAMES`（3）：连续近窗计数——非近窗即清零、非最近物体即清零、有物体附着即清零，>=3 才允许附着。防臂从物体旁"路过"误抓（P4 抓火柴路过灯帽曾误抓 cap）。
+
+```python
+self._grasp_near_frames[name] = self._grasp_near_frames[name] + 1 if near else 0
+if near and gripper_opening < self.gripper_open_threshold:
+    self._ease_obj_world(name, gripper_pos + self.HELD_OFFSETS[name])
+if (near and self._grasp_near_frames[name] >= self.GRASP_NEAR_FRAMES
+        and gripper_opening < closed_thresh):
+    obj["state"] = "attached"
+```
+
+验证：`scripts/diag_grasp.py`（模拟 RMP 偏移 ~3cm 的抓取，判据 max_jump<0.010 且 attached）；`scripts/diag_rigid.py`（三个落座物理位姿 err≈0）。

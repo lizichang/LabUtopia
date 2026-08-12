@@ -1,7 +1,7 @@
 ---
 name: labutopia-task
 description: Builds LabUtopia task actions / 任务与元动作 (level2-level4 实验任务) — from the V7 任务文档 a big task IS one 元动作, split into phases (= one doc step each), implemented with the three-layer task + controller + config structure (kinematic grasping contracts, events_dt state machines, sticky phase flags). Use when the user asks to 制作元动作/原子动作/大动作/复合实验/新任务/level4 任务, or mentions LabUtopia task+controller+config, atomic_actions, events_dt, gripper contract, kinematic attach, dropper, scoop_controller, dissolve_task, phase machine, task_factory, level2_XXX.yaml. When the required 3D assets/scenes are missing, delegate to the labutopia-assets skill first.
-version: 2.0.0
+version: 2.1.0
 ---
 
 # LabUtopia 任务/元动作制作
@@ -103,6 +103,8 @@ if self._start:
 - **粘性阶段标志**：多阶段动作的 task 提供 picked/filled/dropped 等标志（达成置位、reset 清零），复合 controller 读标志判定阶段成功，不读当前状态（坑 13）
 - **阶段成功条件门控**：相位推进必须加显式状态条件（如 `water_added`），不能单靠位置距离（坑 14）
 - **结束后归位**：`_return_to_origin` 把动过的物体传回初始 translate（不要用 `_settle_on_table`——会把物体放错高度）
+- **IK 到位判定（verified IK + 3D 距离冻结）**：机械臂"乱动 / 固定偏移 / 夹不住"三症状的通用解法——解 IK 后跑 Lula FK 核对，FK 误差 >6mm 的解拒绝，且优先用当前关节作 warm start（近奇异抓点用固定 home 会偶发选到 FK 差 17cm 的坏分支、臂猛甩）；到位冻结用 **3D 距离 <1cm + 连续 3 帧**（勿用高度圆柱条件，会在目标上方 ~1.3cm 提前冻结 → 固定偏移 + 悬空合爪），冻结后保持关节不再追 IK（近奇异区同一 TCP 可被多个 IK 分支到达，追 IK 永不收敛）。详见 reference「机械臂 IK 控制与到位判定」
+- **抓取平滑 + 近窗门禁**：物体不再"静止到闭合瞬间再 teleport"（闪现吸附）——夹爪开始合拢且进入近窗时 task `_ease_obj_world`（k≈0.18）逐帧平滑拉向持物位；`GRASP_NEAR_FRAMES`（3）连续近窗计数（非近窗 / 非最近物体 / 有物体附着即清零）防臂"路过"误抓。详见 reference「刚体落座与防抓取闪现」
 
 ## 常见坑（已踩过）
 
@@ -128,6 +130,11 @@ if self._start:
 20. **相机 orientation 四元数按 (x,y,z,w) 写 → 相机翻转全黑**：Isaac Sim 相机 `set_local_pose(orientation=..., camera_axes="usd")` 按 **(w,x,y,z)** 解析四元数（Gf.Quatf 约定）。用 look-at 数学算出 (x,y,z,w) 后必须重排为 (w,x,y,z) 再写 yaml，否则相机被翻转朝上/朝外 → 画面全黑且无任何报错。症状排查看法：camera 画面 mean=0 从第 0 帧开始。另：新相机位置/朝向必须"看得见目标"——相机高度要接近目标高度且视线对准（2m 高水平视看不到 1m 桌面上的灯口），位置也不能在物体包围盒内
 21. **运行时改 UsdPreviewSurface 的 Shader input 不传导到渲染器**：点火时直接 `shader.GetInput('diffuseColor'/'emissiveColor').Set(...)`，USD 属性变了但 RTX 渲染器不刷新 → 火焰渲染成白色（判定全绿、visibility 生效、颜色无效）。**颜色变化必须用预制变体 + visibility 切换**：资产里预建 N 个同几何不同固定颜色材质的 prim（flame_outer_yellow/purple/…），全部初始隐藏，运行时只显示目标变体（visibility 已被证明即时生效）
 22. **判定成功 ≠ 视觉可见（火焰 2cm 锥体在 256px 相机只有 1-2 像素）**：FlameTest 首次冒烟判定 2/2 全绿，但三相机零黄色像素——火焰锥体半径 2cm 高 7.6cm 在 256×256、focal 5mm 相机里只有 1-4 像素，且 camera_1 在 2m 高水平视完全看不到 1m 高的桌面。**验证视觉性必须数据驱动**：把物体世界坐标用相机外参（quat 注意 w,x,y,z）+内参投影到像素，采样该点邻域颜色确认符合预期（火焰区域实测 (241,227,140) 黄色），不能只看任务判定。物体太小就放大几何（火焰放大 2.5x → φ10cm×19cm），相机要拉近对准目标
+23. **IK warm start 接受坏分支 → 机械臂乱动/到位错**：Lula `compute_inverse_kinematics(frame_name='right_gripper', warm_start=固定home)` 在近奇异抓点（match/cap/stopper 低 z）偶发选出"FK 位置摆到目标 17cm 外"的坏分支，臂朝错误方向猛甩后 force-done——表现为"抖动 + 夹不住"。修复：解后跑 Lula FK 核对，FK 误差 >6mm 拒绝；且优先用当前关节作 warm start（段间平滑、消除分支跳变），不行再 fallback 固定 home（flametest_controller `_solve_ik_verified`）
+24. **到达判定用高度条件 → 固定偏移 + 悬空合爪**：v34b"进圈即冻"（cylinder z<1.5cm 且 xy<3cm）在垂直下探时会于目标上方 ~1.3cm 提前冻结——正是用户看到的"夹爪与器材固定偏移且夹不起来"（手指在空中合拢）。v43 改为 **3D 距离 <1cm 且连续 3 帧** 才冻结（IK 验证后 tool_center 距目标仅 ~3.4mm，1cm 阈值贴合目标，task attach 在正确位置触发）。**到位判定一律用 3D 距离 + 连续 N 帧，别用高度圆柱**
+25. **真刚体凸包不建模口洞 → 落座顶飞**：瓶塞/灯帽转真刚体（RigidBodyAPI+CollisionAPI+convexDecomposition+contactOffset 0.002+restOffset -0.001，默认 kinematic）后，瓶口凸包碰撞不建模口洞（凸包鼓出盖住口），真动态落座把瓶塞顶飞（diag_rigid 实测 err=0.099，z 顶到 0.951）。修复：流程期保持 kinematic（teleport 不被物理覆盖），落座改"盖到位后 kinematic 锁住"折中 + task `_verify_settle` 读物理位姿判定（容差 0.025）。刚体无需回退——diag_rmp 证明贴刚体的 hcl_mouth 目标照样收敛
+26. **抓取悬空合爪 + 闪现吸附**：物体静止到闭合瞬间再 teleport 到 gripper+HELD_OFFSET，RMP 2-8cm 误差下夹爪闭合时物体纹丝不动（悬空合爪）、随后一步跳进爪内（闪现吸附）。修复：task `_ease_obj_world`（k≈0.18 逐帧平滑拉向持物位，只在 near 时 ease 防合爪未遂拖走物体）+ `GRASP_NEAR_FRAMES=3` 连续近窗门禁（防臂路过误抓——P4 抓火柴路过灯帽曾误抓 cap）。diag_grasp 验证 max_jump=0.0054（旧码 ~0.03）
+27. **RMP 到位慢是长期问题（先隔离归因，非刚体回归）**：完整运行大量 seg force-done（gripper 卡 dist 0.2-0.3 不收敛）时，先用 diag 脚本逐帧跟踪隔离归因再动代码。diag_rmp 5 目标结论：远目标 match 0.178 FAIL 但单调收敛（0.504→0.219）、acid_dip/flame/hcl_mouth 0.012 收敛、cap_grasp 0.098 FAIL；FAIL 的都是低 z+远 x/y 目标、单调缓慢收敛非卡死。"真刚体干扰 RMP"被否定（贴刚体的 hcl_mouth 收敛、远离刚体的 match 反而不收敛）。→ RMP 到位慢（2-8cm）是长期问题，与任务自身改动无关，**不要为它回退已验证的刚体/IK 改动**
 
 ## 检查清单
 
@@ -151,7 +158,13 @@ if self._start:
 - [ ] py_compile 通过 + stub 走查 0→N 全事件可达
 - [ ] 服务器冒烟：pkill 清场 → python -u → 2 集 → 业务日志出现成功链（attached→filled→dropped/对应动作链）→ 进程退出 → h5 存在
 - [ ] 冒烟后删 config_smoke；debug patch 还原（git checkout --）
+- [ ] IK 解已 FK 验证（>6mm 拒绝）+ 优先当前关节 warm start（坑 23）
+- [ ] 到位判定用 3D 距离 + 连续 N 帧，无高度圆柱提前冻结（坑 24）
+- [ ] 真刚体落座用 kinematic 锁住 + _verify_settle 物理位姿判定（坑 25）
+- [ ] 抓取用 _ease_obj_world 平滑 + 连续近窗门禁防路过误抓（坑 26）
+- [ ] 冒烟大量 force-done 时已用 diag 脚本隔离归因（RMP 慢 vs 刚体 vs IK），未误回退（坑 27）
 
 ## 附加资源
 
 - 动作类型详表、统一签名、DropperController/ScoopController/PourController 模板、夹爪契约速查、粘性标志代码、派生场景路径修复脚本、部署与冒烟、失败诊断三分法、DissolveTask 三层模板、yaml 结构 → [reference.md](reference.md)
+- 机械臂 IK 控制与到位判定（verified IK / 3D 距离冻结 / RMP 归因）、刚体落座与防抓取闪现（kinematic 锁住 / _ease_obj_world / 近窗门禁）→ [reference.md](reference.md)

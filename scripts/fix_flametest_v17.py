@@ -33,10 +33,13 @@ V17 = os.path.join(ROOT, "assets", "chemistry_lab", "lab_flametest", "lab_flamet
 OLD = os.path.join(ROOT, "assets", "chemistry_lab", "lab_flametest", "lab_flametest.usd")
 LAMP = os.path.join(ROOT, "assets", "chemistry_lab", "alcohol_lamp.usd")
 
-# v24：酒精灯替换本生灯后的世界位置（桌面 z=0.80）
-LAMP_POS = (0.36, 0.18, 0.80)
-# v24：表面皿固定位置（P3 滴液 / P5 蘸酸都在该处，机械臂不再搬动盘子）
-DISH_FIXED_POS = (0.20, 0.02, 0.80)
+# v42：酒精灯世界位置（桌面 z=0.80；与 task LAMP_POS/IGNITE_POS、controller
+# IGNITE/FLAME_HOLD/CAP_BURNER (0.5132,0.5256) 对齐。旧值 (0.36,0.18) 是 v24 遗留，
+# 曾因未同步导致 rebuild_flame_cones 把火焰锥重建到旧灯位、火焰离开灯身）
+LAMP_POS = (0.5132, 0.5256, 0.80)
+# v42：表面皿固定位置（宽敞布局，与 controller DISH_DRIP/ACID_DIP (0.5174,0.2407)、
+# DishAcid (0.5174,0.2407) 对齐；机械臂不再搬动盘子）
+DISH_FIXED_POS = (0.5174, 0.2407, 0.80)
 
 
 # 旧场景中需要移植的效果 prim：旧路径 -> 新场景路径
@@ -576,7 +579,7 @@ def rebuild_flame_cones(target_layer):
                 break
         if t_op is None:
             t_op = xform.AddTranslateOp()
-        t_op.Set(Gf.Vec3d(0.36, 0.18, zc))
+        t_op.Set(Gf.Vec3d(*LAMP_POS[:2], zc))
         # 不设默认 invisible：prim 若在 population 时 invisible，RTX 材质不初始化、
         # 之后翻 visible 仍渲染成默认灰（实测火焰蓝材质不显、红探针却显）。让任务
         # reset() 的 _set_flame_visible(False) 负责熄灭，点着时再翻 visible。

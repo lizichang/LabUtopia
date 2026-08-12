@@ -84,7 +84,7 @@ cameras:
 
 robot:
   type: "franka"
-  position: [0.36, 0.38, 0.71]   # 底座挪到物品簇中心偏前，全部物品进 0.855m 臂展（最远 Match 0.57m）
+  position: [0.25, 0.32, 0.71]   # 底座靠回原位置方向（左下），火柴离机械臂更远；最远物品仍为 Match 0.69m，留 0.16m 余量
 
 collector:
   type: "default"

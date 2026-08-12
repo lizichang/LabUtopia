@@ -1,7 +1,7 @@
 ---
 name: labutopia-assets
 description: Creates LabUtopia (Isaac Sim chemistry simulator) 3D assets and scenes — test tubes, racks, spoons, wash bottles, beakers, powder piles — via 实物调研通法(inventory优先+结构拆解三步法+形状原语映射) → MeshBuilder → OBJ → USD pipeline, or the Blender bpy photorealistic pipeline (bmesh lathe + 基本体 helpers + Principled BSDF + EEVEE render check + USD export), and assembles lab_XXX scenes with references, builtin prims and kinematic markers. Use when the user asks to 制作资产/创建实验器材/生成场景, or mentions labutopia assets, USD asset creation, Blender bpy 资产, scene assembly, gen_*_assets.py, obj2usd, blender_asset_template, post_fix_usd, lab_00X scenes.
-version: 1.4.0
+version: 1.5.0
 ---
 
 # LabUtopia 资产制作
@@ -34,6 +34,7 @@ version: 1.4.0
 - 场景保存必须 `stage.Export(新路径)`，**禁止 `stage.Save()`**（会污染源文件，见坑 2）
 - 材质规范（两套管线统一口径）：玻璃 → Principled BSDF transmission=1.0 + ior=1.45 + roughness≈0.05（USD 里后处理补 transmission，见坑 12）；金属 → metallic≈0.85 roughness≈0.3；陶瓷/塑料 → metallic=0、roughness≈0.4-0.6；纸/棉 → roughness≈0.9
 - 资产文件放 `assets/chemistry_lab/`，场景放 `assets/chemistry_lab/lab_XXX/lab_XXX.usd`
+- 焰色实验场景（`lab_flametest_v17.usd`）由幂等管线 `scripts/fix_flametest_v17.py` 生成，**改完 USD 必须重跑**；该脚本的 `reposition_*` 会把物体复位到 `*_FIXED_POS` 常量——**移动物体位置必须同步 6 处**（见 reference「移动物体位置同步清单」）；v17.usd 是 LFS 二进制，用 usd-core 改坐标（坑 32），git diff 在沙箱会因 LFS clean 过滤器失败
 
 ## 常见坑（已踩过）
 
@@ -61,6 +62,14 @@ version: 1.4.0
 22. **相机视角配置不当导致大面积空白或过窄**：Camera2 俯视全局视角默认 z=2.5 + focal=5（FOV~158°）→ 桌面覆盖 ~7m，但实际工作区仅 1m×0.5m → 90%画面空白。修复：z 降到 1.5（距桌面 0.7m）+ focal 增到 12（FOV~82°）→ 覆盖 ~1.2m 正好对齐工作区。Camera1 特写视角 focal 太大（如 25mm）→ 操作区域移出画面；太小（如 15mm）→ 火焰细节不足。调参方法：先算目标覆盖宽度 W，再 z = W/(2*tan(FOV/2))；FOV = 2*atan(36/(2*focal))（sensor≈36mm）。orientation 四元数顺序是 **(w,x,y,z)** 不是 (x,y,z,w)。用 `--snapshot 2` 快速导出 2 帧验证，不必跑完整实验。详见 reference.md「场景配置与相机调参」。
 23. **专用场景器材应引用资产文件而非内嵌几何**：在专用场景 USD（如 lab_flametest_v17.usd）中直接写 Mesh 几何体，改器材需逐场景修改 → 不可维护。正确做法：每件器材单独存为 `assets/chemistry_lab/<name>.usd`，场景中用 `references = [@../<name>.usd@</root>]` 引用，修改一处即全局生效。引用语法：`def Xform "BunsenBurner" { references = [@../bunsen_burner.usd@</root>] xformOp:translate = (...) }`。单位不匹配时加 `xformOp:scale = (0.001,0.001,0.001)`（mm→m）。引用资产的碰撞属性和材质绑定随引用继承——源资产没有碰撞，引用后也没有，需在源资产里加。详见 reference.md「USD 资产引用架构」。
 24. **YAML 环境配置（相机/机器人/任务参数）**：实验环境通过 `config/level2_<TaskName>.yaml` 配置，不是直接改 USD。关键字段：`usd_path`（场景文件，相对仓库路径）、`cameras`（列表，每相机含 prim_path/name/translation/resolution/focal_length/orientation/image_type）、`robot`（type+position）、`task.max_steps`（长任务如 FlameTest 需 30000）。**相机参数在 YAML 里设，不是 USD 里**——改视角只需改 YAML 无需重建场景。快速验证用 `python main.py --config config/level2_xxx.yaml --snapshot 2` 导出 2 帧图片。详见 reference.md「场景配置与相机调参」。
+25. **幂等 fix 脚本把物体拽回旧位置（reposition_* 复位陷阱）**：焰色场景由 `scripts/fix_flametest_v17.py` 幂等修复管线生成（改完 USD 后按项目约定必跑）。凡有 `reposition_<obj>()` 的物体会被强制拉回其 `*_FIXED_POS` 常量——**只改 USD 的 translate、不更新常量，下次跑脚本就把你改的位置复位**。实例：玻璃皿被挪到宽敞布局 `(0.5174,0.2407)`，但 `DISH_FIXED_POS` 仍是旧值 `(0.20,0.02)`，一跑 fix 脚本皿被拽回旧位，而皿内酸液 `/World/DishAcid` 原地不动 → 皿与酸液错位。**移动场景物体必须同步 6 处**（USD translate / fix 脚本常量 / task 坐标 / controller 坐标含内联 seg / diag 目标 / config），完整清单+命令见 reference「移动物体位置同步清单」。
+26. **自建 Mesh 必须设 subdivisionScheme=none**：`UsdGeom.Mesh.Define` 创建的小 Mesh 不显式写 `subdivisionScheme` 时 USD 默认是 **catmullClark**（不是 none），RTX 快照下材质/绑定全对却不显色。修复：`UsdGeom.Mesh(prim).GetSubdivisionSchemeAttr().Set("none")`（幂等，每次 fix 都设）。皿壳 mesh 自带 none 所以正常，自建小 mesh 不设就中招。以后自建任何 Mesh prim 都先设 none 再验证。
+27. **RTX 渲染器改材质不可靠（用预制变体 + visibility 切换）**：运行时 `shader.GetInput('diffuseColor').Set(...)` 或 `MaterialBindingAPI.Bind` 改颜色，USD 属性变了但 RTX 渲染器不刷新 → 渲染不变色（判定全绿、visibility 生效、颜色无效）。**颜色/材质变化必须预制 N 个同几何不同固定颜色材质的 prim、全部初始隐藏、运行时只显示目标变体**（visibility 已被证明即时生效），或材质改动落盘（fix 脚本）后全新 stage 加载才可靠。
+28. **小体积显色物体材质配方（"单通道主导"）**：强光（CylinderLight）下的小体积显色物（染色锥、皿内圆盘、液滴），diffuse 近黑 `(0.01,0.01,0.01)` + **emissive 单通道主导**（主导通道 ≈1.6、其余 ≤0.55）+ roughness 0.3。R/G 同时 >1（如 (1.8,1.296,0.216)）被光洗成奶油白 (243,237,162)。实测 yellow (1.6,0.55,0.15) → (242,211,129) r−b=113 饱和黄。另注意 RTX 对部分形状不渲染 diffuse（只认 emissive）：低 emissive 渲染成透明、背景透出，高 emissive 才显色。
+29. **GeomSubset 多材质（漏改 subset 会眩光漂白）**：一个 mesh 可有多个 GeomSubset 各绑不同材质。表面皿 `/World/SampleDish/powder_002_002/powder_002_002_001` 有 dish_mat（玻璃壁）+ powder_mat（皿底粉末）两 subset——只改 dish_mat、漏掉 metallic=0.85 的白金属 powder_mat，皿内蓝色圆盘被反射/眩光漂白成近白，整皿像白金属碗。**改材质前先用 Sdf 查 material:binding 指向谁（含 GeomSubset），别只按名字猜**。
+30. **DomeLight 贴图 1×1 纯黑 → 环境全暗**：v17 曾暗的根因是 `/World/env_light`（DomeLight, intensity=10000）贴图 `color_0C0C0C.exr` 是 1×1 单像素纯黑——DomeLight 靠环境贴图照亮，贴图全黑 ⇒ 有效光强≈0，**调 intensity 没用**。修复：用纯几何光源（`/World/CylinderLight_010` 从 SphereLight radius=0 无效 → 原位改 CylinderLight intensity=2000 length=100 radius=5 白光）。环境暗先查 DomeLight 贴图亮度。
+31. **USD root prim 必须 Def 不是 Over**：`Sdf.CreatePrimInLayer` 默认 SpecifierOver，旧脚本建 `/World/AlcoholLamp` 根后只设 typeName → 根是 Over、无 Def 背书，严格 USD 查看器可能不显示。修复：幂等把根设成 `SpecifierDef`（fix 脚本 `ensure_lamp_root_def()`）。读修复后 crate 的层级用 `layer.GetPrimAtPath(path).nameChildren`——usd-core 26.8 的 `stage.Traverse()`/`GetChildren()` 会返回空（遍历怪癖，非物体缺失）。
+32. **LFS crate 直接改坐标（defaultPrim 必须 token 形式）**：v17.usd 是 LFS 二进制不能手编辑文本。用 usd-core `Sdf.Layer.FindOrOpen` → `GetPrimAtPath` → 改 `xformOp:translate` default → `layer.Export(tmp_usda)` → 把 `defaultPrim = "/World"` 替换成 token 形式 `"World"` → `tl.Export(tmp_crate)` → `os.replace`。不替换 defaultPrim 会写错路径。命令模板见 reference「移动物体位置同步清单」。
 
 ## 检查清单
 
@@ -85,6 +94,13 @@ version: 1.4.0
 - [ ] 引用资产有碰撞属性（PhysicsCollisionAPI）和材质绑定（随引用继承，源资产里加）
 - [ ] YAML 配置文件 usd_path/cameras/robot/task 字段齐全（坑 24）
 - [ ] 用 `--snapshot 2` 快速验证相机视角，无需跑完整实验
+- [ ] 移动物体位置时已同步 6 处（USD translate / fix 脚本 `*_FIXED_POS` / task 坐标 / controller 坐标含内联 seg / diag 目标 / config），重跑 fix 脚本后位置未被复位（坑 25）
+- [ ] 自建 Mesh prim 已设 `subdivisionScheme="none"`（坑 26）
+- [ ] 显色/变色用预制变体 + visibility 切换，非运行时改 Shader input（坑 27）
+- [ ] 亮场景小体积显色物材质已用近黑 diffuse + 单通道主导 emissive（坑 28）
+- [ ] 多材质 mesh 的每个 GeomSubset 都核对过 material:binding（坑 29）
+- [ ] 环境暗时已查 DomeLight 贴图亮度，非无脑调 intensity（坑 30）
+- [ ] 新建 root prim 已设 SpecifierDef 而非 Over（坑 31）
 
 ## 附加资源
 
@@ -92,3 +108,5 @@ version: 1.4.0
 - 组合参考几何参数表（试管/试管架/勺子/洗瓶尺寸）见 [reference.md](reference.md)
 - 场景配置与相机调参（YAML 结构、FOV 计算、orientation 四元数、--snapshot 验证）见 [reference.md](reference.md)「场景配置与相机调参」
 - USD 资产引用架构（引用语法、碰撞/材质继承、内嵌转引用步骤、维护优势）见 [reference.md](reference.md)「USD 资产引用架构」
+- 移动物体位置同步清单（6 处 + reset trap + usd-core 改坐标命令 + v17 场景布局表）见 [reference.md](reference.md)「移动物体位置同步清单」
+- 视觉可见性像素投影验证（判定全绿 ≠ 视觉可见）见 [reference.md](reference.md)「场景配置与相机调参」
