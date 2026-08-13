@@ -7,7 +7,7 @@ mode: "collect"
 
 # 场景：lab_005（基于 lab_001 副本，删焰色器材、保留 HClBottle 作吸液源）
 # Dropper 立放 (0.36, 0.16)，TestTube 管口 z=0.929，HClBottle 瓶口 z≈0.879
-usd_path: "assets/chemistry_lab/lab_005/lab_005.usd"
+usd_path: "assets/scenes/d_wetchem/d3_dropper_drip/d3_dropper_drip.usd"
 
 max_episodes: 30
 

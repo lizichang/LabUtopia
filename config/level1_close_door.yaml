@@ -4,7 +4,7 @@ task_type: "openclose"
 controller_type: "close"
 
 mode: "collect"
-usd_path: "assets/chemistry_lab/lab_001/lab_001.usd"
+usd_path: "assets/scenes/base/lab_001/lab_001.usd"
 max_episodes: 100
 
 infer:

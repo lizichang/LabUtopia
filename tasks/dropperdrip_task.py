@@ -8,7 +8,7 @@ from tasks.base_task import BaseTask
 class DropperDripTask(BaseTask):
     """Task definition for "drip liquid from a dropper into a test tube".
 
-    The scene (assets/chemistry_lab/lab_005/lab_005.usd) contains:
+    The scene (assets/scenes/d_wetchem/d3_dropper_drip/d3_dropper_drip.usd) contains:
         - <World>/Dropper        the dropper asset (stand-up, tip bottom at z=0)
         - <World>/HClBottle      the reagent bottle (aspiration source, kept from lab_001)
         - <World>/TestTube       the target tube (mouth z = translate.z + tube_height)

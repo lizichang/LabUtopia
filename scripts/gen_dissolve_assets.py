@@ -1,28 +1,32 @@
 # -*- coding: utf-8 -*-
-"""生成 D2 蒸馏水溶解性测试的 6 个资产 OBJ+USD（单位：米）。
+"""生成 D2 蒸馏水溶解性测试的 4 个资产 OBJ+USD（单位：米）。
 
 资产清单：
   test_tube      试管 10mL      外径15mm 壁厚1.2mm 高120mm 圆底 玻璃
-  test_tube_rack 试管架         底座15x6cm + 2立柱 + 圆孔板(孔r9mm) 木色
   spoon          药匙           手柄长6.5cm + 椭球勺头 不锈钢
-  wash_bottle    蒸馏水洗瓶     鼓肚瓶 + 长细嘴 半透明白塑料
   sample_bottle  待测样品瓶     棕色试剂瓶(无液面) 白瓶塞
   sample_powder  粉末堆(场景用) 灰白小丘 直径3cm
+
+（test_tube_rack / wash_bottle 形状错误，已按用户要求从生成清单移除。）
 
 设计要点：
 - 药匙 asset 原点 = 手柄中点（夹爪抓取点），勺头中心在 +x 0.045 处
 - 试管 asset 原点 = 管底（圆底最低点），管口朝 +z
-- 试管架孔板 = 圆环板（真孔，夹爪可伸入），立柱用 lathe+shift 平移
 """
 import os
 import sys
+import tempfile
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # obj_gen.py 与脚本同目录
 from obj_gen import MeshBuilder  # noqa: E402
 
-OUT_USD = r"E:\浙江大学\星辰计划\LabVLA_第一期轮转\LabUtopia\assets\chemistry_lab"
-OUT_OBJ = r"C:\Users\lenovo\.qoderworkcn\workspace\mrizywidwxqhzovl\outputs"
+# 输出到 assets/equipment/（*_simple.usd，与 FBX 库版本 test_tube.usd 等区分；
+# 供 gen_lab004_scene.py 引用、再生成 D2-S 场景）。
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT_USD = os.path.join(REPO, "assets", "equipment")
+# OBJ 是中间产物（make_usd 读它出 USD），写系统临时目录即可。
+OUT_OBJ = os.path.join(tempfile.gettempdir(), "lab004_assets_obj")
 
 
 # ---------------------------------------------------------------- helpers
@@ -105,40 +109,6 @@ def build_test_tube(mb):
     mb.lathe([(0.0063, 0.1200), (0.0075, 0.1200)], S, "tube")
 
 
-# ---------------------------------------------------------------- 试管架
-def build_test_tube_rack(mb):
-    S = 32
-    # base 底座：15x6x0.8cm，z 0->0.008（手动内联 8 顶点 box）
-    x0, y0, z0, x1, y1, z1 = -0.075, -0.030, 0.0, 0.075, 0.030, 0.008
-    i = [mb._add_vert(p, n) for p, n in [
-        ((x0, y0, z0), (0, 0, -1)), ((x1, y0, z0), (0, 0, -1)),
-        ((x1, y1, z0), (0, 0, -1)), ((x0, y1, z0), (0, 0, -1)),
-        ((x0, y0, z1), (0, 0, 1)), ((x1, y0, z1), (0, 0, 1)),
-        ((x1, y1, z1), (0, 0, 1)), ((x0, y1, z1), (0, 0, 1)),
-    ]]
-    a, b, c, d, e, f, g, h = i
-    mb._add_quad(a, b, c, d, "base")
-    mb._add_quad(e, h, g, f, "base")
-    mb._add_quad(a, e, f, b, "base")
-    mb._add_quad(d, c, g, h, "base")
-    mb._add_quad(a, d, h, e, "base")
-    mb._add_quad(b, f, g, c, "base")
-    # 立柱 x2：lathe 在原点生成后平移
-    post_v0 = len(mb.verts)
-    mb.lathe([(0.004, 0.008), (0.004, 0.050)], S, "post", close_bottom=True)
-    post_verts = mb.verts[post_v0:]
-    # 立柱1：( -0.055, 0 )
-    dx, dy = -0.055, 0.0
-    mb.verts[post_v0:] = [(x + dx, y + dy, z) for (x, y, z) in mb.verts[post_v0:]]
-    # 立柱2：( +0.055, 0 )
-    v0_2 = len(mb.verts)
-    mb.lathe([(0.004, 0.008), (0.004, 0.050)], S, "post", close_bottom=True)
-    dx, dy = 0.055, 0.0
-    mb.verts[v0_2:] = [(x + dx, y + dy, z) for (x, y, z) in mb.verts[v0_2:]]
-    # 孔板：圆环板 r_out=0.05 孔 r_in=0.0095，z 0.050->0.058，中心 (0,0)
-    annulus(mb, 0.0, 0.0, 0.050, 0.058, 0.0095, 0.050, S, "plate")
-
-
 # ---------------------------------------------------------------- 药匙
 def build_spoon(mb):
     S = 24
@@ -147,19 +117,6 @@ def build_spoon(mb):
     # spoon_head 勺头：半椭球，中心 (0.045, 0, 0.004)，半轴 (0.015, 0.006, 0.004)
     # y 宽 12mm < 试管内径 12.6mm，可伸入管口
     ellipsoid_half(mb, 0.045, 0.0, 0.004, 0.015, 0.006, 0.004, 8, S, "spoon_head")
-
-
-# ---------------------------------------------------------------- 洗瓶
-def build_wash_bottle(mb):
-    S = 40
-    # body+spout：瓶身鼓肚 0->0.082，肩部收窄，细长嘴 0.082->0.135
-    mb.lathe([(0.028, 0.000), (0.031, 0.012), (0.033, 0.030), (0.031, 0.048),
-              (0.025, 0.066), (0.016, 0.082), (0.010, 0.090),
-              (0.006, 0.100), (0.005, 0.118), (0.005, 0.135)],
-             S, "body", close_bottom=True)
-    # cap 瓶盖：套在瓶颈（z 0.080 处），r 0.014-0.016
-    mb.lathe([(0.014, 0.080), (0.016, 0.088), (0.016, 0.096), (0.014, 0.102)],
-             S, "cap")
 
 
 # ---------------------------------------------------------------- 样品瓶（棕色，无液面）
@@ -188,25 +145,6 @@ Ks 0.75 0.82 0.90
 Ns 200
 d 0.35
 """,
-    "test_tube_rack": """# test_tube_rack.mtl
-newmtl base
-Kd 0.55 0.42 0.30
-Ks 0.15 0.12 0.09
-Ns 30
-d 1.0
-
-newmtl post
-Kd 0.55 0.42 0.30
-Ks 0.15 0.12 0.09
-Ns 30
-d 1.0
-
-newmtl plate
-Kd 0.58 0.45 0.32
-Ks 0.15 0.12 0.09
-Ns 30
-d 1.0
-""",
     "spoon": """# spoon.mtl
 newmtl handle
 Kd 0.70 0.71 0.74
@@ -218,19 +156,6 @@ newmtl spoon_head
 Kd 0.72 0.73 0.76
 Ks 0.85 0.86 0.90
 Ns 180
-d 1.0
-""",
-    "wash_bottle": """# wash_bottle.mtl
-newmtl body
-Kd 0.90 0.92 0.95
-Ks 0.55 0.58 0.62
-Ns 120
-d 0.70
-
-newmtl cap
-Kd 0.95 0.95 0.95
-Ks 0.30 0.30 0.32
-Ns 60
 d 1.0
 """,
     "sample_bottle": """# sample_bottle.mtl
@@ -257,18 +182,9 @@ d 1.0
 
 USD_MATS = {
     "test_tube": {"tube": dict(diffuse=(0.80, 0.88, 0.95), opacity=0.35, roughness=0.05)},
-    "test_tube_rack": {
-        "base": dict(diffuse=(0.55, 0.42, 0.30), roughness=0.6),
-        "post": dict(diffuse=(0.55, 0.42, 0.30), roughness=0.6),
-        "plate": dict(diffuse=(0.58, 0.45, 0.32), roughness=0.6),
-    },
     "spoon": {
         "handle": dict(diffuse=(0.70, 0.71, 0.74), metallic=0.85, roughness=0.35),
         "spoon_head": dict(diffuse=(0.72, 0.73, 0.76), metallic=0.85, roughness=0.35),
-    },
-    "wash_bottle": {
-        "body": dict(diffuse=(0.90, 0.92, 0.95), opacity=0.70, roughness=0.3),
-        "cap": dict(diffuse=(0.95, 0.95, 0.95), roughness=0.4),
     },
     "sample_bottle": {
         "bottle": dict(diffuse=(0.38, 0.24, 0.14), roughness=0.3),
@@ -279,18 +195,14 @@ USD_MATS = {
 
 GROUPS = {
     "test_tube": ["tube"],
-    "test_tube_rack": ["base", "post", "plate"],
     "spoon": ["handle", "spoon_head"],
-    "wash_bottle": ["body", "cap"],
     "sample_bottle": ["bottle", "stopper"],
     "sample_powder": ["powder"],
 }
 
 BUILDERS = {
     "test_tube": build_test_tube,
-    "test_tube_rack": build_test_tube_rack,
     "spoon": build_spoon,
-    "wash_bottle": build_wash_bottle,
     "sample_bottle": build_sample_bottle,
     "sample_powder": build_sample_powder,
 }
@@ -344,7 +256,7 @@ def main():
             f.write(obj)
         with open(os.path.join(OUT_OBJ, f"{name}.mtl"), "w", encoding="utf-8") as f:
             f.write(MTL[name])
-        make_usd(obj_path, os.path.join(OUT_USD, f"{name}.usd"), USD_MATS[name])
+        make_usd(obj_path, os.path.join(OUT_USD, f"{name}_simple.usd"), USD_MATS[name])
     print("DONE")
 
 

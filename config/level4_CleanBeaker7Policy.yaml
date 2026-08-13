@@ -5,7 +5,7 @@ mode: "collect"
 task_type: "cleanbeaker"
 controller_type: "cleanbeaker7policy"
 
-usd_path: "assets/chemistry_lab/hard_task/Scene1_hard.usd"
+usd_path: "assets/scenes/e_physical/e4_clean_beaker/e4_clean_beaker.usd"
 target_beaker: "/World/target_beaker"
 target_sub_beaker: "/World/target_beaker/mesh"
 beaker_1: "/World/beaker_hard_1"

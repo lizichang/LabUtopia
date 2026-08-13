@@ -29,9 +29,9 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-V17 = os.path.join(ROOT, "assets", "chemistry_lab", "lab_flametest", "lab_flametest_v17.usd")
-OLD = os.path.join(ROOT, "assets", "chemistry_lab", "lab_flametest", "lab_flametest.usd")
-LAMP = os.path.join(ROOT, "assets", "chemistry_lab", "alcohol_lamp.usd")
+V17 = os.path.join(ROOT, "assets", "scenes", "c_flame", "c1_flame_wire_solid", "c1_flame_wire_solid.usd")
+OLD = os.path.join(ROOT, "assets", "scenes", "c_flame", "c1_flame_wire_solid", "lab_flametest.usd")
+LAMP = os.path.join(ROOT, "assets", "equipment", "alcohol_lamp.usd")
 
 # v42：酒精灯世界位置（桌面 z=0.80；与 task LAMP_POS/IGNITE_POS、controller
 # IGNITE/FLAME_HOLD/CAP_BURNER (0.5132,0.5256) 对齐。旧值 (0.36,0.18) 是 v24 遗留，
@@ -1066,7 +1066,7 @@ def add_static_collision(target_layer):
 
 
 # v24 第 2 步（防穿模）：瓶塞(25.2mm)×2 + 灯帽(37.2mm) 转真刚体。
-# 照 assets/chemistry_lab/lab_003/clock.usd 里 beaker 的物理配方：
+# 照 assets/scenes/base/lab_003/clock.usd 里 beaker 的物理配方：
 #   physics:rigidBodyEnabled=True, physics:collisionEnabled=True,
 #   physics:approximation=convexDecomposition,
 #   physxCollision:contactOffset=0.002, physxCollision:restOffset=-0.001

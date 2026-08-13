@@ -66,7 +66,12 @@ python -m isaacsim --generate-vscode-settings
 ```
 LabSim/
 ├── assets/                # 资源文件目录
-│   ├── chemistry_lab/     # 化学实验室场景资源
+│   ├── equipment/         # 实验室器材资产（酒精灯/试管/量筒等）
+│   ├── scenes/            # 实验场景文件，按动作分类
+│   │   ├── base/          #   通用基础场景（lab_001 / lab_003）
+│   │   ├── c_flame/       #   C 类焰色燃烧场景
+│   │   ├── d_wetchem/     #   D 类湿化学场景
+│   │   └── e_physical/    #   E 类物理检测场景
 │   ├── fetch/             # Fetch机器人相关资源
 │   ├── navigation/        # 导航任务相关资源
 │   └── robots/            # 机器人模型资源
@@ -146,7 +151,7 @@ controller_type: "pick"       # 控制器类型，用于在工厂类中创建
 mode: "collect"               # 模式：infer or collect
 
 # 场景配置
-usd_path: "assets/chemistry_lab/pick_task/scene.usd" 
+usd_path: "assets/scenes/base/lab_001/lab_001.usd"
 
 # 任务参数
 task:

@@ -5,7 +5,7 @@ controller_type: "stirglassrod"
 
 mode: "collect"
 
-usd_path: "assets/chemistry_lab/lab_003/lab_003.usd"
+usd_path: "assets/scenes/base/lab_003/lab_003.usd"
 obj_path: "/World/glass_rod"  
 sub_obj_path: "/World/glass_rod/Cylinder"
 target_path: "/World/target_beaker"

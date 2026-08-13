@@ -5,7 +5,7 @@ controller_type: "shake"
 
 mode: "collect"  # "collect" or "infer"
 
-usd_path: "assets/chemistry_lab/lab_003/lab_003.usd"
+usd_path: "assets/scenes/base/lab_003/lab_003.usd"
 obj_path: "/World/beaker_2"
 sub_obj_path: "/World/beaker_2/mesh"
 

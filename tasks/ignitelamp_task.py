@@ -8,7 +8,7 @@ from tasks.base_task import BaseTask
 class IgniteLampTask(BaseTask):
     """Task definition for "ignite the alcohol lamp".
 
-    The scene must contain an alcohol lamp asset (see assets/chemistry_lab/alcohol_lamp.usd)
+    The scene must contain an alcohol lamp asset (see assets/equipment/alcohol_lamp.usd)
     referenced into the scene USD. The lamp provides these prims (relative to the lamp root):
         - <lamp>/cap          the removable cap (driven kinematically by this task)
         - <lamp>/body         the lamp body (static visual)

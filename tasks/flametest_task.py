@@ -40,7 +40,7 @@ v24 修正（酒精灯替换本生灯 + 抓取/焰色物理修正）：
 
 v20 修正（试管架移入工作空间 + 夹爪开合 = 物体直径）：
   - controller joint7 = 物体直径 / 2（从 USD mesh extent 精确提取）
-  - 场景用 lab_flametest_v17.usd（含 TestTubeRack at (0.38,-0.14,0.80)）
+  - 场景用 c1_flame_wire_solid.usd（原 lab_flametest_v17.usd，含 TestTubeRack at (0.38,-0.14,0.80)）
   - 铂丝 rotateY(120°) 斜置：origin 在手柄底部 (0.368,-0.14,0.895)
     手柄中心 world=(0.417,-0.14,0.867)，环中心 world=(0.511,-0.14,0.812)
   - 滴管竖直放在试管架孔中：origin 在管口 (0.416,-0.14,0.812)

@@ -50,6 +50,7 @@ from factories.robot_factory import create_robot
 from utils.object_utils import ObjectUtils
 from factories.task_factory import create_task
 from factories.controller_factory import create_controller
+from catalogue.factory import register_catalogue_actions
 
 class FFmpegVideoWriter:
     """ffmpeg 子进程视频写入器（fragmented MP4 模式）。
@@ -118,7 +119,10 @@ def main():
     add_reference_to_stage(usd_path=os.path.abspath(cfg.usd_path), prim_path="/World")
     
     ObjectUtils.get_instance(stage)
-    
+
+    # catalogue 动作库注册（每个动作一个独立 snake_case 键，类复用现有实现）
+    register_catalogue_actions()
+
     task = create_task(
         cfg.task_type,
         cfg=cfg,

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""修复 USD 场景中的绝对路径并生成 lab_flametest_v17.usd
+"""修复 USD 场景中的绝对路径并生成 lab_flametest_v17.usd（已废弃）
+
+⚠️ 历史脚本：本脚本是 v17 时代的转换工具（v17fix -> v17.usd），
+现规范文件已是 assets/scenes/c_flame/c1_flame_wire_solid/c1_flame_wire_solid.usd
+（由 fix_flametest_v17.py 产出并重命名）。本脚本仅作历史保留，输出到 legacy 文件名
+lab_flametest_v17.usd，不覆盖 c1_flame_wire_solid.usd。
 
 用法（在服务器或本地仓库根目录执行）：
     python fix_flametest_scene.py
@@ -7,7 +12,8 @@
 原理：
   v17fix 是 USDA 文本文件，其中包含本地绝对路径（E:/浙江大学/...）
   这些路径在服务器上无法解析，导致贴图/MDL 丢失 → 红色背景
-  本脚本将绝对路径替换为相对路径（../lab_001/ → 从 lab_flametest/ 指向 lab_001/）
+  本脚本将绝对路径替换为相对路径（../../base/lab_001/ → 从
+  c_flame/c1_flame_wire_solid/ 指向 scenes/base/lab_001/）
   然后输出为 lab_flametest_v17.usd
 """
 import os
@@ -15,10 +21,10 @@ import re
 import sys
 
 def main():
-    # 定位场景目录
+    # 定位场景目录（新分类结构：scenes/c_flame/c1_flame_wire_solid/）
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    scene_dir = os.path.join(script_dir, 'assets', 'chemistry_lab', 'lab_flametest')
-    
+    scene_dir = os.path.join(script_dir, 'assets', 'scenes', 'c_flame', 'c1_flame_wire_solid')
+
     v17fix = os.path.join(scene_dir, 'lab_flametest.usd.v17fix')
     v17_usd = os.path.join(scene_dir, 'lab_flametest_v17.usd')
     
@@ -31,15 +37,15 @@ def main():
         text = f.read()
     
     # 定义需要替换的绝对路径前缀（正斜杠和反斜杠两种形式）
-    # lab_001 的贴图和材质路径：E:/.../chemistry_lab/lab_001/ -> ../lab_001/
+    # lab_001 的贴图和材质路径：E:/.../chemistry_lab/lab_001/ -> ../../base/lab_001/
     prefixes = [
         # 正斜杠形式（asset 引用 @...@ 中的路径）
-        (r'E:/[^@]*?/chemistry_lab/lab_001/', '../lab_001/'),
+        (r'E:/[^@]*?/chemistry_lab/lab_001/', '../../base/lab_001/'),
         # 反斜杠形式（注释中的路径）
-        (r'E:\\[^@]*?\\chemistry_lab\\lab_001\\', '../lab_001/'),
+        (r'E:\\[^@]*?\\chemistry_lab\\lab_001\\', '../../base/lab_001/'),
         # 通用：任何 E: 开头的本地路径指向 chemistry_lab 下的子目录
-        (r'E:/[^@]*?/chemistry_lab/', '../'),
-        (r'E:\\[^@]*?\\chemistry_lab\\', '../'),
+        (r'E:/[^@]*?/chemistry_lab/', '../../scenes/'),
+        (r'E:\\[^@]*?\\chemistry_lab\\', '../../scenes/'),
     ]
     
     original_text = text

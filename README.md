@@ -66,7 +66,12 @@ python -m isaacsim --generate-vscode-settings
 ```
 LabSim/
 ├── assets/                # Resource files directory
-│   ├── chemistry_lab/     # Chemistry lab scene resources
+│   ├── equipment/         # Lab equipment assets (alcohol lamp, test tubes, ...)
+│   ├── scenes/            # Experiment scene files, classified
+│   │   ├── base/          #   Generic base scenes (lab_001 / lab_003)
+│   │   ├── c_flame/       #   C-class flame/combustion scenes
+│   │   ├── d_wetchem/     #   D-class wet chemistry scenes
+│   │   └── e_physical/    #   E-class physical test scenes
 │   ├── fetch/             # Fetch robot resources
 │   ├── navigation/        # Navigation task resources
 │   └── robots/            # Robot model resources
@@ -145,7 +150,7 @@ controller_type: "pick"             # Controller type
 mode: "collect"                     # Mode: collect or infer
 
 # Scene configuration
-usd_path: "assets/chemistry_lab/pick_task/scene.usd"  # Scene file path
+usd_path: "assets/scenes/base/lab_001/lab_001.usd"  # Scene file path
 
 # Task parameters
 task:

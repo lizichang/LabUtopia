@@ -50,8 +50,8 @@ catalogue/
 
 | 编号 | 目录 | 名称 | 类型 | 状态 |
 |---|---|---|---|---|
-| C1 | `c_flame/c1_flame_wire_solid/` | 焰色反应（铂丝蘸取固体） | 单动作 | 已有实现 → flametest |
-| C2 | `c_flame/c2_cobalt_glass/` | 焰色反应（隔钴玻璃观察） | 单动作 | 已有实现 → flametest |
+| C1 | `c_flame/c1_flame_wire_solid/` | 焰色反应（铂丝蘸取固体） | 单动作 | 已填（复用 flametest） |
+| C2 | `c_flame/c2_cobalt_glass/` | 焰色反应（隔钴玻璃观察） | 单动作 | 待开发（需钴玻璃场景，现有 flametest 不含） |
 | C3 | `c_flame/c3_combustion_solid/` | 燃烧试验（固体） | 单动作 | 待开发 |
 | C4 | `c_flame/c4_combustion_liquid/` | 燃烧试验（液体） | 单动作 | 待开发 |
 
@@ -59,7 +59,7 @@ catalogue/
 
 | 编号 | 目录 | 名称 | 类型 | 状态 |
 |---|---|---|---|---|
-| D2-S | `d_wetchem/d2s_water_solubility/` | 固体样品水溶性测试 | 单动作 | 已有实现 → dissolve |
+| D2-S | `d_wetchem/d2s_water_solubility/` | 固体样品水溶性测试 | 单动作 | 待重写（原 dissolve 已废弃删除） |
 | D2-L | `d_wetchem/d2l_water_solubility/` | 液体样品水溶性测试 | 单动作 | 待开发 |
 | D3-S | `d_wetchem/d3s_acid_reagent/` | 酸性试剂滴加反应（固） | 单动作 | 模板 → dropperdrip |
 | D3-L | `d_wetchem/d3l_acid_reagent/` | 酸性试剂滴加反应（液） | 单动作 | 模板 → dropperdrip |
@@ -98,11 +98,23 @@ catalogue/
 
 | v10 动作 | 现有实现（config / task / controller） |
 |---|---|
-| C1/C2 焰色反应 | `config/level2_FlameTest.yaml` + `tasks/flametest_task.py` + `controllers/flametest_controller.py` |
-| D2-S 水溶性 | `config/level2_Dissolve.yaml` + `tasks/dissolve_task.py` + `controllers/dissolve_controller.py` |
+| C1 焰色反应（铂丝蘸取固体） | `config/level2_FlameTest.yaml` + `tasks/flametest_task.py` + `controllers/flametest_controller.py`（catalogue 已填，见 `c_flame/c1_flame_wire_solid/`） |
 | D3-D9 试剂滴加模板 | `config/level2_DropperDrip.yaml` + `tasks/dropperdrip_task.py` + `controllers/dropperdrip_controller.py` |
 | B 类加热（近 B2） | `config/level2_HeatLamp.yaml` + `tasks/heatlamp_task.py` + `controllers/heatlamp_controller.py` |
 | 点火前置（B/C 类共用） | `config/level2_IgniteLamp.yaml` + `tasks/ignitelamp_task.py` + `controllers/ignitelamp_controller.py` |
+
+> **C2（隔钴玻璃观察）说明**：现有 flametest 场景与流程**不含钴玻璃**（已 grep 确认无 cobalt 引用）。
+> 隔钴玻璃观察需要新场景（钴玻璃片 + 观察步骤，用于滤黄焰以辨 K 紫），C2 归为待开发。
+
+## catalogue 内已填动作的运行方式
+
+每个已填动作目录含自包含 `config.yaml`（键 = 目录 snake_case，工厂已注册），直接：
+
+```bash
+python main.py --config-dir catalogue/c_flame/c1_flame_wire_solid --config-name config --backend gpu
+```
+
+原 `config/level2_*.yaml`（键如 `flametest`）继续可用，两条路径指向同一实现类。
 
 ## 新增动作流程
 

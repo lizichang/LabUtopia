@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""生成 lab_005.usd（胶头滴管滴加测试场景）。
+"""生成 d3_dropper_drip.usd（胶头滴管滴加测试场景，lab_005）。
 
 基于 lab_001.usd 副本：
 - 删除焰色反应器材（AlcoholLamp/BunsenBurner/CobaltGlass/PlatinumWire/SampleDish）
@@ -13,13 +13,15 @@
   HClBottle    (0.22, -0.10) lab_001 原有，瓶口 z≈0.879
   TestTubeRack (0.30, 0.08)，TestTube 插在孔中（管底 z=0.809，管口 z=0.929）
 
-引用路径用相对路径（../xxx.usd），按 USD 规范相对场景文件目录解析，跨机器可用。
+引用路径用相对路径（../../../equipment/xxx.usd），按 USD 规范相对场景文件目录
+解析（跨机器可用，Export 烘平后不依赖 equipment/）。
 """
 import os
 from pxr import Usd, UsdGeom, UsdShade, Sdf, Gf
 
-SRC = r"E:/浙江大学/星辰计划/LabVLA_第一期轮转/LabUtopia/assets/chemistry_lab/lab_001/lab_001.usd"
-OUT_DIR = r"E:/浙江大学/星辰计划/LabVLA_第一期轮转/LabUtopia/assets/chemistry_lab/lab_005"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC = os.path.join(REPO, "assets", "scenes", "base", "lab_001", "lab_001.usd")
+OUT_DIR = os.path.join(REPO, "assets", "scenes", "d_wetchem", "d3_dropper_drip")
 
 REMOVE = [
     "/World/AlcoholLamp",
@@ -29,11 +31,12 @@ REMOVE = [
     "/World/SampleDish",
 ]
 
-# (name, asset_file(相对 lab_005/ 目录), translate)
+# (name, asset_file, translate)  asset_file 用相对路径 ../../../equipment/X.usd，
+# 按 USD 规范相对 SRC(lab_001) 场景文件目录解析（assets/equipment/），Export 烘平。
 REFS = [
-    ("Dropper", "../dropper.usd", (0.36, 0.16, 0.80)),
-    ("TestTubeRack", "../test_tube_rack.usd", (0.30, 0.08, 0.80)),
-    ("TestTube", "../test_tube.usd", (0.30, 0.08, 0.809)),
+    ("Dropper", "../../../equipment/dropper.usd", (0.36, 0.16, 0.80)),
+    ("TestTubeRack", "../../../equipment/test_tube_rack.usd", (0.30, 0.08, 0.80)),
+    ("TestTube", "../../../equipment/test_tube.usd", (0.30, 0.08, 0.809)),
 ]
 
 # 内建效果 prim: (name, kind, radius, height, translate, color, opacity, visible)
@@ -97,7 +100,7 @@ def main():
             UsdGeom.Imageable(geom).MakeInvisible()
         print(f"builtin {name} at {t} visible={visible}")
 
-    out_file = os.path.join(OUT_DIR, "lab_005.usd")
+    out_file = os.path.join(OUT_DIR, "d3_dropper_drip.usd")
     stage.Export(out_file)
     print("SAVED", out_file)
 

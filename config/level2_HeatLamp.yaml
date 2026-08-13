@@ -8,7 +8,7 @@ mode: "collect"
 # 场景：lab_003（酒精灯 /World/AlcoholLamp、蒸汽 /World/Steam、铁架台 /World/IronStand、
 # 石棉网 /World/AsbestosGauze、火柴 /World/Match、火柴火 /World/MatchFlame 已引用进场景；
 # 烧杯为场景原有物理物体）
-usd_path: "assets/chemistry_lab/lab_003/lab_003.usd"
+usd_path: "assets/scenes/base/lab_003/lab_003.usd"
 
 max_episodes: 100
 

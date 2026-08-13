@@ -12,6 +12,8 @@
 
 from factories.task_factory import register_task
 from factories.controller_factory import register_controller
+from catalogue.c_flame.c1_flame_wire_solid.task import FlameTestTask
+from catalogue.c_flame.c1_flame_wire_solid.controller import FlameTestTaskController
 
 
 def register_catalogue_actions() -> None:
@@ -35,9 +37,11 @@ def register_catalogue_actions() -> None:
     # register_controller("d2s_water_solubility", D2SWaterSolubilityTaskController)
     ```
 
-    注意：现有已实现动作（flametest→C1/C2、dissolve→D2-S、dropperdrip→D3-D9 模板、
-    heatlamp→B 类、ignitelamp→点火前置）已在 factories/*.py 直接注册，catalogue 内
-    不做重复注册、不迁移。
+    注意：flametest→C1/C2、dissolve→D2-S、dropperdrip→D3-D9 模板、heatlamp→B 类、
+    ignitelamp→点火前置等**现有实现**已在 factories/*.py 直接注册（键如 "flametest"）。
+    catalogue 内为每个动作注册**独立的 snake_case 键**（如 "c1_flame_wire_solid"），
+    类复用现有实现（re-export），不迁移、不复制逻辑。
     """
-    # —— 已实现动作的注册集中在这里，逐条追加 ——
-    pass
+    # C1 焰色反应（复用现有 flametest 实现）
+    register_task("c1_flame_wire_solid", FlameTestTask)
+    register_controller("c1_flame_wire_solid", FlameTestTaskController)

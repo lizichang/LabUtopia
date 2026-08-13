@@ -5,7 +5,7 @@ controller_type: "pickplace"
 
 mode: "collect"
 
-usd_path: "assets/chemistry_lab/lab_001/lab_001.usd"
+usd_path: "assets/scenes/base/lab_001/lab_001.usd"
 table_path: "/World/table/surface/mesh"
 target_sub_path: "/World/target_plat/mesh"
 per_episode: 20

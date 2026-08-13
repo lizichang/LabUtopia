@@ -13,8 +13,8 @@ from controllers.base_controller import BaseController
 class CatalogueBaseController(BaseController):
     """catalogue 复合实验控制器骨架。
 
-    封装 AGENTS.md §3.7 的 Phase 样板（以 `controllers/dissolve_controller.py`
-    为最新完整范本）：
+    封装 AGENTS.md §3.7 的 Phase 样板（原范本 `controllers/dissolve_controller.py`
+    已废弃删除，D2-S 重写后以 `catalogue/d_wetchem/d2s_water_solubility/` 为准）：
 
     **Controller 侧四件套**
     - `Phase` 枚举（如 SCOOP_POWDER → POUR_WATER → SHAKE → OBSERVE → FINISHED）
@@ -41,7 +41,7 @@ class CatalogueBaseController(BaseController):
     """
 
     def step(self, state: Dict[str, Any]) -> Tuple[Any, bool, bool]:
-        """BaseController 抽象方法实现：按 mode 分派（dissolve 同款写法）。"""
+        """BaseController 抽象方法实现：按 mode 分派（Phase 样板写法）。"""
         if self.mode == "collect":
             return self._step_collect(state)
         elif self.mode == "infer":
@@ -50,9 +50,8 @@ class CatalogueBaseController(BaseController):
             raise ValueError(f"Invalid mode: {self.mode}")
 
     def _step_collect(self, state: Dict[str, Any]) -> Tuple[Any, bool, bool]:
-        """Phase 主循环参考实现（子类按需覆写或改造成 dissolve 的写法）。
+        """Phase 主循环参考实现（子类按需覆写）。骨架（原 dissolve 实现）：
 
-        dissolve_controller._step_collect 的骨架：
             1. self._check_phase_success(state)      —— 先判当前 phase 是否成功
             2. active_controller 未完成 → _phase_action 产动作
             3. controller 完成后再判 phase 成功，成功则 _advance_phase
@@ -60,7 +59,7 @@ class CatalogueBaseController(BaseController):
         """
         raise NotImplementedError(
             f"{type(self).__name__} 未实现 _step_collect：参考 "
-            "controllers/dissolve_controller.py 的 Phase 主循环"
+            "catalogue/d_wetchem/d2s_water_solubility/ 的 Phase 主循环"
         )
 
     def _step_infer(self, state: Dict[str, Any]) -> Tuple[Any, bool, bool]:

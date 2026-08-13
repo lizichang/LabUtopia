@@ -1,7 +1,10 @@
-name: Level2_FlameTest
+name: C1_FlameWireSolid
 
-task_type: "flametest"
-controller_type: "flametest"
+# catalogue 键：c1_flame_wire_solid（工厂里已注册 → 复用 tasks/flametest_task 与
+# controllers/flametest_controller）。本文件是 config/level2_FlameTest.yaml 的自包含副本，
+# 运行：python main.py --config-dir catalogue/c_flame/c1_flame_wire_solid --config-name config
+task_type: "c1_flame_wire_solid"
+controller_type: "c1_flame_wire_solid"
 
 mode: "collect"
 

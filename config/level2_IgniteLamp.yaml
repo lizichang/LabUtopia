@@ -6,7 +6,7 @@ controller_type: "ignitelamp"
 mode: "collect"
 
 # 场景：lab_001（酒精灯已放置在 /World/AlcoholLamp，桌面 z≈0.80）
-usd_path: "assets/chemistry_lab/lab_001/lab_001.usd"
+usd_path: "assets/scenes/base/lab_001/lab_001.usd"
 
 max_episodes: 100
 
