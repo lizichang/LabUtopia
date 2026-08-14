@@ -18,9 +18,13 @@ scripts/post_fix_usd.py (pxr 后处理: 删残留灯光 + 补 transmission/opaci
 assets/chemistry_lab/<name>.usd
 
 两条管线汇合 ↓
-scripts/gen_lab004_scene.py (REMOVE/REFS/BUILTIN 组装模板)
+scripts/gen_clean_lab.py (lab_001 → 干净底场景：删杂物 + 台面抬到 0.80 + 烘平)
         ↓
-assets/chemistry_lab/lab_XXX/lab_XXX.usd
+assets/scenes/base/lab_clean/lab_clean.usd  (底场景 = 所有新实验的起点)
+        ↓
+scripts/gen_XXX_scene.py (从 lab_clean 开始：REFS/BUILTIN 组装，无 REMOVE)
+        ↓
+assets/scenes/<分类>/<实验>/<实验>.usd
 ```
 
 > 五个模板脚本都在仓库 `scripts/` 目录下（git 管理）。执行前先确认存在：`git ls-files scripts/`。
@@ -375,26 +379,25 @@ print({a.GetName(): a.Get() for a in sh.GetAttributes()})
 
 ---
 
-## 场景组装脚本骨架（gen_labXXX_scene.py，完整可运行版）
+## 场景组装脚本骨架（gen_XXX_scene.py，完整可运行版）
 
-完整示例见 `scripts/gen_lab004_scene.py`（D2 场景，REMOVE 6 个 prim + 5 个 REFS + 3 个 BUILTIN）。运行环境：本地 anaconda base python（有 pxr）。骨架如下，照抄改 3 个列表（① ② ③ 标记）：
+新实验从干净底场景 `assets/scenes/base/lab_clean/lab_clean.usd` 开始——它由 `scripts/gen_clean_lab.py` 从 lab_001 生成（删杂物 + 台面抬到 0.80 + 烘平自包含），**删杂物/抬台面已固化在底场景，场景脚本没有 REMOVE 部分**；lab_001 房间结构有变就重跑 gen_clean_lab.py，不手改底场景。历史示例 `scripts/gen_lab004_scene.py`（D2 场景，REMOVE 6 prim + 5 REFS + 3 BUILTIN）是先删杂物再组装的老写法，思路相同、现已被底场景取代。运行环境：本地 conda env 有 pxr。骨架如下，照抄改 2 个列表（① ② 标记）：
 
 ```python
 # -*- coding: utf-8 -*-
-"""生成 lab_0XX.usd（基于 lab_001.usd 副本组装场景）。"""
+"""生成 <实验>.usd（基于 lab_clean 干净底场景 + 专用器材 + 效果 prim）。"""
 import os
 from pxr import Usd, UsdGeom, UsdShade, Sdf, Gf
 
-SRC = r"E:/.../assets/chemistry_lab/lab_001/lab_001.usd"   # 基础场景（只当输入，严禁 Save）
-OUT_DIR = r"E:/.../assets/chemistry_lab/lab_0XX"
-ASSET = r"E:/.../assets/chemistry_lab"
+SRC = r"<repo>/assets/scenes/base/lab_clean/lab_clean.usd"   # 干净底场景（只当输入，严禁 Save）
+OUT_DIR = r"<repo>/assets/scenes/<分类>/<实验>"
+ASSET = r"<repo>/assets/equipment"
 
-REMOVE = ["/World/xxx_prim", ...]        # ① 要删除的 prim
-REFS = [                                 # ② 资产引用 (name, 资产文件名, translate)
+REFS = [                                 # ① 资产引用 (name, 资产文件名, translate)
     ("TestTubeRack", "test_tube_rack.usd", (0.30, 0.08, 0.80)),
     ("TestTube", "test_tube.usd", (0.30, 0.08, 0.809)),    # 管底贴台面
 ]
-BUILTIN = [                              # ③ 内建效果 prim（初始隐藏）
+BUILTIN = [                              # ② 内建效果 prim（初始隐藏）
     # (name, kind, r, height, translate, color, opacity)
     #   kind="cylinder"：直壁容器（烧杯/试管）液柱，r < 内径
     #   kind="frustum" ：收口容器（锥形瓶/容量瓶）液体，r = 液面处内半径（坑 18）
@@ -444,16 +447,11 @@ def add_frustum(stage, prim_path, r_bot, r_top, height, t, color, opacity):
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    stage = Usd.Stage.Open(SRC)                  # 打开副本；最后必须 Export 新路径
+    stage = Usd.Stage.Open(SRC)                  # 打开底场景副本；最后必须 Export 新路径
     root = stage.GetPrimAtPath("/World")
     assert root.IsValid(), "/World not found"
 
-    for path in REMOVE:                          # 1) 删除不需要的 prim
-        prim = stage.GetPrimAtPath(path)
-        if prim.IsValid():
-            stage.RemovePrim(Sdf.Path(path))
-
-    for name, asset_file, t in REFS:             # 2) 引用资产 + translate（幂等）
+    for name, asset_file, t in REFS:             # 1) 引用资产 + translate（幂等）
         prim = UsdGeom.Xform.Define(stage, f"/World/{name}")
         prim.GetPrim().GetReferences().AddReference(os.path.join(ASSET, asset_file))
         ops = prim.GetOrderedXformOps()
@@ -462,7 +460,7 @@ def main():
         else:
             prim.AddTranslateOp().Set(Gf.Vec3d(*t))
 
-    for name, kind, r, h, t, color, opacity in BUILTIN:   # 3) 内建效果 prim
+    for name, kind, r, h, t, color, opacity in BUILTIN:   # 2) 内建效果 prim
         prim_path = f"/World/{name}"
         if kind == "frustum":
             add_frustum(stage, prim_path, r, r, h, t, color, opacity)  # r_bot/r_top 按内腔调整
@@ -475,7 +473,7 @@ def main():
             add_material(stage, geom.GetPrim(), color, opacity)
             UsdGeom.Imageable(geom).MakeInvisible()   # 初始隐藏，事件触发后显示
 
-    out_file = os.path.join(OUT_DIR, "lab_0XX.usd")
+    out_file = os.path.join(OUT_DIR, "<实验>.usd")
     stage.Export(out_file)                       # 禁止 Save()（坑 2）！
     print("SAVED", out_file)
 
@@ -484,7 +482,15 @@ if __name__ == "__main__":
     main()
 ```
 
-要点：REFS 用 `AddReference(资产绝对路径)`（gen_lab004_scene.py 风格），不是 AddInternalReference；BUILTIN 初始 `MakeInvisible()`，由任务事件驱动显隐；液体形状必须匹配容器内腔（坑 18）——直壁容器圆柱（半径 < 内径），收口容器截锥（手写 Mesh，Cone 是尖锥不能用）。
+要点：从 lab_clean 底场景开始（勿再删杂物/抬台面）；REFS 用 `AddReference(资产绝对路径)`（gen_lab004_scene.py 风格），不是 AddInternalReference；BUILTIN 初始 `MakeInvisible()`，由任务事件驱动显隐；液体形状必须匹配容器内腔（坑 18）——直壁容器圆柱（半径 < 内径），收口容器截锥（手写 Mesh，Cone 是尖锥不能用）。
+
+### 干净底场景 lab_clean（所有新实验的起点）
+
+- 位置：`assets/scenes/base/lab_clean/lab_clean.usd`（烘平自包含，defaultPrim=/World，无引用弧）
+- 内容：lab_001 房间骨架（table + Cube 台面 + GroundPlane + CylinderLight + PhysicsScene + Looks），**台面顶 z=0.80**（d2s/flametest 已验证坐标），无任何器材
+- 生成：`python scripts/gen_clean_lab.py`——从 `assets/scenes/base/lab_001/lab_001.usd` 出发：白名单 KEEP={table,Cube,GroundPlane,CylinderLight,PhysicsScene,Looks} 删其余 19 个器材/家具 prim → 抬台面到 0.80 → `stage.Export` 烤平
+- 维护：**绝不手改 lab_clean.usd**。lab_001 房间结构/灯光/材质/物理有变 → 改 `scripts/gen_clean_lab.py` 后重跑再生成
+- 验证：`UsdGeom.GetStageMetersPerUnit==1.0`、`/World` 只有 6 骨架 prim、Cube 顶=0.80、reference arcs=0、打开无 Cabinet 离线 http 警告
 
 ---
 

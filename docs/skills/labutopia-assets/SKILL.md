@@ -24,16 +24,16 @@ version: 1.5.0
 4. **建模**：按结构规格表逐部件实现——旋转对称件用 lathe（PROFILE 剖面），非旋转体件用基本体 helpers（cylinder/box/sphere），部件按相对位置摆放（套入/贴合/独立），不要边建边想
 5. **渲染验证**：Blender 管线出 EEVEE 渲染 PNG，**与调研时存的实物图对照**形状/比例/部件齐全度；MeshBuilder 管线用本地 pxr 验证 bbox/geometry_center/参考点
 6. **导出+后处理**：清相机灯光残留、post_fix_usd.py 补 transmission（玻璃）/opacity（半透明）
-7. **场景组装**：写 `scripts/gen_lab004_scene.py` 风格的场景脚本（REMOVE / REFS / BUILTIN 三部分，见 reference.md）
+7. **场景组装**：从 `assets/scenes/base/lab_clean/lab_clean.usd` 干净底场景开始（已含房间骨架+台面顶 0.80，由 `scripts/gen_clean_lab.py` 从 lab_001 生成，勿手改产物），写 `scripts/gen_XXX_scene.py` 风格的场景脚本（REFS / BUILTIN 两部分——删杂物/抬台面已固化在底场景，无 REMOVE，见 reference.md）
 8. **交付**：输出覆盖清单 + 测试指令
 
 ## 关键约束
 
 - 所有生成/验证脚本写在 workspace 暂存区，**用 Bash cp 复制到仓库**（Write 工具不能直接写 LabUtopia）
-- 模板脚本（`scripts/gen_dissolve_assets.py`、`scripts/obj2usd.py`、`scripts/obj_gen.py`、`scripts/gen_lab004_scene.py`、`scripts/blender_asset_template.py`、`scripts/post_fix_usd.py`）随仓库 git 管理；`obj_gen.py`（MeshBuilder 定义）是管线 A 的必需依赖，与 `gen_dissolve_assets.py`、`obj2usd.py` 成对出现（缺 obj_gen.py 则管线 A 无法运行）；若仓库缺失（如未 pull），先从 git 历史恢复（`git log --oneline -- scripts/` 找最近版本），不要自行重写
+- 模板脚本（`scripts/gen_dissolve_assets.py`、`scripts/obj2usd.py`、`scripts/obj_gen.py`、`scripts/gen_lab004_scene.py`、`scripts/gen_clean_lab.py`、`scripts/blender_asset_template.py`、`scripts/post_fix_usd.py`）随仓库 git 管理；`obj_gen.py`（MeshBuilder 定义）是管线 A 的必需依赖，与 `gen_dissolve_assets.py`、`obj2usd.py` 成对出现（缺 obj_gen.py 则管线 A 无法运行）；若仓库缺失（如未 pull），先从 git 历史恢复（`git log --oneline -- scripts/` 找最近版本），不要自行重写
 - 场景保存必须 `stage.Export(新路径)`，**禁止 `stage.Save()`**（会污染源文件，见坑 2）
 - 材质规范（两套管线统一口径）：玻璃 → Principled BSDF transmission=1.0 + ior=1.45 + roughness≈0.05（USD 里后处理补 transmission，见坑 12）；金属 → metallic≈0.85 roughness≈0.3；陶瓷/塑料 → metallic=0、roughness≈0.4-0.6；纸/棉 → roughness≈0.9
-- 资产文件放 `assets/chemistry_lab/`，场景放 `assets/chemistry_lab/lab_XXX/lab_XXX.usd`
+- 资产文件放 `assets/equipment/`，场景放 `assets/scenes/<分类>/<实验>/<实验>.usd`；干净底场景 `assets/scenes/base/lab_clean/lab_clean.usd`（由 `scripts/gen_clean_lab.py` 从 lab_001 生成，勿手改产物）
 - 焰色实验场景（`lab_flametest_v17.usd`）由幂等管线 `scripts/fix_flametest_v17.py` 生成，**改完 USD 必须重跑**；该脚本的 `reposition_*` 会把物体复位到 `*_FIXED_POS` 常量——**移动物体位置必须同步 6 处**（见 reference「移动物体位置同步清单」）；v17.usd 是 LFS 二进制，用 usd-core 改坐标（坑 32），git diff 在沙箱会因 LFS clean 过滤器失败
 - **器材放进试管架必须插进孔里（不许放在板上/孔外）**：`assets/equipment/test_tube_rack.usd`（根 `/TestTubeRack`，三层板，长边沿 y）顶层板有 **14 孔 = 2列×7行，孔径 Ø≈22.4mm**。孔心相对架原点：
   - 列 x ≈ **-0.019（左）/ +0.019（右）**
@@ -63,7 +63,7 @@ version: 1.5.0
 17. **Blender 5.0 Principled BSDF 输入改名**：4.x 起 `Specular` 已改名为 `Specular IOR Level`，直接 `bsdf.inputs["Specular"]` 会 KeyError。模板 set_mat 已用兼容检测（`if "Specular" in bsdf.inputs ... elif "Specular IOR Level" in ...`），新写材质代码照抄，勿直接用旧名。
 18. **液体/标记 BUILTIN 形状必须匹配容器内腔**：烧杯/试管等直壁容器内腔是圆柱，BUILTIN 液柱用圆柱（半径 < 内径）没问题；但锥形瓶/容量瓶等**收口容器内腔是锥形**（上窄下宽），直液柱会悬空穿模（液面不贴壁、露出空隙）。此类容器液体须用截锥/锥台形状（下半径 = 底部内半径，上半径 = 液面高度处的内半径，高 = 液面高度），或把液面压在锥面以下（低于收口起始高度）。判断依据：内腔轮廓是直上直下还是逐渐收窄。
 19. **post_fix_usd.py 原地 `stage.Save()` 是预期行为**：该脚本处理的是资产副本本身（补 transmission 就是要改这个文件），与坑 2 的"禁止 Save"不冲突——坑 2 禁止的是把**源场景/被引用资产**（lab_001/lab_003.usd 等）当输入或让 Save 污染它们。区分方法：当前文件是本次工作新产出的资产/副本 → 可原地 Save；是已有场景或被引用的源文件 → 只能 Export 新路径。
-20. **通用场景混入专用器材**：lab_001.usd 曾被当作"杂物间"堆积所有器材（含焰色反应专用的 BunsenBurner/PlatinumWire/HClBottle/SampleDish/CobaltGlass），导致 ~16 个使用 lab_001 的实验场景里都出现本生灯。原则：**通用场景只放通用器材**（桌子/烧杯/锥形瓶/干燥箱/柜子等），**专用器材放专用场景**（如 lab_flametest_v17.usd）。新建专用场景 = 从 lab_001 复制 + 删除不需要的 prim + 添加专用器材，不要在通用场景里堆积。
+20. **通用场景混入专用器材**：lab_001.usd 曾被当作"杂物间"堆积所有器材（含焰色反应专用的 BunsenBurner/PlatinumWire/HClBottle/SampleDish/CobaltGlass），导致 ~16 个使用 lab_001 的实验场景里都出现本生灯。原则：**通用场景只放通用器材**（桌子/烧杯/锥形瓶/干燥箱/柜子等），**专用器材放专用场景**（如 lab_flametest_v17.usd）。新建专用场景 = 从 `assets/scenes/base/lab_clean/lab_clean.usd` 干净底场景开始（已含房间骨架+台面顶 0.80，由 `scripts/gen_clean_lab.py` 从 lab_001 生成，勿手改产物）+ 添加专用器材，不要在通用场景里堆积。
 21. **USD 资产路径必须用相对路径**：USD 文件中的 asset 属性（贴图、MDL 材质、子 USD 引用）如果用绝对路径（`E:/浙江大学/...`），换到 Linux 服务器后路径全部失效 → 贴图加载失败 → 桌面/物体显示为默认红色。生成或修改 USD 后必须检查所有 asset 属性使用相对路径（如 `../SubUSDs/textures/xxx.png`）。检查方法：pxr 遍历 `primSpec.attributes`，`typeName=='asset'` 的属性值不能含本地盘符前缀。
 22. **相机视角配置不当导致大面积空白或过窄**：Camera2 俯视全局视角默认 z=2.5 + focal=5（FOV~158°）→ 桌面覆盖 ~7m，但实际工作区仅 1m×0.5m → 90%画面空白。修复：z 降到 1.5（距桌面 0.7m）+ focal 增到 12（FOV~82°）→ 覆盖 ~1.2m 正好对齐工作区。Camera1 特写视角 focal 太大（如 25mm）→ 操作区域移出画面；太小（如 15mm）→ 火焰细节不足。调参方法：先算目标覆盖宽度 W，再 z = W/(2*tan(FOV/2))；FOV = 2*atan(36/(2*focal))（sensor≈36mm）。orientation 四元数顺序是 **(w,x,y,z)** 不是 (x,y,z,w)。用 `--snapshot 2` 快速导出 2 帧验证，不必跑完整实验。详见 reference.md「场景配置与相机调参」。
 23. **专用场景器材应引用资产文件而非内嵌几何**：在专用场景 USD（如 lab_flametest_v17.usd）中直接写 Mesh 几何体，改器材需逐场景修改 → 不可维护。正确做法：每件器材单独存为 `assets/chemistry_lab/<name>.usd`，场景中用 `references = [@../<name>.usd@</root>]` 引用，修改一处即全局生效。引用语法：`def Xform "BunsenBurner" { references = [@../bunsen_burner.usd@</root>] xformOp:translate = (...) }`。单位不匹配时加 `xformOp:scale = (0.001,0.001,0.001)`（mm→m）。引用资产的碰撞属性和材质绑定随引用继承——源资产没有碰撞，引用后也没有，需在源资产里加。详见 reference.md「USD 资产引用架构」。
@@ -88,6 +88,7 @@ version: 1.5.0
 - [ ] lab_XXX.usd 引用的资产路径存在且大小正常
 - [ ] 参考点全部在工作区内，无互相穿透
 - [ ] lab_001.usd 等源文件未被污染（MD5/大小与服务器一致）
+- [ ] 场景从 lab_clean.usd 干净底场景开始，不重复删杂物/抬台面；底场景改动须重跑 gen_clean_lab.py 而非手改产物（坑 20）
 - [ ] 生成脚本可重复运行（幂等）
 - [ ] Blender 管线：渲染 PNG 非全黑、与实物图对照形状/比例正确（有世界背景 + use_raytracing）
 - [ ] Blender 管线：渲染图中物体完整入画、未被裁切（相机距离按物体高度自适应，见 reference.md「相机取景」）

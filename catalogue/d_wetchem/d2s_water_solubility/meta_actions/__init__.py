@@ -2,11 +2,10 @@
 
 与 flametest 同构：controller 实例化这些元动作按序执行，每个元动作组合
 atomic_actions/flametest 的 IK 原子动作。已实现：
-  ① TakeTestTube —— 从试管架夹取试管放到操作位
-后续按 v11 步骤逐个补：② 舀取样品 → ③ 倒入试管 → ④ 盖紧样品瓶 →
-⑤ 加蒸馏水 → ⑥ 振荡 → ⑦ 放回试管架。
+  ① ScoopSample —— 横向夹取药匙、水平插入粉末舀取、移到试管口倾斜倒入
+后续按 v11 步骤逐个补：② 加蒸馏水 → ③ 振荡 → （试管留在架上，不放操作位）。
 """
 from ._base import BaseMetaAction, mv, grip, hold
-from .take_test_tube import TakeTestTube
+from .scoop_sample import ScoopSample
 
-__all__ = ["BaseMetaAction", "mv", "grip", "hold", "TakeTestTube"]
+__all__ = ["BaseMetaAction", "mv", "grip", "hold", "ScoopSample"]

@@ -14,6 +14,10 @@ from factories.task_factory import register_task
 from factories.controller_factory import register_controller
 from catalogue.c_flame.c1_flame_wire_solid.task import FlameTestTask
 from catalogue.c_flame.c1_flame_wire_solid.controller import FlameTestTaskController
+from catalogue.d_wetchem.d2s_water_solubility.task import D2SWaterSolubilityTask
+from catalogue.d_wetchem.d2s_water_solubility.controller import D2SWaterSolubilityTaskController
+from catalogue.d_wetchem.d3l_acid_reagent.task import D3LAcidReagentTask
+from catalogue.d_wetchem.d3l_acid_reagent.controller import D3LAcidReagentTaskController
 
 
 def register_catalogue_actions() -> None:
@@ -29,19 +33,19 @@ def register_catalogue_actions() -> None:
     # register_controller("<action>", <Action>TaskController)
     ```
 
-    例如 D2-S 水溶性若在 catalogue 内重实现（当前映射到现有 dissolve，不迁移）：
-    ```python
-    # from catalogue.d_wetchem.d2s_water_solubility.task import D2SWaterSolubilityTask
-    # from catalogue.d_wetchem.d2s_water_solubility.controller import D2SWaterSolubilityTaskController
-    # register_task("d2s_water_solubility", D2SWaterSolubilityTask)
-    # register_controller("d2s_water_solubility", D2SWaterSolubilityTaskController)
-    ```
-
     注意：flametest→C1/C2、dissolve→D2-S、dropperdrip→D3-D9 模板、heatlamp→B 类、
     ignitelamp→点火前置等**现有实现**已在 factories/*.py 直接注册（键如 "flametest"）。
-    catalogue 内为每个动作注册**独立的 snake_case 键**（如 "c1_flame_wire_solid"），
-    类复用现有实现（re-export），不迁移、不复制逻辑。
+    catalogue 内为每个动作注册**独立的 snake_case 键**（如 "c1_flame_wire_solid"、
+    "d2s_water_solubility"），类复用/新增对应实现，不迁移、不复制逻辑。
     """
     # C1 焰色反应（复用现有 flametest 实现）
     register_task("c1_flame_wire_solid", FlameTestTask)
     register_controller("c1_flame_wire_solid", FlameTestTaskController)
+
+    # D2-S 固体水溶性测试（catalogue 内原生实现：Lula IK + ScoopSample 元动作）
+    register_task("d2s_water_solubility", D2SWaterSolubilityTask)
+    register_controller("d2s_water_solubility", D2SWaterSolubilityTaskController)
+
+    # D3-L 酸性试剂滴加反应（液体样品，catalogue 内原生：Lula IK + 滴管元动作）
+    register_task("d3l_acid_reagent", D3LAcidReagentTask)
+    register_controller("d3l_acid_reagent", D3LAcidReagentTaskController)

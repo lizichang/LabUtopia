@@ -60,8 +60,9 @@ class BaseMetaAction:
         return self._done
 
 
-def mv(engine, pos, dwell=0):
-    return MoveAction(engine, pos, dwell)
+def mv(engine, pos, dwell=0, orient=None):
+    """移动到 pos（可带停留/朝向）。orient=None 沿用引擎默认朝向（手指朝下）。"""
+    return MoveAction(engine, pos, dwell, orient=orient)
 
 
 def grip(engine, width, dwell=25):

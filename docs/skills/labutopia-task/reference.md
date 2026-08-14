@@ -298,7 +298,43 @@ task:
   max_steps: 4000
 cameras: [...]               # 复制现有 level2_*.yaml 的相机配置
 robot: {...}                 # 复制现有配置
+experiment_result:           # 有可观察结果（颜色/沉淀/读数）的实验必加，见「实验结果输入」
+  flame_color:               # 字段名 = 写回 cfg 顶层的键（task 直接读 cfg.flame_color）
+    label: "火焰颜色"         # 中文显示名（交互询问时显示）
+    type: enum               # bool（有无）| enum（有限选项）| number（测量值）
+    options: [yellow, purple, green]   # enum 专用
+    default: yellow          # 未输入时用
 ```
+
+### 实验结果输入（experiment_result，有现象的实验必加）
+
+现象观察（火焰/液体颜色、沉淀有无、读数…）在运行前输入，task 按输入控制现象。config 顶层加 `experiment_result` 块声明结果字段，main.py 在运行前生成输入入口：
+
+```yaml
+experiment_result:
+  flame_color:
+    label: "火焰颜色"              # 中文显示名（交互询问时显示）
+    type: enum                    # bool | enum | number
+    options: [yellow, purple, green, red, orange, blue]
+    default: yellow
+```
+
+| 字段 | 含义 |
+|---|---|
+| label | 中文显示名（交互询问时显示） |
+| type | `bool`（有无，如是否沉淀）/ `enum`（有限选项，如液体/火焰颜色）/ `number`（测量值） |
+| options | enum 专用：合法选项列表 |
+| default | 未输入时用的值 |
+
+**取值优先级：CLI `--result <字段>=<值>`（可多次）> 交互询问 > default。**
+
+- CLI：`python main.py --config-name levelX_<name> --result flame_color=green --result has_precipitate=yes`
+- 交互：stdin 为终端时逐字段问 `火焰颜色? [yellow/purple/...]（回车=默认 yellow）:`
+- 校验：bool 接受 yes/no/y/n/true/false/1/0/有/无/是/否；enum 大小写不敏感（`GREEN`→`green`）；number 转 float。非法值交互模式重问、非交互（CLI 给非法值且 stdin 非 TTY）SystemExit 报错
+- **镜像写回**：校验后 `cfg[field] = 值`，task 直接读 `cfg.flame_color`——task 代码无需感知本机制
+- 落盘：结果随 run_dir/config.yaml 保存，便于复现
+
+**无结果字段的实验不写此块**：cfg 无 `experiment_result` 时 main.py 整体跳过，不弹任何提示。自动化/测试子进程（stdin 非 TTY）自动跳过交互。焰色试点 `experiment_result.flame_color`（enum 6 色），快捷别名 `--flame-color green` ≡ `--result flame_color=green`。测试脚本 Popen 已设 `stdin=DEVNULL`。
 
 ### 验证方法
 
@@ -504,4 +540,4 @@ if (near and self._grasp_near_frames[name] >= self.GRASP_NEAR_FRAMES
 - **controller 只做"整个实验"**：`_step_collect` 对当前元动作 `forward`，`is_done()` 后 `self._meta_idx += 1` 并传播 grip_target（⑤）；`is_success()` = 全部跑完。坐标常量集中 `constants.py`（H/SETTLE/GRIP_*/抓点）。
 - **为什么这样分**：10 类各一文件高内聚可读；每个元动作组合一组可复用的小动作；controller 瘦到只剩排序；跨元动作共享状态（夹爪、坐标）在 controller/constants.py 统一管理，不散落。
 - **验证（完整运行 ~285s，exit 0）**：10 元动作全过、0 force-done、0 IK FAIL、0 settle WARN、`success=True ignite=True stain=True extinguish=True`；垂直段铁证看 freeze 行 `gripper=[x,y,z]` 的 xy 与目标逐位相同。环境注意：`PYTHONUNBUFFERED=1`（否则 print 丢失）、GPU 需提权、`--config-name level2_FlameTest` 显式传。
-- **焰色颜色运行前接口（main.py）**：P9 显色现象由 `flame_color` 决定（yellow/purple/green/red/orange/blue，= `FlameTestTask.FLAME_COLORS` 键）。运行前可 `--flame-color red` 覆盖；未指定且 stdin 为终端时 main.py 会交互询问（回车=用 config 默认）；自动化/测试子进程（stdin 非 TTY）自动跳过。仅在 cfg 有 `flame_color` 字段时生效，非焰色实验不弹提示；覆盖在 config.yaml 落盘前完成，便于复现。测试脚本 Popen 已设 `stdin=DEVNULL`。
+- **实验结果输入接口（main.py，通用）**：每个实验在 config.yaml 的 `experiment_result` 块声明可观察结果字段（`<字段>={label, type, options, default}`），type = `bool`（有无沉淀等）/ `enum`（液体/火焰颜色）/ `number`（测量值）。运行前 CLI `--result <字段>=<值>`（可多次）或交互询问（stdin 为终端时按 label+options 逐字段问，回车=default）输入；值按 schema 校验后**镜像写回 cfg.<字段> 顶层**（task 直接读，如 `cfg.flame_color`）并随 config.yaml 落盘。非结果实验（cfg 无 experiment_result）不弹提示；自动化/测试子进程（stdin 非 TTY）自动跳过。焰色试点：`experiment_result.flame_color`（enum 6 色），`--flame-color green` 为其快捷别名。测试脚本 Popen 已设 `stdin=DEVNULL`。

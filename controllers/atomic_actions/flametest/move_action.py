@@ -22,6 +22,8 @@ import numpy as np
 from isaacsim.core.utils.stage import get_stage_units
 from isaacsim.core.utils.types import ArticulationAction
 
+from .ik_engine import ORIENT_EPS, quat_to_rot, rot_angle
+
 # 垂直段判定：起点 xy 与目标 xy 偏差小于此值视为"原地升/降"
 # （approach 冻结保证起止 xy 偏差 <1cm，这里留裕量）
 VERTICAL_XY_EPS = 0.015
@@ -38,11 +40,15 @@ class MoveAction:
     夹爪每帧显式发送 grip_target（v41：杜绝 NaN→applied 替换不可靠）。
     """
 
-    def __init__(self, engine, pos, dwell=0, label=""):
+    def __init__(self, engine, pos, dwell=0, label="", orient=None):
         self.engine = engine
         self.pos = np.asarray(pos, dtype=float)
         self.dwell = int(dwell)
         self.label = label
+        # 可选朝向（w,x,y,z）：None 沿用引擎默认（手指朝下）；显式传时解 IK
+        # 目标朝向 + 冻结需朝向收敛（原地转水平时位置已到、朝向仍在解）
+        self.orient = orient
+        self._rot_target = None if orient is None else quat_to_rot(orient)
         self.reset()
 
     def reset(self):
@@ -67,7 +73,7 @@ class MoveAction:
                 self._goal_z = gp[2]
                 self._ik_target = None
             else:
-                self._ik_target = self.engine.solve_verified(self.pos, cur)
+                self._ik_target = self.engine.solve_verified(self.pos, cur, self.orient)
                 if self._ik_target is None:
                     print(f"[flametest] IK FAIL target={np.round(self.pos, 3)} — hold position, will force-done")
 
@@ -81,7 +87,7 @@ class MoveAction:
                 step = dz
             self._goal_z += step
             tgt = np.array([self.pos[0], self.pos[1], self._goal_z])
-            ik = self.engine.solve_verified(tgt, cur)
+            ik = self.engine.solve_verified(tgt, cur, self.orient)
             if ik is None:
                 cmd = cur  # 解不出就保持，下一帧再试
             else:
@@ -108,7 +114,13 @@ class MoveAction:
                 self._done = True
         else:
             dist3d = float(np.linalg.norm(np.asarray(gripper_pos, dtype=float) - self.pos))
-            if dist3d < 0.010:
+            # 朝向收敛（仅显式传 orient 的段）：位置到位 + 朝向对齐才冻结。
+            # 原地转水平/倾倒时位置已到目标、朝向仍在 IK 收敛中，不能按位置即冻。
+            orient_ok = True
+            if self._rot_target is not None:
+                _, fk_rot = self.engine.fk_pose(cur)
+                orient_ok = rot_angle(fk_rot, self._rot_target) < ORIENT_EPS
+            if dist3d < 0.010 and orient_ok:
                 self._arrived += 1
             else:
                 self._arrived = 0

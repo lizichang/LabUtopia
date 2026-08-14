@@ -38,8 +38,15 @@ burner_path: "/World/AlcoholLamp"       # 酒精灯（P4 点燃 / P6-P10 灼烧 
 match_path: "/World/Match"              # 火柴（P4 点燃）
 droplet_path: "/World/Droplet"          # 盐酸滴效果 prim（隐藏）
 dish_acid_path: "/World/DishAcid"       # 皿内酸液效果 prim（隐藏）
-# 焰色：yellow(Na) / purple(K) / green(Cu) / red(Ca,Sr) / blue / orange
-flame_color: "yellow"
+# 实验结果输入接口（运行前）：焰色反应现象 = P9 灼烧显色时的火焰颜色。
+# type: enum（有限选项）/ bool（有无）/ number（测量值）。main.py 按此生成
+# CLI `--result flame_color=green` 与交互询问，值写回 cfg.flame_color 供 task 读取。
+experiment_result:
+  flame_color:
+    label: "火焰颜色"
+    type: enum
+    options: [yellow, purple, green, red, orange, blue]   # Na 黄 / K 紫 / Cu 绿 / Ca,Sr 红
+    default: yellow
 
 # 检测阈值与事件 dwell 帧数（一般不用改）
 grasp_xy_threshold: 0.03        # 夹爪距抓取点多近算"到位"

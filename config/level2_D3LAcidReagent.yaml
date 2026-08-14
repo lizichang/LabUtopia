@@ -1,0 +1,85 @@
+name: Level2_D3LAcidReagent
+
+task_type: "d3l_acid_reagent"
+controller_type: "d3l_acid_reagent"
+
+mode: "collect"
+
+# 场景：d3l_acid_reagent（D3-L 酸性试剂滴加反应，桌面 z=0.80）
+# 台面（2026-08-14 pxr 实测世界 bbox）：
+#   试管架 (0.257,-0.143,0.800)-(0.343,0.143,0.917)、试管前排左孔 (0.279,0.119) 口 z 0.959
+#   取样滴管 2 排左孔 (0.281,0.079) 尖嘴 z 0.806、加酸滴管 2 排右孔 (0.319,0.079)
+#   样品瓶 (0.4045,0.3585) 口 rim z 0.870 液面 0.840、酸瓶 (0.1696,0.361) 口 rim 0.870
+usd_path: "assets/scenes/d_wetchem/d3l_acid_reagent/d3l_acid_reagent.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s 一致）
+grasp_xy_threshold: 0.03        # 夹爪距滴管抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+squeeze_close_threshold: 0.005  # 开合小于此值算"挤胶头"（排空气/滴液）
+
+# 实验结果输入接口（运行前 --result has_bubbles=yes 等；task 读 cfg.has_bubbles 等）
+experiment_result:
+  has_bubbles:
+    label: "滴加后是否产生气泡"
+    type: bool
+    default: false
+  has_precipitate:
+    label: "滴加后是否产生沉淀"
+    type: bool
+    default: false
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [0.50, 0.30, 1.15]
+    resolution: [512, 512]
+    focal_length: 17
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.26, -0.06, 1.24]
+    resolution: [512, 512]
+    focal_length: 17
+    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  position: [0.25, 0.32, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

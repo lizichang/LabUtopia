@@ -4,31 +4,83 @@ import subprocess
 import sys
 from isaacsim import SimulationApp
 
-# ---- 焰色反应现象颜色接口（运行前输入）----
-# 控制 P9 灼烧显色时出现的火焰颜色（yellow 钠 / purple 钾 / green 铜 /
-# red 钙锶 / orange / blue），由任务侧染色锥 flame_stain_<color> 显色。
-# 可选值必须与 tasks/flametest_task.FlameTestTask.FLAME_COLORS 的键一致。
-FLAME_COLOR_CHOICES = ("yellow", "purple", "green", "red", "orange", "blue")
+# ---- 实验结果输入接口（运行前，通用）----
+# 每个实验在 config.yaml 的 `experiment_result` 块声明可观察结果字段：
+#   <字段名>:
+#     label:   中文显示名（交互询问时用）
+#     type:    bool（有无，如是否沉淀） | enum（有限选项，如液体/火焰颜色） | number（测量值）
+#     options: [...]   # enum 用
+#     default: ...     # 未输入时用
+# 运行前可经 CLI `--result <字段>=<值>`（可多个）或交互询问输入；值按 schema
+# 校验后写回 cfg.<字段> 顶层，task 侧直接读 cfg.<字段>。焰色的 `flame_color`
+# 是第一个试点（--flame-color 为其快捷别名）。
+def _validate_result_field(spec, field, value):
+    """按 schema 校验并规范化单个结果字段值；非法抛 ValueError。"""
+    kind = spec.get("type", "enum")
+    if kind == "bool":
+        v = str(value).strip().lower()
+        if v in ("yes", "y", "true", "1", "有", "是"):
+            return True
+        if v in ("no", "n", "false", "0", "无", "否"):
+            return False
+        raise ValueError(f"[result] {field} 需为 bool（yes/no）")
+    if kind == "enum":
+        v = str(value).strip()
+        for opt in spec.options:
+            if str(opt).lower() == v.lower():
+                return opt
+        raise ValueError(f"[result] {field} 需为 {'/'.join(str(o) for o in spec.options)}")
+    if kind == "number":
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"[result] {field} 需为数字")
+    return str(value)
 
 
-def resolve_flame_color(cli_color):
-    """运行前确定焰色反应现象颜色。
+def _prompt_result_field(spec, field):
+    """按 schema 交互询问一个结果字段；空回车 = 用 default。"""
+    kind = spec.get("type", "enum")
+    label = spec.get("label", field)
+    default = spec.get("default")
+    hint = "yes/no" if kind == "bool" else (
+        "/".join(str(o) for o in spec.options) if kind == "enum" else "数字")
+    while True:
+        ans = input(f"{label}? [{hint}]（回车=默认 {default}）: ").strip()
+        if not ans:
+            return default
+        try:
+            return _validate_result_field(spec, field, ans)
+        except ValueError as e:
+            print(str(e))
 
-    优先级：CLI `--flame-color`（argparse choices 已校验）> 交互式询问
-    （仅当未指定且 stdin 是终端 TTY）> 返回 None（用 config 的 flame_color）。
+
+def resolve_experiment_results(cfg, cli_results):
+    """按 cfg.experiment_result schema 确定各结果字段值（CLI > 交互 > default）。
+
+    把结果写回 cfg.<字段> 顶层（task 直接读，如 cfg.flame_color）；
+    返回 {字段: 值}。cfg 无 experiment_result 时返回 {}（非结果实验不生效）。
     """
-    if cli_color is not None:
-        return cli_color
-    if sys.stdin.isatty():
-        hint = "/".join(FLAME_COLOR_CHOICES)
-        while True:
-            ans = input(f"焰色反应现象颜色 [{hint}]（回车=用 config 默认）: ").strip().lower()
-            if not ans:
-                return None
-            if ans in FLAME_COLOR_CHOICES:
-                return ans
-            print(f"无效颜色 {ans!r}，可选：{hint}")
-    return None
+    schema = cfg.get("experiment_result")
+    if schema is None:
+        return {}
+    interactive = sys.stdin.isatty()
+    resolved = {}
+    for field, spec in schema.items():
+        if field in cli_results:
+            try:
+                resolved[field] = _validate_result_field(spec, field, cli_results[field])
+            except ValueError as e:
+                if interactive:
+                    resolved[field] = _prompt_result_field(spec, field)
+                else:
+                    raise SystemExit(str(e))
+        elif interactive:
+            resolved[field] = _prompt_result_field(spec, field)
+        else:
+            resolved[field] = spec.get("default")
+        cfg[field] = resolved[field]
+    return resolved
 
 
 # Parse command line arguments
@@ -45,10 +97,10 @@ def parse_args():
                        help='Configuration file name (without .yaml extension)')
     parser.add_argument('--config-dir', type=str, default='config',
                        help='Configuration directory path (default: config)')
+    parser.add_argument('--result', action='append', default=None, metavar='FIELD=VALUE',
+                       help='实验结果字段=值（可多次指定）；字段由 config 的 experiment_result 声明')
     parser.add_argument('--flame-color', type=str, default=None,
-                       choices=FLAME_COLOR_CHOICES,
-                       help=f'焰色反应现象火焰颜色：{" / ".join(FLAME_COLOR_CHOICES)}'
-                            '（覆盖 config 的 flame_color；未指定且终端交互时询问）')
+                       help='焰色反应现象火焰颜色（= --result flame_color=<值> 的快捷写法）')
     parser.add_argument('--snapshot', type=int, default=0,
                        help='Save N frames as PNG images and exit (quick visual check, no video)')
     return parser.parse_args()
@@ -123,16 +175,22 @@ class FFmpegVideoWriter:
 def main():
     hydra.initialize(config_path=args.config_dir, job_name=args.config_name)
     cfg = hydra.compose(config_name=args.config_name)
-    # 运行前颜色接口：CLI/交互输入覆盖 config 的 flame_color（仅焰色类实验——
-    # cfg 有 flame_color 字段才生效，非焰色实验绝不弹提示）。交互询问只在 stdin
-    # 为终端时触发，自动化/测试子进程（stdin 非 TTY）自动跳过。覆盖在落盘前
-    # 生效，保存的 config.yaml 记录实际使用的颜色，便于复现。
-    flame_color_override = None
-    if "flame_color" in cfg:
-        flame_color_override = resolve_flame_color(args.flame_color)
-        if flame_color_override is not None:
-            cfg.flame_color = flame_color_override
-            print(f"[flame] 焰色反应现象颜色 = {cfg.flame_color}（运行前输入）")
+    # 实验结果输入接口（运行前，通用）：CLI `--result 字段=值` / `--flame-color`
+    # （焰色快捷）> 交互询问 > schema default。交互只在 stdin 为终端时触发，
+    # 自动化/测试子进程（stdin 非 TTY）自动跳过；值按 schema 校验；结果写回
+    # cfg.<字段> 顶层并随 config.yaml 落盘，便于复现。
+    cli_results = {}
+    if args.flame_color is not None:
+        cli_results["flame_color"] = args.flame_color
+    for kv in (args.result or []):
+        if "=" not in kv:
+            raise SystemExit(f"[result] --result 需为 字段=值 格式，收到 {kv!r}")
+        k, _, v = kv.partition("=")
+        cli_results[k.strip()] = v.strip()
+    if "experiment_result" in cfg:
+        resolved = resolve_experiment_results(cfg, cli_results)
+        if resolved:
+            print("[result] 实验结果：", ", ".join(f"{k}={v}" for k, v in resolved.items()))
     os.makedirs(cfg.multi_run.run_dir, exist_ok=True)
     OmegaConf.save(cfg, cfg.multi_run.run_dir + "/config.yaml")
 

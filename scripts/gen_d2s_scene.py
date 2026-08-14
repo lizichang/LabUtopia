@@ -11,23 +11,27 @@
 默认根带 lab_001 的 defaultPrim=/World（Isaac Sim 空视口问题用引用式+无 default
 prim 会出现，烘平后不存在）。
 
-布局（v11：试管架中央/样品瓶后方/洗瓶右侧/药匙前方；台面顶 z=0.80）：
-  TestTubeRack  (0.30,  0.00)  中央，底座落台面
-  TestTube      (0.2787, 0.1193)  前排左孔（Ø19.2×153mm，尺寸固化在 equipment）
-  Spatula       (0.3174, 0.1193)  前排右孔，竖插
-  SurfaceDish   (0.30, -0.32)  架正后方，表面皿（粉末在皿上，舀取时药匙水平插入）
-  SamplePowder  (0.30, -0.32)  表面皿上（powder.usd scale 0.4，离群废料/env_light 由 cleanup 删）
-  WashBottle    (0.52,  0.06)  操作台右侧
+布局（用户 temp_d2s.usd 实测坐标，2026-08-14 二次重排避开 Franka 底座 (0.25,0.32)；台面顶 z=0.80）：
+  TestTubeRack  (0.6803, 0.3607)  工作区右侧，底座落台面
+  TestTube      (0.659,  0.48)    架前排右孔（Ø19.2×153mm，尺寸固化在 equipment）
+  Spatula       (0.6996, 0.3611, rotZ -90°)  架中心孔，竖插（用户转了 -90°）
+  SurfaceDish   (0.6865, 0.0402)  架正后方，表面皿（粉末在皿上，舀取时药匙水平插入）
+  SamplePowder  (0.6883, 0.0344)  表面皿上（powder.usd scale 0.4，离群废料/env_light 由 cleanup 删）
+  WashBottle    (0.6809, -0.2241) 工作区 -Y 下方（远离机械臂，倒水时再取）
 
 烘平后处理（单层里已是真实 prim）：
-  - 删试管架自带 4 根挤在中心原点的细杆（模型缺陷，孔位由真实试管/药匙占用）
+  - 保留试管架完整结构（4 角柱 + 3 层板；曾有 cleanup 按宽高比误删角柱，已移除）
+  - 扫除 flametest 残留的嵌套 DomeLight（试管架/洗瓶等资产自带 color_0C0C0C.exr
+    近黑贴图，把环境压暗、金属药匙无反射反黑），只留 /World/env_light
   - 表面皿去 env_light（flametest 残留光）+ 粉末子集重绑皿材质
   - 粉末（powder.usd）删离群废料 Object_0/Object_2 + env_light，纹理重定位到 equipment/textures
+  - env 贴图路径烘平后重定位到场景目录（Export 会把 ./textures/ 解析到 lab_001）
+  - 主光 CylinderLight 2000→12000（药匙细金属杆光照不足反黑）
 
 用法：python scripts/gen_d2s_scene.py   （运行环境：本地 conda env 有 pxr）
 """
 import os
-from pxr import Usd, UsdGeom, UsdShade, Sdf, Gf
+from pxr import Usd, UsdGeom, UsdShade, UsdLux, Sdf, Gf
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCENE_DIR = os.path.join(REPO, "assets", "scenes", "d_wetchem", "d2s_water_solubility")
@@ -39,26 +43,27 @@ TABLE_TOP = 0.80
 # lab_001 里保留的结构件/灯光/物理（其余全部真实删除）
 KEEP = {"table", "Cube", "GroundPlane", "CylinderLight", "PhysicsScene", "Looks"}
 
-# (prim, asset_file, translate, scale)   tz=None 表示动态贴台面（资产底座 min z -> 0.80）
-# 试管/药匙 xy 对齐试管架真实孔位（顶层板 14 孔，2列x7行；最前排 y≈0.119）：
-#   左孔 (0.2790,0.1161)  <- 试管，右孔 (0.3170,0.1166) <- 药匙
+# (prim, asset_file, translate, scale, rot_z)   tz=None 表示动态贴台面（资产底座 min z -> 0.80）
+# 坐标来源：用户 temp_d2s.usd（2026-08-14 二次重排——原布局试管架(0.3273,0.1441)与
+#   Franka 底座(0.25,0.32,见 config)重叠，整组右移 +X≈0.36；Spatula 仍 rotZ -90°）。
+# 注意：试管/药匙相对架的偏移与上一版完全一致（整组平移），表面皿/粉末/洗瓶独立移动。
 # 试管 Ø19.2×153mm 已固化进 equipment/test_tube.usd（原 Ø15 放大 1.2779），勿再场景放大
 EQUIP = [
-    ("TestTubeRack", "test_tube_rack.usd", (0.30, 0.00, None), None),
-    ("TestTube", "test_tube.usd", (0.2787, 0.1193, 0.806), None),
-    ("Spatula", "spatula.usd", (0.3174, 0.1193, 0.828), None),
-    ("SurfaceDish", "sample_dish.usd", (0.30, -0.32, 0.80), None),
-    ("SamplePowder", "powder.usd", (0.3018, -0.3258, 0.7988), 0.4),
-    ("WashBottle", "wash_bottle.usd", (0.52, 0.06, 0.80), None),
+    ("TestTubeRack", "test_tube_rack.usd", (0.6803, 0.3607, None), None, None),
+    ("TestTube", "test_tube.usd", (0.659, 0.48, 0.806), None, None),
+    ("Spatula", "spatula.usd", (0.6996, 0.3611, 0.828), None, -90.0),
+    ("SurfaceDish", "sample_dish.usd", (0.6865, 0.0402, 0.80), None, None),
+    ("SamplePowder", "powder.usd", (0.6883, 0.0344, 0.7988), 0.4, None),
+    ("WashBottle", "wash_bottle.usd", (0.6809, -0.2241, 0.80), None, None),
 ]
 
 # 内建效果 prim: (name, radius, height, translate, color, opacity)
-# PowderOnSpoon 在药匙尖端（spatula tip world z=0.828+0.135=0.963）
-# TubeSample/TubeWater 在放大后试管内（xy=试管孔位）
+# PowderOnSpoon 在药匙尖端（spatula tip world z=0.828+0.135=0.963，xy 随药匙新坐标）
+# TubeSample/TubeWater 在放大后试管内（xy=试管新孔位）
 BUILTIN = [
-    ("PowderOnSpoon", 0.005, 0.005, (0.3174, 0.1193, 0.965), (0.93, 0.93, 0.94), 1.0),
-    ("TubeSample", 0.006, 0.012, (0.2787, 0.1193, 0.84), (0.93, 0.93, 0.94), 1.0),
-    ("TubeWater", 0.007, 0.035, (0.2787, 0.1193, 0.855), (0.55, 0.75, 0.95), 0.6),
+    ("PowderOnSpoon", 0.005, 0.005, (0.6996, 0.3611, 0.965), (0.93, 0.93, 0.94), 1.0),
+    ("TubeSample", 0.006, 0.012, (0.659, 0.48, 0.84), (0.93, 0.93, 0.94), 1.0),
+    ("TubeWater", 0.007, 0.035, (0.659, 0.48, 0.855), (0.55, 0.75, 0.95), 0.6),
 ]
 
 
@@ -114,7 +119,7 @@ def asset_local_min_z(asset_file):
     return r.GetMin()[2]
 
 
-def add_equip(stage, name, asset, t, scale):
+def add_equip(stage, name, asset, t, scale, rot_z=None):
     prim = UsdGeom.Xform.Define(stage, f"/World/{name}")
     prim.GetPrim().GetReferences().AddReference(
         os.path.abspath(os.path.join(EQ, asset))
@@ -124,9 +129,11 @@ def add_equip(stage, name, asset, t, scale):
         tz = TABLE_TOP - asset_local_min_z(asset)
         print(f"[equip] {name} base offset {asset_local_min_z(asset):+.4f} -> z {tz:.4f}")
     prim.AddTranslateOp().Set(Gf.Vec3d(tx, ty, tz))
+    if rot_z is not None:
+        prim.AddRotateXYZOp().Set(Gf.Vec3f(0, 0, rot_z))
     if scale is not None:
         prim.AddScaleOp().Set(Gf.Vec3f(scale, scale, scale))
-    print(f"[equip] {name} <- {asset} at ({tx}, {ty}, {tz})" + (f" scale {scale}" if scale else ""))
+    print(f"[equip] {name} <- {asset} at ({tx}, {ty}, {tz})" + (f" scale {scale}" if scale else "") + (f" rotZ {rot_z}" if rot_z is not None else ""))
 
 
 def add_effects(stage):
@@ -141,35 +148,87 @@ def add_effects(stage):
         print(f"[effect] {name} hidden at {t}")
 
 
-def cleanup_flattened(stage):
-    """烘平后单层里已是真实 prim：删架子细杆 + 样品瓶瓶塞。
+def add_env_light(stage):
+    """环境光（DomeLight + 亮环境贴图）：金属药匙在无环境反射下反黑不可见（用户
+    报"看不到药匙"）。flametest 的 color_0C0C0C.exr 是 1×1 暗灰（461B），金属照
+    样反黑；改用自己的亮实验室环境图 env_bright.png（天花板亮带 → 金属顶部高光，
+    四周中灰、地面暗），intensity 2000 不至于过曝。
 
-    先遍历收集路径（期间不删，避免 prim 失效），再统一 RemovePrim。
+    注意：贴图路径用相对 ./textures/ 会在 stage.Export 时按 lab_001 层解析成
+    不存在的 lab_001/textures/env_bright.png（断链 bug），烘平后由
+    fix_env_light() 在场景层重新指向 textures/env_bright.png。
     """
-    bc = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"])
-    to_remove = []
+    light = UsdLux.DomeLight.Define(stage, "/World/env_light")
+    light.GetIntensityAttr().Set(2000.0)
+    light.GetColorAttr().Set(Gf.Vec3f(1, 1, 1))
+    light.GetEnableColorTemperatureAttr().Set(False)
+    light.GetTextureFileAttr().Set(Sdf.AssetPath("./textures/env_bright.png"))
+    light.GetTextureFormatAttr().Set(UsdLux.Tokens.automatic)
+    print("[env] DomeLight + env_bright.png (intensity 2000)")
 
-    def collect(prim):
-        for child in prim.GetChildren():
-            if child.GetTypeName() == "Mesh":
-                try:
-                    r = bc.ComputeWorldBound(child).ComputeAlignedRange()
-                    sz = r.GetMax() - r.GetMin()
-                except Exception:
-                    continue
-                if sz[2] > 3.0 * max(sz[0], sz[1]):  # 细杆
-                    parent = child.GetParent()
-                    if parent.IsValid() and parent.IsActive():
-                        to_remove.append(str(parent.GetPath()))
-            collect(child)
 
-    rack = stage.GetPrimAtPath("/World/TestTubeRack")
-    if rack.IsValid():
-        collect(rack)
+def strip_dome_lights(st2):
+    """扫除 flametest 残留的嵌套 DomeLight，只保留 /World/env_light。
 
-    for path in sorted(set(to_remove)):
-        stage.RemovePrim(path)
-    print(f"[cleanup] removed {len(set(to_remove))}: {sorted(set(to_remove))}")
+    试管架/洗瓶等 equipment 资产自带 env_light（贴图是 flametest 的 1×1 近黑
+    color_0C0C0C.exr），烘平后全部进入场景。RTX 里多个 DomeLight 叠加/取暗，
+    金属药匙的环境反射=黑 → 黑杆看不见（用户多次报"看不到药匙"）。
+    从源资产删会影响 flametest，故只在 d2s 场景烘平后清理。
+    """
+    removed = []
+    for p in Usd.PrimRange(st2.GetPseudoRoot()):
+        if str(p.GetPath()) != "/World/env_light" and p.IsA(UsdLux.DomeLight):
+            removed.append(str(p.GetPath()))
+    for path in removed:
+        st2.RemovePrim(path)
+    if removed:
+        print(f"[dome] removed leftover DomeLight: {removed}")
+    else:
+        print("[dome] no leftover DomeLight")
+
+
+def fix_env_light(st2):
+    """修 env 贴图路径断链：add_env_light 的相对 ./textures/ 在 Export 时被
+    解析到 lab_001 目录（该文件不存在，实际在场景目录），导致环境灯不亮、
+    金属药匙无反射反黑。烘平后场景文件在 SCENE_DIR，相对 textures/ 能正确
+    指向场景目录下的 env_bright.png。"""
+    env = st2.GetPrimAtPath("/World/env_light")
+    if not env.IsValid():
+        print("[env] /World/env_light not found, skip")
+        return
+    UsdLux.DomeLight(env).GetTextureFileAttr().Set(Sdf.AssetPath("textures/env_bright.png"))
+    print("[env] texture -> textures/env_bright.png (scene-relative)")
+
+
+def brighten_lights(st2):
+    """主光太弱：CylinderLight 强度 2000（lab_001 自带，位于台面远侧高处）照不亮
+    药匙细金属杆——headless 实测杆投影区纯黑 (0,0,0)、隐藏后变化像素全暗。
+    提到 12000 后药匙杆可见（max 179，全帧 mean 81 不过曝）。"""
+    cyl = st2.GetPrimAtPath("/World/CylinderLight")
+    if not cyl.IsValid():
+        print("[light] /World/CylinderLight not found, skip")
+        return
+    UsdLux.CylinderLight(cyl).GetIntensityAttr().Set(12000.0)
+    print("[light] CylinderLight intensity 2000 -> 12000")
+
+
+def brighten_spatula(stage):
+    """药匙金属杆反黑不可见（metallic=1.0 只反射环境，弱光下成黑杆）。
+
+    用户报"根本看不到药匙"：金属杆细(Ø8mm)且 70% 藏在架内，再反黑就完全
+    看不见。降 metallic 到 0.35、提亮 diffuse，另加少量 emissive 兜底——
+    即便环境贴图/灯光有残差，药匙自身也发微光可见（不依赖环境反射）。
+    """
+    sh = stage.GetPrimAtPath("/World/Spatula/material/stainless_steel")
+    if not sh.IsValid() or sh.GetTypeName() != "Shader":
+        print("[spatula] material not found, skip")
+        return
+    ush = UsdShade.Shader(sh)
+    ush.GetInput("metallic").Set(0.35)
+    ush.GetInput("roughness").Set(0.4)
+    ush.GetInput("diffuseColor").Set(Gf.Vec3f(0.85, 0.85, 0.88))
+    ush.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.35, 0.35, 0.38))
+    print("[spatula] metallic 1.0->0.35, roughness->0.4, diffuse->0.85, emissive->0.35")
 
 
 def cleanup_dish(stage):
@@ -241,15 +300,19 @@ def main():
     stage = Usd.Stage.Open(LAB001)
     raise_worktop(stage)
     remove_lab001_equipment(stage)
-    for name, asset, t, scale in EQUIP:
-        add_equip(stage, name, asset, t, scale)
+    for name, asset, t, scale, rot_z in EQUIP:
+        add_equip(stage, name, asset, t, scale, rot_z)
     add_effects(stage)
+    add_env_light(stage)
     stage.Export(OUT)  # 烘平：单层自包含，带 lab_001 的 defaultPrim=/World
 
     st2 = Usd.Stage.Open(OUT)
-    cleanup_flattened(st2)   # 删架子自带细杆
     cleanup_dish(st2)        # 表面皿去 env_light + 粉末子集重绑皿材质
     powder(st2)              # 粉末：防御性清理 + 纹理重定位（资产本体已删废料/env_light）
+    strip_dome_lights(st2)   # 扫除试管架/洗瓶等残留 DomeLight（flametest 黑贴图压暗环境）
+    brighten_spatula(st2)    # 药匙降 metallic + 提亮 diffuse + emissive 兜底（反黑不可见）
+    fix_env_light(st2)       # env 贴图路径断链（Export 解析到 lab_001）→ 场景目录
+    brighten_lights(st2)     # 主光 2000→12000：药匙细金属杆 headless 实测纯黑
     st2.GetRootLayer().Save()
     print("SAVED", OUT)
 

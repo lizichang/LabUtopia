@@ -19,7 +19,7 @@ version: 2.1.0
    - **抓取三问（必须）**：① 抓哪个部位？② 为什么是它（一句话物理语义）？③ 参数怎么从资产几何推导（读 USD extent 定"可抓部位区间"+ 余量）？三问答不上来不许写 forward。位置同理：移到哪个点、为什么、几何怎么定
    - **Task 层** `tasks/<name>_task.py`：参考点在 reset() 里从 prim 位置推导（偏移链，无硬编码）；每个物体一个 `_update_<obj>()` 子状态机（rest → attached → dwell → 显隐 → released → 归位）；**kinematic 跟随必须覆盖整个吸附期间**（坑 19）；多阶段动作必须提供粘性阶段标志（坑 13）
    - **Controller 层** `controllers/<name>_controller.py`：单动作 → 原子 controller（events_dt 事件状态机，见"事件状态机"）；多动作编排 → 复合 controller（Phase 枚举 + `_phase_action` + `_check_phase_success` + `_advance_phase`）
-   - **Config 层** `config/levelX_<name>.yaml`：场景路径、prim 路径、offsets、thresholds、task_type/controller_type（factory 注册键）
+   - **Config 层** `config/levelX_<name>.yaml`：场景路径、prim 路径、offsets、thresholds、task_type/controller_type（factory 注册键）。**有可观察结果（火焰/液体颜色、沉淀有无、读数）的实验必须声明 `experiment_result` 块**（见「实验结果输入」节）——task 直接读镜像写回的 `cfg.<字段>`，现象由输入控制
 5. **验证**：py_compile + 事件序列走查（stub cspace_controller 逐帧推进）→ 服务器冒烟（2 集，pkill 清场 + python -u，见 reference「部署与服务器冒烟」）→ **T 行核对**（抓取点实际 z 落在预期区间、物体位置全程跟随）。失败时先注入 debug 日志拿全数据，按判定三分法定位，不猜
 
 ## 三层架构
@@ -31,6 +31,10 @@ version: 2.1.0
 | Config | `config/levelX_<name>.yaml` | 场景路径、prim 路径、offsets、thresholds、task_type/controller_type |
 
 注册：`task_factory.register_task("<type>", Task)` + `controller_factory.register_controller("<type>", Controller)`，yaml 里 `task_type`/`controller_type` 对应 `<type>` 键。仓库惯例：复合 controller 直接 `from .atomic_actions.xxx_controller import XxxController`（scoop/cap/dip 均未进 `__init__.py` 照样用；`__init__.py` 只导出最常用 11 个，新动作注册可选）。
+
+## 实验结果输入（experiment_result，有现象的实验必加）
+
+现象观察（火焰/液体颜色、沉淀有无、温度读数…）需运行前输入、task 按输入控制现象。config 顶层加 `experiment_result` 块声明字段：`<字段>={label, type, options, default}`，`type` = `bool`（有无）/ `enum`（有限选项）/ `number`（测量值）。main.py 运行前按此生成输入入口，优先级 **CLI > 交互询问 > default**：CLI `--result <字段>=<值>`（可多次）或终端交互逐字段问（空回车=default）；值按 schema 校验（bool 收 yes/no/有/无；enum 大小写不敏感）后**镜像写回 `cfg.<字段>` 顶层**——task 直接读 `cfg.flame_color` 等，**无需改 task 代码**，结果随 config.yaml 落盘可复现。**无结果字段的实验不写此块**（cfg 无 experiment_result 时 main.py 跳过，不弹提示）。模板与类型见 reference「实验结果输入」。焰色试点 `experiment_result.flame_color`（enum 6 色），`--flame-color green` 是其快捷别名。
 
 ## 动作类型（先分类再写）
 
@@ -161,6 +165,7 @@ if self._start:
 - [ ] 多阶段动作：task 有粘性阶段标志，复合 controller 读标志不用当前状态；阶段成功条件有显式门控
 - [ ] 每个 _update_ 状态机有 rest→attached→…→released→归位完整回路
 - [ ] task/controller 已在 factory 注册，yaml 的 task_type/controller_type 键匹配
+- [ ] 有可观察结果（颜色/沉淀/读数）的实验：config 已声明 `experiment_result` 块（label/type/options/default），task 读镜像写回的 `cfg.<字段>`
 - [ ] py_compile 通过 + stub 走查 0→N 全事件可达
 - [ ] 服务器冒烟：pkill 清场 → python -u → 2 集 → 业务日志出现成功链（attached→filled→dropped/对应动作链）→ 进程退出 → h5 存在
 - [ ] 冒烟后删 config_smoke；debug patch 还原（git checkout --）
