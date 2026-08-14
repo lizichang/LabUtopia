@@ -19,15 +19,15 @@ flametest 同款，见 task.py）：滴管尖嘴 0.13m 吊在夹爪下方。故
 H = 1.15            # 安全高位（跨越桌面障碍的水平平移高度）
 SETTLE = 12         # 到点 settle 帧数
 
-# —— 夹爪开度（开度值 = 手指物理间距，m）——
+# —— 夹爪开度（开度值 = joint[7]，≈ 实际指间距的一半）——
 GRIP_OPEN = 0.04            # 松开（放回滴管）
-# 胶头直径 Ø11mm（pxr 实测 d3l 场景 DropperSample/球体 bbox dx=dy=0.0110，抓点 0.936
-# 在球体内）。移动/持握时开合=胶头直径：手指正好贴胶头面——不陷不隔。
-#  旧 0.008 → 手指陷进胶头 1.5mm/边（穿模、"歪"）；旧 0.015 → 手指离胶头 4mm（明显间隔）
-DROPPER_DIAM = 0.011
-GRIP_DROPPER = DROPPER_DIAM # 抓滴管：合爪到胶头直径
+# 胶头物理直径 Ø11mm（pxr 实测 DropperSample/球体 bbox dx=dy=0.0110）。Franka joint
+# 开度 ≈ 指间距一半 → "正好贴胶头面"的开度 = 0.011/2 = 0.0055。用户 2026-08-14 实测：
+# 0.011 手指离胶头太远（胶头在指间"悬空"，看着松/歪、移动时跟夹爪碰/穿模），
+# **减半 0.0055 正合适**（手指正好贴胶头面）。
+GRIP_DROPPER = 0.0055       # 抓滴管：移动/持握开度（贴合胶头面）
 GRIP_SQUEEZE = 0.002        # 挤胶头（排空气 / 滴液）
-GRIP_ASPIRATE = DROPPER_DIAM# 松胶头吸液后回持握宽=胶头直径（移动全程无缝隙）
+GRIP_ASPIRATE = 0.0055      # 松胶头吸液后回持握开度（移动全程贴合胶头面）
 
 # —— 滴管尖嘴到夹爪距离（持握 _T_HELD 的 z 偏移）——
 TIP_OFFSET = 0.13           # 尖嘴在夹爪下方 0.13m（dropperdrip grasp_offset，实测）
@@ -69,4 +69,5 @@ TUBE_DROP_TCP = (TUBE_XY[0], TUBE_XY[1], TUBE_MOUTH_Z - TUBE_DROP_INSET + TIP_OF
 EFFECT_TUBE_DROPS = "/World/TubeDrops"       # 管内液滴（首滴后显示）
 EFFECT_PRECIPITATE = "/World/Precipitate"    # 沉淀（cfg.has_precipitate）
 EFFECT_BUBBLES = "/World/Bubbles"            # 气泡（cfg.has_bubbles）
-EFFECT_DROPPER_FILL = "/World/DropperFill"   # 滴管尖内液体柱（吸液后显示，跟随尖嘴）
+EFFECT_DROPPER_FILL = "/World/DropperFill"   # 滴管尖内截锥液柱（吸液后显示，跟随尖嘴；
+                                             #  几何在 gen_d3l_scene.py，task 只需 translate=尖嘴）

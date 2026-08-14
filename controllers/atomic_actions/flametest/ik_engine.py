@@ -38,10 +38,14 @@ class IkMotionEngine:
         （FK 距目标 <6mm、显式朝向时夹角 <ORIENT_EPS 才接受），
         cur7 → home 双 warm start（段间连续；近奇异区避免坏分支/分支翻转）。
       - fk_pose(joints)：FK 得到 TCP 位置 + 3x3 旋转矩阵（冻结/收敛判定用）。
-      - MAX_JOINT_DELTA：每帧关节最大变化量（0.9 rad/s @60Hz，动作从容可辨）。
+      - MAX_JOINT_DELTA：每帧关节最大变化量（0.48 rad/s @60Hz，动作从容可辨）。
     """
 
-    MAX_JOINT_DELTA = 0.015
+    # 每帧关节最大变化量（rad）。原 0.015 ≈ 0.9 rad/s：2026-08-14 用户反馈移动时滴管/试管
+    # 惯性倾斜、与夹爪穿模（焰色反应同样存在）——移动太快 → 末端惯量让手指相对竖立的被握
+    # 物体微微旋转歪斜（物体本身纯平移保竖立），快速移动时显形。减半到 0.008 ≈ 0.48 rad/s，
+    # 臂移动更慢更稳，惯性/穿模消失。垂直段 VZ_STEP=0.002 的每帧关节量远小于此，不受影响。
+    MAX_JOINT_DELTA = 0.008
 
     def __init__(self, solver, orient, ik_home):
         self.solver = solver

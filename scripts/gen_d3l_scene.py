@@ -24,6 +24,7 @@
 
 用法：python scripts/gen_d3l_scene.py   （运行环境：labutopia conda env 有 pxr）
 """
+import math
 import os
 import shutil
 from pxr import Usd, UsdGeom, UsdShade, UsdLux, Sdf, Gf
@@ -61,15 +62,20 @@ OPAQUE_WHITE = dict(color=(0.93, 0.93, 0.94), opacity=1.0, roughness=0.5)
 # SampleLiquid = 样品瓶内半瓶液体（cyl 从瓶底 0.80 到液面 0.84）
 # AcidLiquid   = 酸瓶内半瓶液体（hcl 资产自带 1mm 薄盘被隐藏，改用真体积）
 # TubeDrops/Precipitate = 管内液滴/沉淀；Bubbles 单独建（小球簇）
-# DropperFill = 滴管尖内吸起的液体柱（r=0.004 可见液柱，初始隐藏；task 在吸液后显示、
-#   逐帧跟随滴管尖，滴入试管后隐藏 —— "液体像不像水"的动态可视）
+# DropperFill = 滴管尖内吸起的液体柱（skill 坑 18：尖端容器内腔是锥形，直圆柱会悬空穿模）。
+#   滴管玻璃体实测：尖嘴 Ø1.6mm(z=0) → 30mm 处 Ø8mm → 直管 Ø8mm 到胶头。吸液后液体填满
+#   收窄尖端，故用截锥 mesh：下底 Ø2mm(尖) → 上底 Ø8mm(体)，高 40mm（覆盖收窄段 0..30mm
+#   + 直管 10mm）。柱底贴尖嘴（task 逐帧跟随），初始隐藏。
 # TubeDrops = 管内液体（0.008→0.009 贴管壁 Ø19.2 内缘、0.020→0.030 更高更显眼）
 EFFECTS = [
     ("SampleLiquid", "cylinder", 0.014, 0.040, (0.4045, 0.3585, 0.820), WATER, True),
     ("AcidLiquid", "cylinder", 0.014, 0.040, (0.1696, 0.361, 0.820), ACID, True),
     ("TubeDrops", "cylinder", 0.009, 0.030, (0.2787, 0.1193, 0.821), WATER, False),
     ("Precipitate", "cylinder", 0.008, 0.003, (0.2787, 0.1193, 0.8075), OPAQUE_WHITE, False),
-    ("DropperFill", "cylinder", 0.004, 0.040, (0.281, 0.0788, 0.818), WATER, False),
+    # frustum 的 r = (r_bottom, r_top)：下底 Ø2mm 贴尖嘴、上底 Ø8mm 贴玻璃体。translate
+    # 是 mesh 底心（底在局部 z=0）→ 落在尖嘴 z=0.806，柱体 0.806..0.846 整体在玻璃体
+    # 0..0.12 内、不露在尖嘴外（task._set_fill_follow 用同一约定：translate=尖嘴）
+    ("DropperFill", "frustum", (0.001, 0.004), 0.040, (0.281, 0.0788, 0.806), WATER, False),
 ]
 # 气泡：试管内液体区 5 颗小白球（世界坐标，r=0.002，均在管壁 Ø19.2 内）
 BUBBLES = [
@@ -120,6 +126,38 @@ def add_equip(stage, name, asset, t, scale):
     print(f"[equip] {name} <- {asset} at ({tx}, {ty}, {tz})" + (f" scale {scale}" if scale else ""))
 
 
+def add_frustum(stage, name, r_bottom, r_top, h):
+    """截锥 mesh（锥台）：下底 r_bottom、上底 r_top、高 h，底心在原点，+Z 向上。
+
+    skill 坑 18：收口/尖端容器（滴管、锥形瓶…）内腔是锥形，直圆柱液体会悬空穿模
+    （液面不贴壁、露出空隙），须用锥台贴合。下底 r=底部内半径、上底 r=液面高度处内半径。
+    16 段圆周 + 底/顶 cap，subdivisionScheme=none（memory: 自建 mesh 必须设，否则不显色）。
+    """
+    n = 16
+    pts, counts, indices = [], [], []
+    for i in range(n):
+        a = 2.0 * math.pi * i / n
+        pts.append(Gf.Vec3f(r_bottom * math.cos(a), r_bottom * math.sin(a), 0.0))
+    for i in range(n):
+        a = 2.0 * math.pi * i / n
+        pts.append(Gf.Vec3f(r_top * math.cos(a), r_top * math.sin(a), h))
+    pts += [Gf.Vec3f(0, 0, 0), Gf.Vec3f(0, 0, h)]      # 底心 idx 2n、顶心 idx 2n+1
+    for i in range(n):
+        i0, i1 = i, (i + 1) % n
+        counts.append(4)                                # 侧壁四边形（法向朝外）
+        indices += [i0, i1, i1 + n, i0 + n]
+    counts.append(n)                                    # 底 cap（法向朝下 -Z）
+    indices += [2 * n] + list(range(n - 1, -1, -1))
+    counts.append(n)                                    # 顶 cap（法向朝上 +Z）
+    indices += [2 * n + 1] + list(range(n, 2 * n))
+    mesh = UsdGeom.Mesh.Define(stage, f"/World/{name}")
+    mesh.CreatePointsAttr(pts)
+    mesh.CreateFaceVertexCountsAttr(counts)
+    mesh.CreateFaceVertexIndicesAttr(indices)
+    mesh.CreateSubdivisionSchemeAttr("none")
+    return mesh
+
+
 def add_effects(stage):
     for name, kind, r, h, t, m, visible in EFFECTS:
         if kind == "cylinder":
@@ -127,6 +165,9 @@ def add_effects(stage):
             geom.CreateRadiusAttr(r)
             geom.CreateHeightAttr(h)
             geom.CreateAxisAttr("Z")
+        elif kind == "frustum":
+            r_bottom, r_top = r
+            geom = add_frustum(stage, name, r_bottom, r_top, h)
         else:
             geom = UsdGeom.Sphere.Define(stage, f"/World/{name}")
             geom.CreateRadiusAttr(r)

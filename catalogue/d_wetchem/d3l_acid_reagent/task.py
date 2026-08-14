@@ -250,10 +250,10 @@ class D3LAcidReagentTask(BaseTask):
         self._set_obj_world(path, nxt)
 
     def _set_fill_follow(self, dropper):
-        """DropperFill 液柱跟随滴管尖嘴：尖嘴在夹爪下 0.13m（保竖立），柱中心再上 9mm。"""
+        """DropperFill 截锥液柱跟随滴管尖嘴：translate=尖嘴（柱底贴尖嘴，+Z 收窄→加宽贴合
+        玻璃体）。尖嘴在夹爪下 0.13m（保竖立），液柱从尖嘴向上 40mm，整体在玻璃体内。"""
         tip = np.asarray(self.robot.get_gripper_position(), dtype=float) + HELD_OFFSET
-        center = tip + np.array([0.0, 0.0, 0.009])
-        self.object_utils.set_object_position(self.DROPPER_FILL, center)
+        self.object_utils.set_object_position(self.DROPPER_FILL, tip)
 
     # ------------------------------------------------------------------
     # 判定

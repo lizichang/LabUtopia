@@ -30,7 +30,9 @@ infer:
 grasp_xy_threshold: 0.03        # 夹爪距滴管抓点多近算"到位"
 gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
 gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
-squeeze_close_threshold: 0.005  # 开合小于此值算"挤胶头"（排空气/滴液）
+# 开合小于此值算"挤胶头"（排空气/滴液）。0.0035：持握开度 0.0055 之上留 0.002 裕量
+# （防手指晃动误判挤），挤胶头 0.002 之下 0.0015（2026-08-14 开度减半后同步）
+squeeze_close_threshold: 0.0035
 
 # 第一步（取样滴管吸样品→滴入试管）重复遍数：多滴几滴让管内液体更明显（液面逐滴升高）
 sample_cycles: 3
