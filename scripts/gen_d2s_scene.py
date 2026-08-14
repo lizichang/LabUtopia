@@ -13,15 +13,14 @@ prim 会出现，烘平后不存在）。
 
 布局（v11：试管架中央/样品瓶后方/洗瓶右侧/药匙前方；台面顶 z=0.80）：
   TestTubeRack  (0.30,  0.00)  中央，底座落台面
-  TestTube      (0.30,  0.06)  插在架上（真实 10mL）
-  Spatula       (0.30, -0.06)  竖插在架上（用户要求）
-  SampleBottle  (0.30, -0.32)  架正后方 ~18cm，初始开盖，粉末在瓶口
+  TestTube      (0.2787, 0.1193)  前排左孔（Ø19.2×153mm，尺寸固化在 equipment）
+  Spatula       (0.3174, 0.1193)  前排右孔，竖插
+  SurfaceDish   (0.30, -0.32)  架正后方，表面皿（先不放粉末，舀取时药匙水平插入）
   WashBottle    (0.52,  0.06)  操作台右侧
-  SamplePowder  (0.30, -0.32)  瓶口处（scale 0.5）
 
-烘平后清理（单层里已是真实 prim，直接 RemovePrim）：
-  - 试管架自带 4 根挤在中心原点的细杆（模型缺陷），换成真实试管/药匙站位
-  - 样品瓶 stopper（v11 先舀取、步骤4才归位盖紧 -> 初始开盖）
+烘平后处理（单层里已是真实 prim）：
+  - 删试管架自带 4 根挤在中心原点的细杆（模型缺陷，孔位由真实试管/药匙占用）
+  - 表面皿去 env_light（flametest 残留光）+ 粉末子集重绑皿材质（先不放粉末）
 
 用法：python scripts/gen_d2s_scene.py   （运行环境：本地 conda env 有 pxr）
 """
@@ -39,20 +38,24 @@ TABLE_TOP = 0.80
 KEEP = {"table", "Cube", "GroundPlane", "CylinderLight", "PhysicsScene", "Looks"}
 
 # (prim, asset_file, translate, scale)   tz=None 表示动态贴台面（资产底座 min z -> 0.80）
+# 试管/药匙 xy 对齐试管架真实孔位（顶层板 14 孔，2列x7行；最前排 y≈0.119）：
+#   左孔 (0.2790,0.1161)  <- 试管，右孔 (0.3170,0.1166) <- 药匙
+# 试管 Ø19.2×153mm 已固化进 equipment/test_tube.usd（原 Ø15 放大 1.2779），勿再场景放大
 EQUIP = [
     ("TestTubeRack", "test_tube_rack.usd", (0.30, 0.00, None), None),
-    ("TestTube", "test_tube.usd", (0.30, 0.06, 0.806), None),
-    ("Spatula", "spatula.usd", (0.30, -0.06, 0.828), None),
-    ("SampleBottle", "sample_bottle.usd", (0.30, -0.32, 0.80), None),
+    ("TestTube", "test_tube.usd", (0.2787, 0.1193, 0.806), None),
+    ("Spatula", "spatula.usd", (0.3174, 0.1193, 0.828), None),
+    ("SurfaceDish", "sample_dish.usd", (0.30, -0.32, 0.80), None),
     ("WashBottle", "wash_bottle.usd", (0.52, 0.06, 0.80), None),
-    ("SamplePowder", "sample_powder.usd", (0.30, -0.32, 0.86), 0.5),
 ]
 
 # 内建效果 prim: (name, radius, height, translate, color, opacity)
+# PowderOnSpoon 在药匙尖端（spatula tip world z=0.828+0.135=0.963）
+# TubeSample/TubeWater 在放大后试管内（xy=试管孔位）
 BUILTIN = [
-    ("PowderOnSpoon", 0.004, 0.004, (0.30, -0.06, 0.965), (0.93, 0.93, 0.94), 1.0),
-    ("TubeSample", 0.005, 0.012, (0.30, 0.06, 0.84), (0.93, 0.93, 0.94), 1.0),
-    ("TubeWater", 0.006, 0.030, (0.30, 0.06, 0.855), (0.55, 0.75, 0.95), 0.6),
+    ("PowderOnSpoon", 0.005, 0.005, (0.3174, 0.1193, 0.965), (0.93, 0.93, 0.94), 1.0),
+    ("TubeSample", 0.006, 0.012, (0.2787, 0.1193, 0.84), (0.93, 0.93, 0.94), 1.0),
+    ("TubeWater", 0.007, 0.035, (0.2787, 0.1193, 0.855), (0.55, 0.75, 0.95), 0.6),
 ]
 
 
@@ -160,13 +163,41 @@ def cleanup_flattened(stage):
     rack = stage.GetPrimAtPath("/World/TestTubeRack")
     if rack.IsValid():
         collect(rack)
-    stopper = stage.GetPrimAtPath("/World/SampleBottle/stopper")
-    if stopper.IsValid() and stopper.IsActive():
-        to_remove.append(str(stopper.GetPath()))
 
     for path in sorted(set(to_remove)):
         stage.RemovePrim(path)
     print(f"[cleanup] removed {len(set(to_remove))}: {sorted(set(to_remove))}")
+
+
+def cleanup_dish(stage):
+    """表面皿：去 flametest 残留 env_light，粉末子集重绑皿材质（先不放粉末）。
+
+    sample_dish.usd 是双材质皿：单 mesh 带 powder_mat / dish_mat 两个 GeomSubset
+    （粉丘是 mesh 的一部分）。用户要求"上面先不放粉末"，故把 powder 子集的
+    material:binding 重绑到 dish 材质——皿整体显玻璃，粉丘不可见。
+    后续要放粉末时：绑回 powder 材质，或用独立 DishPowder 效果 prim。
+    """
+    dish = stage.GetPrimAtPath("/World/SurfaceDish")
+    if not dish.IsValid():
+        print("[dish] not found, skip")
+        return
+    for child in list(dish.GetChildren()):
+        if child.GetTypeName() == "DomeLight" or "env_light" in child.GetName():
+            stage.RemovePrim(child.GetPath())
+            print(f"[dish] removed {child.GetPath()}")
+    dish_mat = stage.GetPrimAtPath("/World/SurfaceDish/_materials/dish_mat_002_002")
+    if not dish_mat.IsValid():
+        print("[dish] dish material not found, skip rebind")
+        return
+
+    def walk(prim):
+        for c in prim.GetChildren():
+            if c.GetTypeName() == "GeomSubset" and c.GetName().startswith("powder"):
+                UsdShade.MaterialBindingAPI.Apply(c).Bind(UsdShade.Material(dish_mat))
+                print(f"[dish] rebound {c.GetPath()} -> dish material")
+            walk(c)
+
+    walk(dish)
 
 
 def main():
@@ -180,7 +211,8 @@ def main():
     stage.Export(OUT)  # 烘平：单层自包含，带 lab_001 的 defaultPrim=/World
 
     st2 = Usd.Stage.Open(OUT)
-    cleanup_flattened(st2)
+    cleanup_flattened(st2)   # 删架子自带细杆
+    cleanup_dish(st2)        # 表面皿去 env_light + 粉末子集重绑皿材质（先不放粉末）
     st2.GetRootLayer().Save()
     print("SAVED", OUT)
 

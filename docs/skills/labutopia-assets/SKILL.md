@@ -35,6 +35,12 @@ version: 1.5.0
 - 材质规范（两套管线统一口径）：玻璃 → Principled BSDF transmission=1.0 + ior=1.45 + roughness≈0.05（USD 里后处理补 transmission，见坑 12）；金属 → metallic≈0.85 roughness≈0.3；陶瓷/塑料 → metallic=0、roughness≈0.4-0.6；纸/棉 → roughness≈0.9
 - 资产文件放 `assets/chemistry_lab/`，场景放 `assets/chemistry_lab/lab_XXX/lab_XXX.usd`
 - 焰色实验场景（`lab_flametest_v17.usd`）由幂等管线 `scripts/fix_flametest_v17.py` 生成，**改完 USD 必须重跑**；该脚本的 `reposition_*` 会把物体复位到 `*_FIXED_POS` 常量——**移动物体位置必须同步 6 处**（见 reference「移动物体位置同步清单」）；v17.usd 是 LFS 二进制，用 usd-core 改坐标（坑 32），git diff 在沙箱会因 LFS clean 过滤器失败
+- **器材放进试管架必须插进孔里（不许放在板上/孔外）**：`assets/equipment/test_tube_rack.usd`（根 `/TestTubeRack`，三层板，长边沿 y）顶层板有 **14 孔 = 2列×7行，孔径 Ø≈22.4mm**。孔心相对架原点：
+  - 列 x ≈ **-0.019（左）/ +0.019（右）**
+  - 行 y = **-0.1188 / -0.0793 / -0.0398 / -0.0004 / +0.0396 / +0.0788 / +0.1161**（行距≈40mm；y=+0.119 为最前排，朝向操作者）
+  - 底层板顶相对架原点 z = **-0.0905**（架底座在原点下 -0.0965，底层板 6mm 厚）
+  - 插孔世界坐标 = **架translate + (孔x, 孔y, -0.0905)**；即 xy 取某孔心（±3mm 内）、底面 z = 架translate_z − 0.0905（D2-S 里 = 0.806）。
+  - 实测校准（D2-S 重写）：前排左孔 (-0.021, +0.116)、右孔 (+0.017, +0.117)，试管 Ø19.2mm（放大 1.2779 已固化进 test_tube.usd，勿场景再缩放）可进 Ø22.4mm 孔。**教训**：曾把试管/药匙"放板上"（对准架中心而非孔心）被用户判为瞎放；生成脚本必须把 xy 取到孔心，不能想当然
 
 ## 常见坑（已踩过）
 
@@ -70,6 +76,7 @@ version: 1.5.0
 30. **DomeLight 贴图 1×1 纯黑 → 环境全暗**：v17 曾暗的根因是 `/World/env_light`（DomeLight, intensity=10000）贴图 `color_0C0C0C.exr` 是 1×1 单像素纯黑——DomeLight 靠环境贴图照亮，贴图全黑 ⇒ 有效光强≈0，**调 intensity 没用**。修复：用纯几何光源（`/World/CylinderLight_010` 从 SphereLight radius=0 无效 → 原位改 CylinderLight intensity=2000 length=100 radius=5 白光）。环境暗先查 DomeLight 贴图亮度。
 31. **USD root prim 必须 Def 不是 Over**：`Sdf.CreatePrimInLayer` 默认 SpecifierOver，旧脚本建 `/World/AlcoholLamp` 根后只设 typeName → 根是 Over、无 Def 背书，严格 USD 查看器可能不显示。修复：幂等把根设成 `SpecifierDef`（fix 脚本 `ensure_lamp_root_def()`）。读修复后 crate 的层级用 `layer.GetPrimAtPath(path).nameChildren`——usd-core 26.8 的 `stage.Traverse()`/`GetChildren()` 会返回空（遍历怪癖，非物体缺失）。
 32. **LFS crate 直接改坐标（defaultPrim 必须 token 形式）**：v17.usd 是 LFS 二进制不能手编辑文本。用 usd-core `Sdf.Layer.FindOrOpen` → `GetPrimAtPath` → 改 `xformOp:translate` default → `layer.Export(tmp_usda)` → 把 `defaultPrim = "/World"` 替换成 token 形式 `"World"` → `tl.Export(tmp_crate)` → `os.replace`。不替换 defaultPrim 会写错路径。命令模板见 reference「移动物体位置同步清单」。
+33. **器材放试管架必须插孔（放板上 = 瞎放）**：试管架顶层板有 14 个真实孔（2列×7行，Ø≈22.4mm，相对架原点列 x≈±0.019、行 y=-0.1188..+0.1161）。放器材时 xy 必须对准**孔心**（±3mm），不是对准架中心/板面——曾把试管(0.30,0.08)、药匙(0.22,0.13)放在架中心附近被用户判为"瞎放"。正确世界坐标 = 架translate + (孔x, 孔y, -0.0905)（-0.0905=底层板顶相对架原点 z，架底座在原点下 -0.0965）；底面 z = 架translate_z − 0.0905。D2-S 实测：试管 Ø19.2mm（尺寸已固化进 test_tube.usd，勿再场景缩放）插前排左孔、药匙竖插前排右孔。孔位明细见参考几何参数表
 
 ## 检查清单
 
@@ -101,6 +108,7 @@ version: 1.5.0
 - [ ] 多材质 mesh 的每个 GeomSubset 都核对过 material:binding（坑 29）
 - [ ] 环境暗时已查 DomeLight 贴图亮度，非无脑调 intensity（坑 30）
 - [ ] 新建 root prim 已设 SpecifierDef 而非 Over（坑 31）
+- [ ] 放试管架的器材 xy 已对准孔心（14 孔 2列×7行，孔心坐标见关键约束/参考几何参数表），底面 z = 架translate_z − 0.0905，非对准架中心（坑 33）
 
 ## 附加资源
 
