@@ -15,12 +15,14 @@ prim 会出现，烘平后不存在）。
   TestTubeRack  (0.30,  0.00)  中央，底座落台面
   TestTube      (0.2787, 0.1193)  前排左孔（Ø19.2×153mm，尺寸固化在 equipment）
   Spatula       (0.3174, 0.1193)  前排右孔，竖插
-  SurfaceDish   (0.30, -0.32)  架正后方，表面皿（先不放粉末，舀取时药匙水平插入）
+  SurfaceDish   (0.30, -0.32)  架正后方，表面皿（粉末在皿上，舀取时药匙水平插入）
+  SamplePowder  (0.30, -0.32)  表面皿上（powder.usd scale 0.4，离群废料/env_light 由 cleanup 删）
   WashBottle    (0.52,  0.06)  操作台右侧
 
 烘平后处理（单层里已是真实 prim）：
   - 删试管架自带 4 根挤在中心原点的细杆（模型缺陷，孔位由真实试管/药匙占用）
-  - 表面皿去 env_light（flametest 残留光）+ 粉末子集重绑皿材质（先不放粉末）
+  - 表面皿去 env_light（flametest 残留光）+ 粉末子集重绑皿材质
+  - 粉末（powder.usd）删离群废料 Object_0/Object_2 + env_light，纹理重定位到 equipment/textures
 
 用法：python scripts/gen_d2s_scene.py   （运行环境：本地 conda env 有 pxr）
 """
@@ -46,6 +48,7 @@ EQUIP = [
     ("TestTube", "test_tube.usd", (0.2787, 0.1193, 0.806), None),
     ("Spatula", "spatula.usd", (0.3174, 0.1193, 0.828), None),
     ("SurfaceDish", "sample_dish.usd", (0.30, -0.32, 0.80), None),
+    ("SamplePowder", "powder.usd", (0.3018, -0.3258, 0.7988), 0.4),
     ("WashBottle", "wash_bottle.usd", (0.52, 0.06, 0.80), None),
 ]
 
@@ -173,9 +176,8 @@ def cleanup_dish(stage):
     """表面皿：去 flametest 残留 env_light，粉末子集重绑皿材质（先不放粉末）。
 
     sample_dish.usd 是双材质皿：单 mesh 带 powder_mat / dish_mat 两个 GeomSubset
-    （粉丘是 mesh 的一部分）。用户要求"上面先不放粉末"，故把 powder 子集的
-    material:binding 重绑到 dish 材质——皿整体显玻璃，粉丘不可见。
-    后续要放粉末时：绑回 powder 材质，或用独立 DishPowder 效果 prim。
+    （粉丘是 mesh 的一部分，flametest 残留）。真实粉末由 SamplePowder（powder.usd）
+    摆在皿上，故把资产自带 powder 子集重绑到 dish 材质避免双份粉丘。
     """
     dish = stage.GetPrimAtPath("/World/SurfaceDish")
     if not dish.IsValid():
@@ -200,6 +202,40 @@ def cleanup_dish(stage):
     walk(dish)
 
 
+def powder(stage):
+    """粉末收尾：离群废料/ env_light 已从 powder.usd 资产本体删掉（Object_1 即粉堆），
+    这里仅保留防御性清理 + 纹理路径重定位（烘平若产出相对 ./textures 会失效）。"""
+    pw = stage.GetPrimAtPath("/World/SamplePowder")
+    if not pw.IsValid():
+        print("[powder] not found, skip")
+        return
+    to_rm = []
+
+    def collect(p):
+        for c in p.GetChildren():
+            if c.GetName() in ("Object_0", "Object_2", "env_light"):
+                to_rm.append(str(c.GetPath()))
+            collect(c)
+
+    collect(pw)
+    for path in sorted(set(to_rm)):
+        stage.RemovePrim(path)
+        print(f"[powder] removed {path}")
+
+    # 纹理重定位：./textures/x -> <scene> 相对 equipment/textures 的路径
+    scene_dir = os.path.dirname(OUT)
+    for prim in Usd.PrimRange(stage.GetPseudoRoot()):
+        if prim.GetTypeName() != "Shader":
+            continue
+        for inp in UsdShade.Shader(prim).GetInputs():
+            v = inp.Get()
+            if isinstance(v, Sdf.AssetPath) and v.path and v.path.replace("\\", "/").startswith("./textures/"):
+                base = os.path.basename(v.path.replace("\\", "/"))
+                newp = os.path.relpath(os.path.join(EQ, "textures", base), scene_dir).replace("\\", "/")
+                inp.Set(Sdf.AssetPath(newp))
+                print(f"[powder] texture {base} -> {newp}")
+
+
 def main():
     os.makedirs(SCENE_DIR, exist_ok=True)
     stage = Usd.Stage.Open(LAB001)
@@ -212,7 +248,8 @@ def main():
 
     st2 = Usd.Stage.Open(OUT)
     cleanup_flattened(st2)   # 删架子自带细杆
-    cleanup_dish(st2)        # 表面皿去 env_light + 粉末子集重绑皿材质（先不放粉末）
+    cleanup_dish(st2)        # 表面皿去 env_light + 粉末子集重绑皿材质
+    powder(st2)              # 粉末：防御性清理 + 纹理重定位（资产本体已删废料/env_light）
     st2.GetRootLayer().Save()
     print("SAVED", OUT)
 

@@ -76,6 +76,7 @@ def run_simulation(config_name: str, config_path: str, log_file: Path):
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,  # 仿真子进程不读交互输入（防 main.py 交互提示挂起）
                 text=True,
                 bufsize=0,  # No buffering
                 universal_newlines=True,

@@ -504,3 +504,4 @@ if (near and self._grasp_near_frames[name] >= self.GRASP_NEAR_FRAMES
 - **controller 只做"整个实验"**：`_step_collect` 对当前元动作 `forward`，`is_done()` 后 `self._meta_idx += 1` 并传播 grip_target（⑤）；`is_success()` = 全部跑完。坐标常量集中 `constants.py`（H/SETTLE/GRIP_*/抓点）。
 - **为什么这样分**：10 类各一文件高内聚可读；每个元动作组合一组可复用的小动作；controller 瘦到只剩排序；跨元动作共享状态（夹爪、坐标）在 controller/constants.py 统一管理，不散落。
 - **验证（完整运行 ~285s，exit 0）**：10 元动作全过、0 force-done、0 IK FAIL、0 settle WARN、`success=True ignite=True stain=True extinguish=True`；垂直段铁证看 freeze 行 `gripper=[x,y,z]` 的 xy 与目标逐位相同。环境注意：`PYTHONUNBUFFERED=1`（否则 print 丢失）、GPU 需提权、`--config-name level2_FlameTest` 显式传。
+- **焰色颜色运行前接口（main.py）**：P9 显色现象由 `flame_color` 决定（yellow/purple/green/red/orange/blue，= `FlameTestTask.FLAME_COLORS` 键）。运行前可 `--flame-color red` 覆盖；未指定且 stdin 为终端时 main.py 会交互询问（回车=用 config 默认）；自动化/测试子进程（stdin 非 TTY）自动跳过。仅在 cfg 有 `flame_color` 字段时生效，非焰色实验不弹提示；覆盖在 config.yaml 落盘前完成，便于复现。测试脚本 Popen 已设 `stdin=DEVNULL`。
