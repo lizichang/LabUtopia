@@ -45,6 +45,9 @@ experiment_result:
     options: [yellow, purple, green, red, orange, blue]   # Na 黄 / K 紫 / Cu 绿 / Ca,Sr 红
     default: yellow
 
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+flame_color: yellow
+
 # 检测阈值与事件 dwell 帧数（一般不用改）
 grasp_xy_threshold: 0.03        # 夹爪距抓取点多近算"到位"
 gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"

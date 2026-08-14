@@ -208,7 +208,10 @@ def main():
         show_video = False
     else:
         save_video = True
-        show_video = not args.headless
+        # cv2.imshow 走 OpenCV 的 Qt 后端：无 DISPLAY（headless 服务器/容器）时
+        # 连不上 xcb，QApplicationPrivate::init 直接 qFatal abort（核心已转储）。
+        # 只在有图形会话时显示；save_video（mp4 录制）与显示无关，保持开启。
+        show_video = (not args.headless) and bool(os.environ.get("DISPLAY"))
 
     robot = create_robot(
         cfg.robot.type,

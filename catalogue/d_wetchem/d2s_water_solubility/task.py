@@ -1,11 +1,15 @@
 """D2-S 水溶性任务：药匙随夹爪 6-DOF 持握 + 粉末/倒入效果。
 
-与 flametest 的关键差异：药匙必须随夹爪**旋转**（DOWN→HORIZ→POUR），所以不是
+与 flametest 的关键差异：药匙必须随夹爪**旋转**（竖直提起 → 过架顶后放平），所以不是
 flametest 的 set_object_position 平移跟随，而是每帧把药匙世界位姿写为
-  药匙世界 = tool_center 世界矩阵 · T_held（R_y(π) + t(0,0,0.112)）
-即药匙相对夹爪固定在"夹爪局部 +Z（指侧）下方 0.112m 处、绕自身 Z 转 180°"。
-验证（pxr 几何 + 四元数）：DOWN 时药匙原点落 (0.6996,0.3611,0.828)（架内竖插
-位姿，attach 零跳变）；转 HORIZ 后勺头朝 -X；转 POUR 后勺尖正好落试管口。
+  药匙世界 = T_held · tool_center 世界矩阵
+T_held = R_z(90°)·R_y(90°) + t(0.112,0,0)——药匙相对夹爪沿"局部 X = 手指侧面"伸出
+0.112m、长轴与手指垂直。这样手指水平(+X)时药匙竖直挂在手指下、与架内竖插姿态完全
+一致（attach 零跳变、不旋转）；竖直提起过架顶后手腕转成 ORIENT_FLAT（手指朝上），
+药匙才变水平（勺头朝 +X 远离机械臂）。
+行向量约定：T_held 必须先作用在夹爪局部系（右乘 tool_world）。写反成
+tool_center · T_held 会把旋转作用到世界系 → 药匙原点被翻到桌面下不可见（夹住瞬间
+"消失"，与朝向无关；flametest 只平移不合成旋转所以免疫，2026-08-14 pxr 数值验证）。
 
 药匙持握 = 关碰撞 + transform-op 覆写（药匙是静态碰撞体，逐帧传送会让物理干扰
 手指闭合；关掉后与 flametest 铂丝同模式，手指按 grip_target=0.008 闭合、视觉贴杆）。
@@ -16,17 +20,17 @@ from isaacsim.core.utils.prims import set_prim_visibility
 
 from tasks.base_task import BaseTask
 from .meta_actions.constants import (
-    GRIP_SPATULA, SPAT_GRASP, SPAT_HELD_T, SPAT_HEAD_DIST,
+    GRIP_SPATULA, SPAT_GRASP, SPAT_HEAD_DIST,
     POWDER_TOP_Z, POWDER_Z, SCOOP_INSERT, POUR_TCP, TUBE_XY,
 )
 
-# 药匙相对夹爪：R_y(π) + 平移 (0,0,0.112)（spatula local +Z = 勺头方向）。
-# 平移必须在最后一行（USD 行向量约定）；写在每行第 4 个参数会变成非仿射矩阵，
-# 持握时药匙相对夹爪偏移错乱。
-_T_HELD = Gf.Matrix4d(-1.0, 0.0, 0.0, 0.0,
-                      0.0, 1.0, 0.0, 0.0,
-                      0.0, 0.0, -1.0, 0.0,
-                      0.0, 0.0, 0.112, 1.0)
+# 药匙相对夹爪：R_z(90°)·R_y(90°) + 平移 (0.112,0,0)。药匙长轴 = 夹爪局部 X（手指
+# 侧面）、与手指垂直 → 手指水平时药匙竖直挂下、与架内姿态零跳变；手腕转 ORIENT_FLAT
+# 后药匙变水平。平移必须在最后一行（USD 行向量约定）。
+_T_HELD = Gf.Matrix4d(0.0, -1.0, 0.0, 0.0,
+                      0.0, 0.0, 1.0, 0.0,
+                      -1.0, 0.0, 0.0, 0.0,
+                      0.112, 0.0, 0.0, 1.0)
 
 
 class D2SWaterSolubilityTask(BaseTask):
@@ -153,7 +157,10 @@ class D2SWaterSolubilityTask(BaseTask):
         return UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
 
     def _set_spatula_from_gripper(self):
-        self._set_spatula_world(self._tool_world() * _T_HELD)
+        # 行向量约定：先 _T_HELD（药匙局部→夹爪局部）再 tool_world（局部→世界）。
+        # 写反成 tool_world * _T_HELD 会把 R_y(π) 作用到世界系，药匙原点算到
+        # (-0.70,0.36,-0.83)（桌面下）→ 夹住瞬间"消失"（已 pxr 数值验证）。
+        self._set_spatula_world(_T_HELD * self._tool_world())
 
     def _set_spatula_world(self, world_matrix):
         """把药匙写到给定世界位姿（局部 = 父世界逆 · 世界，写单个 transform op）。"""
@@ -170,17 +177,19 @@ class D2SWaterSolubilityTask(BaseTask):
 
     def _ease_spatula_to_gripper(self, gripper_pos, k=0.18):
         """夹爪合拢期间药匙逐帧平滑移向持握位（消除闪现吸附）。"""
-        target = self._tool_world() * _T_HELD
+        # 目标 = _T_HELD * tool_world（顺序同 _set_spatula_from_gripper，不能反）。
+        # 插值用 _blend_world（平移线性 + 旋转 slerp）：rest(竖插) 与 held(横持)
+        # 旋转差 ~90°，逐分量矩阵 lerp 会产生剪切/缩放（药匙看起来变形）。
+        target = _T_HELD * self._tool_world()
         cur = UsdGeom.Xformable(self.stage.GetPrimAtPath(self.spatula_path)).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
-        nxt = cur * (1 - k) + target * k
-        self._set_spatula_world(nxt)
+        self._set_spatula_world(_blend_world(cur, target, k))
 
     def _spoon_tip_pos(self, gripper_pos):
-        """勺尖 = 夹爪 + 0.134 × 夹爪局部 +Z（指侧）世界方向。"""
+        """勺尖 = 夹爪 + 0.134 × 夹爪局部 +X（勺头方向）世界方向。"""
         wm = self._tool_world()
         wm_np = np.array([[wm[i][j] for j in range(4)] for i in range(4)])
-        z_dir = wm_np[:3, 2]
-        return np.asarray(gripper_pos, dtype=float) + SPAT_HEAD_DIST * z_dir
+        x_dir = wm_np[0, :3]   # 行向量约定：tool +X = 旋转部分第 1 行 = 勺头方向（新 _T_HELD）
+        return np.asarray(gripper_pos, dtype=float) + SPAT_HEAD_DIST * x_dir
 
     # ------------------------------------------------------------------
     # 判定
@@ -233,3 +242,17 @@ def _rest_matrix():
                        1.0, 0.0, 0.0, 0.0,
                        0.0, 0.0, 1.0, 0.0,
                        0.6996, 0.3611, 0.828, 1.0)
+
+
+def _blend_world(a, b, k):
+    """两个世界位姿的刚性插值：平移线性 + 旋转 slerp（避免逐分量矩阵 lerp 剪切）。
+
+    用 Gf.Slerp（pybind 签名 Slerp(t, q1, q2)，t 在前）替换组件级矩阵 lerp；
+    已 pxr 验证输出为正交（orth_err≈2e-16）。
+    """
+    qa = Gf.Rotation(a.ExtractRotation()).GetQuat()
+    qb = Gf.Rotation(b.ExtractRotation()).GetQuat()
+    m = Gf.Matrix4d()
+    m.SetRotateOnly(Gf.Rotation(Gf.Slerp(float(k), qa, qb)))
+    m.SetTranslateOnly(a.ExtractTranslation() * (1.0 - k) + b.ExtractTranslation() * k)
+    return m

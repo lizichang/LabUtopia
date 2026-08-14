@@ -213,22 +213,24 @@ def brighten_lights(st2):
 
 
 def brighten_spatula(stage):
-    """药匙金属杆反黑不可见（metallic=1.0 只反射环境，弱光下成黑杆）。
+    """药匙 = 普通不锈钢（银黑）：metallic 1.0 + low roughness + 深灰 diffuse。
 
-    用户报"根本看不到药匙"：金属杆细(Ø8mm)且 70% 藏在架内，再反黑就完全
-    看不见。降 metallic 到 0.35、提亮 diffuse，另加少量 emissive 兜底——
-    即便环境贴图/灯光有残差，药匙自身也发微光可见（不依赖环境反射）。
+    早期为救"黑杆不可见"曾降 metallic、提亮 diffuse、加 emissive 兜底——但那是
+    灯光坏（CylinderLight 2000、环境贴图断链）时的补丁。灯光已修（12000 + 环境
+    贴图恢复）后，那套覆写把药匙洗成纯白（emissive 0.35 自发光）。改回标准不锈钢：
+    金属光泽由灯光/环境反射呈现，不需 emissive。值域与 assets/equipment/spatula.usd
+    源材质一致（幂等）。
     """
     sh = stage.GetPrimAtPath("/World/Spatula/material/stainless_steel")
     if not sh.IsValid() or sh.GetTypeName() != "Shader":
         print("[spatula] material not found, skip")
         return
     ush = UsdShade.Shader(sh)
-    ush.GetInput("metallic").Set(0.35)
-    ush.GetInput("roughness").Set(0.4)
-    ush.GetInput("diffuseColor").Set(Gf.Vec3f(0.85, 0.85, 0.88))
-    ush.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.35, 0.35, 0.38))
-    print("[spatula] metallic 1.0->0.35, roughness->0.4, diffuse->0.85, emissive->0.35")
+    ush.GetInput("metallic").Set(1.0)
+    ush.GetInput("roughness").Set(0.45)
+    ush.GetInput("diffuseColor").Set(Gf.Vec3f(0.24, 0.24, 0.27))
+    ush.GetInput("emissiveColor").Set(Gf.Vec3f(0.0, 0.0, 0.0))
+    print("[spatula] stainless: metallic 1.0, roughness 0.45, diffuse 0.24, emissive 0")
 
 
 def cleanup_dish(stage):
@@ -310,7 +312,7 @@ def main():
     cleanup_dish(st2)        # 表面皿去 env_light + 粉末子集重绑皿材质
     powder(st2)              # 粉末：防御性清理 + 纹理重定位（资产本体已删废料/env_light）
     strip_dome_lights(st2)   # 扫除试管架/洗瓶等残留 DomeLight（flametest 黑贴图压暗环境）
-    brighten_spatula(st2)    # 药匙降 metallic + 提亮 diffuse + emissive 兜底（反黑不可见）
+    brighten_spatula(st2)    # 药匙 = 银黑不锈钢（metallic 1.0 + 深灰 diffuse，去 emissive 防发白）
     fix_env_light(st2)       # env 贴图路径断链（Export 解析到 lab_001）→ 场景目录
     brighten_lights(st2)     # 主光 2000→12000：药匙细金属杆 headless 实测纯黑
     st2.GetRootLayer().Save()

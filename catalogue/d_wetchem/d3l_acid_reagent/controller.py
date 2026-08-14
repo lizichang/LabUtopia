@@ -32,7 +32,7 @@ class D3LAcidReagentTaskController(TaskBaseController):
     # ------------------------------------------------------------------
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
-        print("[d3l] controller VERSION v1 (meta-actions: SamplePass, IK-driven)")
+        print("[d3l] controller VERSION v2 (SamplePass 一次持握循环吸滴, IK-driven)")
         self.orient = euler_angles_to_quat(np.array([0, np.pi, 0]))
         # Lula IK 求解器（同 flametest/d2s）：精确关节控制替代 RMP
         mg_path = get_extension_path_from_name("isaacsim.robot_motion.motion_generation")
@@ -45,10 +45,13 @@ class D3LAcidReagentTaskController(TaskBaseController):
         ik_home = np.array([0.012, -0.57, 0.0, -2.81, 0.0, 3.037, 0.741])
         self.engine = IkMotionEngine(solver, self.orient, ik_home)
 
-        # 元动作：本阶段只注册 ①SAMPLE_PASS（②ACID_PASS 下轮补）
+        # 元动作：SAMPLE_PASS 一次持握内循环「吸液-滴液」cfg.sample_cycles 遍
+        # （抓一次→多遍滴→放回一次，中途不松开；管内多积几滴液体，液面逐滴升高）
+        # ②ACID_PASS 下轮补
+        sample_cycles = max(1, int(getattr(cfg, "sample_cycles", 1)))
         self.meta_classes = [SamplePass]
-        self.meta_names = ["S1 sample dropper aspirate + drip into tube"]
-        self.meta_actions = [C(self.engine) for C in self.meta_classes]
+        self.meta_names = [f"S sample aspirate+drip into tube x{sample_cycles}"]
+        self.meta_actions = [SamplePass(self.engine, cycles=sample_cycles)]
         self._meta_idx = 0
         self._h5_sample = 0
         self._start = True

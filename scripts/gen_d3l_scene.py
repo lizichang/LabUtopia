@@ -50,24 +50,26 @@ EQUIP = [
     ("HClBottle", "hcl_bottle.usd", (0.1696, 0.361, None), None),
 ]
 
-# 液体材质配方（最逼真）：roughness 0.05 光洁水面 + ior 1.33 水折射 + opacity 0.45
-# 参考 lab_003 酒精灯 liquid mesh 方案但更透亮；acid 微绿区分酸液/水样
-WATER = dict(color=(0.50, 0.70, 0.92), opacity=0.45, roughness=0.05, ior=1.33)
-ACID = dict(color=(0.60, 0.82, 0.72), opacity=0.45, roughness=0.05, ior=1.33)
+# 液体材质配方（最逼真）：roughness 0.05 光洁水面 + ior 1.33 水折射 + opacity 0.70
+# （2026-08-14 用户反馈"液体痕迹不明显"：0.45 太透、隔着玻璃看不清 → 提到 0.70+提亮）
+# acid 微绿区分酸液/水样
+WATER = dict(color=(0.58, 0.78, 0.98), opacity=0.70, roughness=0.05, ior=1.33)
+ACID = dict(color=(0.66, 0.86, 0.76), opacity=0.70, roughness=0.05, ior=1.33)
 OPAQUE_WHITE = dict(color=(0.93, 0.93, 0.94), opacity=1.0, roughness=0.5)
 
 # 内建效果 prim: (name, type, radius, height, translate, 材质配方 dict, visible)
 # SampleLiquid = 样品瓶内半瓶液体（cyl 从瓶底 0.80 到液面 0.84）
 # AcidLiquid   = 酸瓶内半瓶液体（hcl 资产自带 1mm 薄盘被隐藏，改用真体积）
 # TubeDrops/Precipitate = 管内液滴/沉淀；Bubbles 单独建（小球簇）
-# DropperFill = 滴管尖内吸起的液体柱（r=0.003 细柱，初始隐藏；task 在吸液后显示、
+# DropperFill = 滴管尖内吸起的液体柱（r=0.004 可见液柱，初始隐藏；task 在吸液后显示、
 #   逐帧跟随滴管尖，滴入试管后隐藏 —— "液体像不像水"的动态可视）
+# TubeDrops = 管内液体（0.008→0.009 贴管壁 Ø19.2 内缘、0.020→0.030 更高更显眼）
 EFFECTS = [
     ("SampleLiquid", "cylinder", 0.014, 0.040, (0.4045, 0.3585, 0.820), WATER, True),
     ("AcidLiquid", "cylinder", 0.014, 0.040, (0.1696, 0.361, 0.820), ACID, True),
-    ("TubeDrops", "cylinder", 0.008, 0.020, (0.2787, 0.1193, 0.816), WATER, False),
+    ("TubeDrops", "cylinder", 0.009, 0.030, (0.2787, 0.1193, 0.821), WATER, False),
     ("Precipitate", "cylinder", 0.008, 0.003, (0.2787, 0.1193, 0.8075), OPAQUE_WHITE, False),
-    ("DropperFill", "cylinder", 0.003, 0.018, (0.281, 0.0788, 0.818), WATER, False),
+    ("DropperFill", "cylinder", 0.004, 0.040, (0.281, 0.0788, 0.818), WATER, False),
 ]
 # 气泡：试管内液体区 5 颗小白球（世界坐标，r=0.002，均在管壁 Ø19.2 内）
 BUBBLES = [

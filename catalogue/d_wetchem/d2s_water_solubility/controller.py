@@ -5,8 +5,8 @@ v44 同构分层（与 flametest_controller 相同的 Lula IK + 元动作组合�
   - meta_actions/（一个 v11 步骤 = 一个元动作，一类一文件）
   - 本控制器：实例化元动作按序 forward()，全部完成 → success。
 
-本阶段只实现 ①ScoopSample（横向夹取药匙 → 舀取粉末 → 倾斜倒入试管），后续按
-v11 步骤逐个补 ②加蒸馏水 ③振荡。动作级契约（grip 每帧发送、到达冻结、dwell、
+本阶段只实现 ①PickSpatula（横向夹取药匙），后续按 v11 步骤逐个补
+②舀取粉末 ③加蒸馏水 ④振荡。动作级契约（grip 每帧发送、到达冻结、dwell、
 跨元动作 grip_target 传播）沿用 flametest。
 """
 import os
@@ -19,7 +19,7 @@ from isaacsim.core.utils.extensions import get_extension_path_from_name
 
 from controllers.base_controller import BaseController as TaskBaseController
 from controllers.atomic_actions.flametest import IkMotionEngine
-from .meta_actions import ScoopSample
+from .meta_actions import PickSpatula
 from .meta_actions.constants import GRIP_OPEN
 
 
@@ -32,7 +32,7 @@ class D2SWaterSolubilityTaskController(TaskBaseController):
     # ------------------------------------------------------------------
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
-        print("[d2s] controller VERSION v1 (meta-actions: ScoopSample, IK-driven)")
+        print("[d2s] controller VERSION v1 (meta-actions: PickSpatula, IK-driven)")
         self.orient = euler_angles_to_quat(np.array([0, np.pi, 0]))
         # Lula IK 求解器（同 flametest v31）：精确关节控制替代 RMP
         mg_path = get_extension_path_from_name("isaacsim.robot_motion.motion_generation")
@@ -45,9 +45,9 @@ class D2SWaterSolubilityTaskController(TaskBaseController):
         ik_home = np.array([0.012, -0.57, 0.0, -2.81, 0.0, 3.037, 0.741])
         self.engine = IkMotionEngine(solver, self.orient, ik_home)
 
-        # 元动作：按 v11 步骤 ①舀取倒入 ②加蒸馏水 ③振荡（本阶段只注册 ①）
-        self.meta_classes = [ScoopSample]
-        self.meta_names = ["S1 scoop sample powder into tube"]
+        # 元动作：按 v11 步骤 ①横向夹取药匙 ②舀取粉末 ③加蒸馏水 ④振荡（本阶段只注册 ①）
+        self.meta_classes = [PickSpatula]
+        self.meta_names = ["S1 pick spatula horizontally"]
         self.meta_actions = [C(self.engine) for C in self.meta_classes]
         self._meta_idx = 0
         self._h5_sample = 0
@@ -121,5 +121,5 @@ class D2SWaterSolubilityTaskController(TaskBaseController):
         return self._meta_idx >= len(self.meta_actions)
 
     def get_language_instruction(self):
-        return ("Scoop a small amount of the solid sample powder with the spatula "
-                "and pour it into the test tube in the rack")
+        return ("Pick up the spatula from the rack horizontally "
+                "(grip the handle, lift it sideways)")

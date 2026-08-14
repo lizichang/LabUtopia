@@ -32,6 +32,9 @@ gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
 gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
 squeeze_close_threshold: 0.005  # 开合小于此值算"挤胶头"（排空气/滴液）
 
+# 第一步（取样滴管吸样品→滴入试管）重复遍数：多滴几滴让管内液体更明显（液面逐滴升高）
+sample_cycles: 3
+
 # 实验结果输入接口（运行前 --result has_bubbles=yes 等；task 读 cfg.has_bubbles 等）
 experiment_result:
   has_bubbles:
@@ -42,6 +45,11 @@ experiment_result:
     label: "滴加后是否产生沉淀"
     type: bool
     default: false
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.has_bubbles / cfg.has_precipitate。
+has_bubbles: false
+has_precipitate: false
 
 task:
   max_steps: 30000
@@ -71,7 +79,10 @@ cameras:
 
 robot:
   type: "franka"
-  position: [0.25, 0.32, 0.71]
+  # 底座 (0.25, 0.57)：在试管架正前方 +y 方向（架中心 0.30,0.00；架前沿 y=0.143）。
+  # 比旧位 (0.25, 0.32) 再往后 25cm：酸瓶/样品瓶距底座 0.22/0.26m（旧位贴底座 9/16cm），
+  # 全部器材仍在 Franka 0.855m 臂展内（最远加酸滴管 0.50m）。台面 Cube 到 y=1.0，未出桌。
+  position: [0.25, 0.57, 0.71]
 
 collector:
   type: "default"

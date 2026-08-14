@@ -39,7 +39,7 @@ task:
 cameras:
   - prim_path: "/World/Camera1"
     name: "camera_1"
-    translation: [0.50, 0.30, 1.15]
+    translation: [1.00, 0.40, 1.15]
     resolution: [512, 512]
     focal_length: 10
     orientation: [0.38519, 0.13095, 0.29403, 0.86489]
@@ -47,7 +47,7 @@ cameras:
 
   - prim_path: "/World/Camera2"
     name: "camera_2"
-    translation: [0.26, -0.06, 1.24]
+    translation: [0.8, 0.1, 1.44]
     resolution: [512, 512]
     focal_length: 10
     orientation: [0.9425, 0.10815, 0.03605, 0.31417]

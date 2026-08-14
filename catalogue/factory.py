@@ -42,7 +42,7 @@ def register_catalogue_actions() -> None:
     register_task("c1_flame_wire_solid", FlameTestTask)
     register_controller("c1_flame_wire_solid", FlameTestTaskController)
 
-    # D2-S 固体水溶性测试（catalogue 内原生实现：Lula IK + ScoopSample 元动作）
+    # D2-S 固体水溶性测试（catalogue 内原生实现：Lula IK + PickSpatula 元动作）
     register_task("d2s_water_solubility", D2SWaterSolubilityTask)
     register_controller("d2s_water_solubility", D2SWaterSolubilityTaskController)
 

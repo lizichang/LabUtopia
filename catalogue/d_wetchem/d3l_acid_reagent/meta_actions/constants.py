@@ -10,8 +10,8 @@ verify 输出）：
   SampleBottle   (0.4045,0.3585)  瓶口 rim z=0.870，瓶内液面 z=0.840（半瓶）
   HClBottle      (0.1696,0.361)   瓶口 rim z=0.870，瓶内液面 z=0.840
 
-滴管持握约定（task._T_HELD_DROPPER = R_x(π)+t(0,0,0.13)，见 task.py）：
-滴管尖嘴 0.13m 吊在夹爪下方（沿夹爪局部 +Z = 手指朝下方向）。故
+滴管持握约定（task 持握 = TCP + HELD_OFFSET(0,0,-0.13)，纯平移保竖立，
+flametest 同款，见 task.py）：滴管尖嘴 0.13m 吊在夹爪下方。故
   TCP z = 尖嘴 z + 0.13
 抓点 = 立放位 + (0,0,0.13)：滴管尖嘴 0.806，抓点 0.936（架顶 0.917 之上可握段）。
 """
@@ -19,11 +19,15 @@ verify 输出）：
 H = 1.15            # 安全高位（跨越桌面障碍的水平平移高度）
 SETTLE = 12         # 到点 settle 帧数
 
-# —— 夹爪开度 ——
+# —— 夹爪开度（开度值 = 手指物理间距，m）——
 GRIP_OPEN = 0.04            # 松开（放回滴管）
-GRIP_DROPPER = 0.008        # 抓滴管：手指压住 Ø11mm 胶头（dropper bbox ±0.0055）
+# 胶头直径 Ø11mm（pxr 实测 d3l 场景 DropperSample/球体 bbox dx=dy=0.0110，抓点 0.936
+# 在球体内）。移动/持握时开合=胶头直径：手指正好贴胶头面——不陷不隔。
+#  旧 0.008 → 手指陷进胶头 1.5mm/边（穿模、"歪"）；旧 0.015 → 手指离胶头 4mm（明显间隔）
+DROPPER_DIAM = 0.011
+GRIP_DROPPER = DROPPER_DIAM # 抓滴管：合爪到胶头直径
 GRIP_SQUEEZE = 0.002        # 挤胶头（排空气 / 滴液）
-GRIP_ASPIRATE = 0.015       # 松胶头（吸液）
+GRIP_ASPIRATE = DROPPER_DIAM# 松胶头吸液后回持握宽=胶头直径（移动全程无缝隙）
 
 # —— 滴管尖嘴到夹爪距离（持握 _T_HELD 的 z 偏移）——
 TIP_OFFSET = 0.13           # 尖嘴在夹爪下方 0.13m（dropperdrip grasp_offset，实测）
@@ -31,10 +35,12 @@ TIP_OFFSET = 0.13           # 尖嘴在夹爪下方 0.13m（dropperdrip grasp_of
 # —— 取样滴管（/World/DropperSample，2 排左孔）——
 DROP_SAMPLE_XY = (0.281, 0.0788)
 DROP_SAMPLE_GRASP = (0.281, 0.0788, 0.806 + TIP_OFFSET)   # = 0.936（架顶 0.917 之上）
+DROP_SAMPLE_REST = (0.281, 0.0788, 0.806)   # 架内竖插静止位姿（尖嘴底=原点，立放底面 z=0.806）
 
 # —— 加酸滴管（/World/DropperAcid，2 排右孔）——
 DROP_ACID_XY = (0.319, 0.0788)
 DROP_ACID_GRASP = (0.319, 0.0788, DROP_SAMPLE_GRASP[2])
+DROP_ACID_REST = (0.319, 0.0788, 0.806)
 
 # —— 样品瓶（/World/SampleBottle (0.4045,0.3585)，口 rim 0.870，液面 0.840）——
 SAMPLE_BOTTLE_XY = (0.4045, 0.3585)
