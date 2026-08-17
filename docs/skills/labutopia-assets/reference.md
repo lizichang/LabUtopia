@@ -536,6 +536,8 @@ task:
 
 **相机参数在 YAML 里设，不是 USD 里**——改视角只需改 YAML 无需重建场景。
 
+**机械臂卡住 = 底座离工作区太近（D2-S 实测，2026-08-14）**：改 `config/level2_D2SWaterSolubility.yaml` → `robot.position`（`main.py` 运行时 `np.array(cfg.robot.position)` 驱动底座摆放）把底座往后移。**向后 = -Y**（y 减小）——第一版挪 +Y 被用户判「挪反了」，-Y 才「做对」。最终底座 `[0.05, 0.17, 0.71]`（y 0.32→0.17 移 15cm，x 再退到 0.05）。**别从物体上次移动方向推底座方向**：物体二次重排是 +Y（试管架 y 0.1441→0.361），底座向后却是 -Y，二者独立。
+
 ### 三个相机的角色
 
 | 相机 | 角色 | 典型参数 | 备注 |
@@ -791,7 +793,7 @@ for pp in ['/World/<OBJ>', ...]:
 | TestTubeRack | (0.528, -0.162, 0.896) | 试管架 |
 | Dropper | (0.507, -0.042, 0.812) | 胶头滴管 |
 | Match | (0.887, 0.594, 0.801) | 火柴 |
-| robot base | (0.25, 0.32) | `config` 的 `robot.position` |
+| robot base | (0.05, 0.17) | `config` 的 `robot.position`（D2-S；向后 = -Y）|
 
 ---
 

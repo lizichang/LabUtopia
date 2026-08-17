@@ -14,9 +14,9 @@ prim 会出现，烘平后不存在）。
 布局（用户 temp_d2s.usd 实测坐标，2026-08-14 二次重排避开 Franka 底座 (0.25,0.32)；台面顶 z=0.80）：
   TestTubeRack  (0.6803, 0.3607)  工作区右侧，底座落台面
   TestTube      (0.659,  0.48)    架前排右孔（Ø19.2×153mm，尺寸固化在 equipment）
-  Spatula       (0.6996, 0.3611, rotZ -90°)  架中心孔，竖插（用户转了 -90°）
-  SurfaceDish   (0.6865, 0.0402)  架正后方，表面皿（粉末在皿上，舀取时药匙水平插入）
-  SamplePowder  (0.6883, 0.0344)  表面皿上（powder.usd scale 0.4，离群废料/env_light 由 cleanup 删）
+  Spatula       (0.6993, 0.3608, rotZ -180°)  架中心孔，竖插（用户 2026-08-14 转了 -180°，勺头扁平面沿 X，为后续机械臂旋转铺路）
+  SurfaceDish   (0.5365, 0.0402)  架正后方，表面皿（粉末在皿上，舀取时药匙水平插入；2026-08-14 晚用户要求皿+粉 -X 移 15cm 给挖粉留间隙防穿模）
+  SamplePowder  (0.5383, 0.0344)  表面皿上（powder.usd scale 0.4，离群废料/env_light 由 cleanup 删；随皿 -X 移 15cm）
   WashBottle    (0.6809, -0.2241) 工作区 -Y 下方（远离机械臂，倒水时再取）
 
 烘平后处理（单层里已是真实 prim）：
@@ -45,15 +45,16 @@ KEEP = {"table", "Cube", "GroundPlane", "CylinderLight", "PhysicsScene", "Looks"
 
 # (prim, asset_file, translate, scale, rot_z)   tz=None 表示动态贴台面（资产底座 min z -> 0.80）
 # 坐标来源：用户 temp_d2s.usd（2026-08-14 二次重排——原布局试管架(0.3273,0.1441)与
-#   Franka 底座(0.25,0.32,见 config)重叠，整组右移 +X≈0.36；Spatula 仍 rotZ -90°）。
+#   Franka 底座(0.05,0.17,见 config)重叠，整组右移 +X≈0.36；Spatula 用户更新为
+#   (0.6993,0.3608,rotZ -180°)，勺头扁平面沿 X 为后续机械臂旋转铺路）。
 # 注意：试管/药匙相对架的偏移与上一版完全一致（整组平移），表面皿/粉末/洗瓶独立移动。
 # 试管 Ø19.2×153mm 已固化进 equipment/test_tube.usd（原 Ø15 放大 1.2779），勿再场景放大
 EQUIP = [
     ("TestTubeRack", "test_tube_rack.usd", (0.6803, 0.3607, None), None, None),
     ("TestTube", "test_tube.usd", (0.659, 0.48, 0.806), None, None),
-    ("Spatula", "spatula.usd", (0.6996, 0.3611, 0.828), None, -90.0),
-    ("SurfaceDish", "sample_dish.usd", (0.6865, 0.0402, 0.80), None, None),
-    ("SamplePowder", "powder.usd", (0.6883, 0.0344, 0.7988), 0.4, None),
+    ("Spatula", "spatula.usd", (0.6993, 0.3608, 0.828), None, -180.0),
+    ("SurfaceDish", "sample_dish.usd", (0.5365, 0.0402, 0.80), None, None),
+    ("SamplePowder", "powder.usd", (0.5383, 0.0344, 0.7988), 0.4, None),
     ("WashBottle", "wash_bottle.usd", (0.6809, -0.2241, 0.80), None, None),
 ]
 
@@ -61,7 +62,7 @@ EQUIP = [
 # PowderOnSpoon 在药匙尖端（spatula tip world z=0.828+0.135=0.963，xy 随药匙新坐标）
 # TubeSample/TubeWater 在放大后试管内（xy=试管新孔位）
 BUILTIN = [
-    ("PowderOnSpoon", 0.005, 0.005, (0.6996, 0.3611, 0.965), (0.93, 0.93, 0.94), 1.0),
+    ("PowderOnSpoon", 0.005, 0.005, (0.6993, 0.3608, 0.965), (0.93, 0.93, 0.94), 1.0),
     ("TubeSample", 0.006, 0.012, (0.659, 0.48, 0.84), (0.93, 0.93, 0.94), 1.0),
     ("TubeWater", 0.007, 0.035, (0.659, 0.48, 0.855), (0.55, 0.75, 0.95), 0.6),
 ]

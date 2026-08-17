@@ -5,9 +5,10 @@
   - meta_actions/（一个 v11 步骤 = 一个元动作，一类一文件）
   - 本控制器：实例化元动作按序 forward()，全部完成 → success。
 
-本阶段只注册 ①SamplePass（取样滴管吸样品液→滴入试管），②AcidPass（加试剂滴管
-吸酸→滴入试管）下轮补（task 已就绪）。动作级契约（grip 每帧发送、到达冻结、dwell、
-跨元动作 grip_target 传播）沿用 flametest/d2s。
+注册 ①SamplePass（取样滴管吸样品液→滴入试管）+ ②AcidPass（加试剂滴管吸酸→
+滴入试管）顺序执行：样品先加、酸后加，同一试管内混合触发现象（气泡/沉淀）。
+动作级契约（grip 每帧发送、到达冻结、dwell、跨元动作 grip_target 传播）沿用
+flametest/d2s。
 """
 import os
 import numpy as np
@@ -19,7 +20,7 @@ from isaacsim.core.utils.extensions import get_extension_path_from_name
 
 from controllers.base_controller import BaseController as TaskBaseController
 from controllers.atomic_actions.flametest import IkMotionEngine
-from .meta_actions import SamplePass
+from .meta_actions import SamplePass, AcidPass, TubeShakePass
 from .meta_actions.constants import GRIP_OPEN
 
 
@@ -45,13 +46,25 @@ class D3LAcidReagentTaskController(TaskBaseController):
         ik_home = np.array([0.012, -0.57, 0.0, -2.81, 0.0, 3.037, 0.741])
         self.engine = IkMotionEngine(solver, self.orient, ik_home)
 
-        # 元动作：SAMPLE_PASS 一次持握内循环「吸液-滴液」cfg.sample_cycles 遍
-        # （抓一次→多遍滴→放回一次，中途不松开；管内多积几滴液体，液面逐滴升高）
-        # ②ACID_PASS 下轮补
+        # 元动作：①SAMPLE_PASS（取样滴管）→ ②ACID_PASS（加酸滴管）→
+        # ③TUBE_SHAKE_PASS（抓起试管震荡混合），顺序执行。各滴管一次持握内循环
+        # 「吸液-滴液」cfg.{sample,acid}_cycles 遍（抓一次→多遍滴→放回一次，中途
+        # 不松开；管内多积几滴液体，液面逐滴升高；加酸滴入后样品+酸混合触发现象）。
+        # task 双滴管 + 试管生命周期已就绪。
         sample_cycles = max(1, int(getattr(cfg, "sample_cycles", 1)))
-        self.meta_classes = [SamplePass]
-        self.meta_names = [f"S sample aspirate+drip into tube x{sample_cycles}"]
-        self.meta_actions = [SamplePass(self.engine, cycles=sample_cycles)]
+        acid_cycles = max(1, int(getattr(cfg, "acid_cycles", 1)))
+        shake_cycles = max(1, int(getattr(cfg, "shake_cycles", 3)))
+        self.meta_classes = [SamplePass, AcidPass, TubeShakePass]
+        self.meta_names = [
+            f"S sample aspirate+drip into tube x{sample_cycles}",
+            f"A acid aspirate+drip into tube x{acid_cycles}",
+            f"T shake tube x{shake_cycles}",
+        ]
+        self.meta_actions = [
+            SamplePass(self.engine, cycles=sample_cycles),
+            AcidPass(self.engine, cycles=acid_cycles),
+            TubeShakePass(self.engine, cycles=shake_cycles),
+        ]
         self._meta_idx = 0
         self._h5_sample = 0
         self._start = True
@@ -124,5 +137,6 @@ class D3LAcidReagentTaskController(TaskBaseController):
         return self._meta_idx >= len(self.meta_actions)
 
     def get_language_instruction(self):
-        return ("Squeeze the sample dropper bulb to aspirate the liquid sample "
-                "from the sample bottle, then drip it into the test tube in the rack")
+        return ("Aspirate the liquid sample with the sample dropper and the acid "
+                "reagent with the acid dropper, drip both into the same test tube "
+                "in the rack, then pick up the tube and shake it to mix")

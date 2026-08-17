@@ -8,7 +8,8 @@ mode: "collect"
 # 场景：d3l_acid_reagent（D3-L 酸性试剂滴加反应，桌面 z=0.80）
 # 台面（2026-08-14 pxr 实测世界 bbox）：
 #   试管架 (0.257,-0.143,0.800)-(0.343,0.143,0.917)、试管前排左孔 (0.279,0.119) 口 z 0.959
-#   取样滴管 2 排左孔 (0.281,0.079) 尖嘴 z 0.806、加酸滴管 2 排右孔 (0.319,0.079)
+#   取样滴管后排左孔 (0.2815,-0.1187) 尖嘴 z 0.806、加酸滴管后排右孔 (0.3202,-0.1187)
+#     （用户 2026-08-14：两滴管挪到离试管（前排 y=+0.119）最远的后排 y=-0.1187）
 #   样品瓶 (0.4045,0.3585) 口 rim z 0.870 液面 0.840、酸瓶 (0.1696,0.361) 口 rim 0.870
 usd_path: "assets/scenes/d_wetchem/d3l_acid_reagent/d3l_acid_reagent.usd"
 
@@ -36,22 +37,28 @@ squeeze_close_threshold: 0.0035
 
 # 第一步（取样滴管吸样品→滴入试管）重复遍数：多滴几滴让管内液体更明显（液面逐滴升高）
 sample_cycles: 3
+# 第二步（加酸滴管吸酸→滴入试管）重复遍数：样品+酸混合，加酸滴入即触发现象（气泡/沉淀）
+acid_cycles: 2
+# 第三步（步9 拿起试管震荡混合）来回次数（2026-08-16 用户：3→5 次）
+shake_cycles: 5
 
 # 实验结果输入接口（运行前 --result has_bubbles=yes 等；task 读 cfg.has_bubbles 等）
+# 2026-08-16：默认改 true——直接跑命令也能看到气泡/沉淀（用户反馈"还是看不到气泡"根因之一
+# 就是默认 false 不出场）。真实数据采集时按实验结果传 --result has_bubbles=yes/no 覆盖。
 experiment_result:
   has_bubbles:
     label: "滴加后是否产生气泡"
     type: bool
-    default: false
+    default: true
   has_precipitate:
     label: "滴加后是否产生沉淀"
     type: bool
-    default: false
+    default: true
 
 # 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
 # task 直接读 cfg.has_bubbles / cfg.has_precipitate。
-has_bubbles: false
-has_precipitate: false
+has_bubbles: true
+has_precipitate: true
 
 task:
   max_steps: 30000

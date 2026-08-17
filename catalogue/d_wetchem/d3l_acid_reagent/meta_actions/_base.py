@@ -5,6 +5,6 @@ controllers.flametest_meta_actions._base（组合 atomic_actions/flametest 的
 MoveAction/GripAction/HoldAction + IkMotionEngine，Lula IK 驱动，RMP 弃用）。
 D3-L 仅换一套坐标常量，运动机制完全复用，避免重造已踩坑验证过的轮子。
 """
-from controllers.flametest_meta_actions._base import BaseMetaAction, mv, grip, hold
+from controllers.flametest_meta_actions._base import BaseMetaAction, mv, grip, hold, shake
 
-__all__ = ["BaseMetaAction", "mv", "grip", "hold"]
+__all__ = ["BaseMetaAction", "mv", "grip", "hold", "shake"]

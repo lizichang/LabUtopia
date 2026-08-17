@@ -11,10 +11,12 @@ reset()：从头再跑（子类必须调用 super().reset()）。
   mv(pos, dwell=0)        移动到 pos（到达冻结后 dwell 帧）
   grip(width, dwell=25)   原地合爪/开爪到 width
   hold(n)                 停在当前位置 n 帧
+  shake(center, ...)      在 center 附近水平正弦振荡（"震荡来回 N 下"，抓试管用）
 """
 from ..atomic_actions.flametest.grip_action import GripAction
 from ..atomic_actions.flametest.hold_action import HoldAction
 from ..atomic_actions.flametest.move_action import MoveAction
+from ..atomic_actions.flametest.shake_action import ShakeAction
 from .constants import GRIP_OPEN
 
 
@@ -71,3 +73,9 @@ def grip(engine, width, dwell=25):
 
 def hold(engine, n):
     return HoldAction(engine, n)
+
+
+def shake(engine, center, axis=(1, 0, 0), amplitude=0.02, cycles=3, period=60):
+    """在 center 附近沿 axis 正弦振荡 cycles 个来回（默认 x 轴 ±20mm、1s/来回）。"""
+    return ShakeAction(engine, center, axis=axis, amplitude=amplitude,
+                       cycles=cycles, period=period)

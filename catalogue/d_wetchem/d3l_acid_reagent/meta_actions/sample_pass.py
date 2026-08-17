@@ -11,7 +11,8 @@ task 生命周期靠瓶口/试管口 TCP 位置区分各遍（见 task.py droppe
 = GRIP_DROPPER = GRIP_ASPIRATE = 0.0055（≈ 指间距一半 ≈ 胶头 Ø11mm/2，正好贴胶头面）；
 只在排空气/滴液瞬间挤到 GRIP_SQUEEZE=0.002，随后松回 0.0055 再移动。
 
-几何（2026-08-14 pxr 实测 d3l_acid_reagent.usd）：滴管立插架 2 排左孔，尖嘴底
+几何（2026-08-14 pxr 实测 d3l_acid_reagent.usd）：滴管立插架后排左孔（用户调整到
+离试管最远的最靠边一列），尖嘴底
 z=0.806，抓点在胶头顶 z=0.936（架顶 0.917 之上）。持握 = TCP + HELD_OFFSET
 (0,0,-0.13) 使尖嘴 0.13m 吊在夹爪下方（task.py 纯平移保竖立，flametest 同款）
 ——TCP z = 尖嘴 z + 0.13。整段手指朝下、滴管保持竖立，只做垂直下探/上提 + 高位
@@ -29,8 +30,8 @@ z=0.806，抓点在胶头顶 z=0.936（架顶 0.917 之上）。持握 = TCP + H
     E 松胶头吸液     grip(GRIP_ASPIRATE, 40)    # task: filled → DropperFill 显
     F 垂直提出液面   mv((bx,by,H))
     G 高位平移试管上 mv((tx,ty,H))
-    H 下探入管口     mv(TUBE_DROP_TCP)          # 尖嘴 0.949 入管口 0.9593 下
-    I 挤胶头滴液     grip(GRIP_SQUEEZE, 40)     # task: dropped → TubeDrops 显
+    H 下探到管口上方 mv(TUBE_DROP_TCP)          # 尖嘴 0.984 在管口 0.9593 上方 25mm
+    I 挤胶头滴液     grip(GRIP_SQUEEZE, 40)     # task: dropped → 液滴动画坠落 + TubeDrops 显
     J 松回持握宽     grip(GRIP_DROPPER, 20)     # 提管口前松回胶头直径（移动全程无缝隙）
     K 垂直提出       mv((tx,ty,H)) ]
   ⑮ 高位回架         mv((sx,sy,H))
@@ -58,7 +59,7 @@ class SamplePass(BaseMetaAction):
         bx, by = SAMPLE_BOTTLE_XY
         tx, ty = TUBE_XY
         actions = [
-            # —— 抓取样滴管（架 2 排左孔，尖嘴已在孔内；只抓这一次）——
+            # —— 抓取样滴管（架后排左孔，尖嘴已在孔内；只抓这一次）——
             mv(e, (sx, sy, H)),                  # ① 高位接近滴管架上方
             mv(e, DROP_SAMPLE_GRASP),            # ② 垂直下探到胶头顶（z 0.936）
             grip(e, GRIP_DROPPER, 60),           # ③ 合爪夹紧（开合=胶头直径）
@@ -74,7 +75,7 @@ class SamplePass(BaseMetaAction):
             mv(e, (bx, by, H)),                  # F 垂直提出液面
             # —— 移到试管口滴液 ——
             mv(e, (tx, ty, H)),                  # G 高位平移到试管上方
-            mv(e, TUBE_DROP_TCP),                # H 下探入管口（尖嘴 0.949）
+            mv(e, TUBE_DROP_TCP),                # H 下探到管口上方 25mm（尖嘴 0.984，液滴下落可见）
             grip(e, GRIP_SQUEEZE, 40),           # I 挤胶头滴液
             grip(e, GRIP_DROPPER, 20),           # J 松回持握宽（提管口/移动全程=胶头直径）
             mv(e, (tx, ty, H)),                  # K 垂直提出

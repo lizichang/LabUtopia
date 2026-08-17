@@ -112,7 +112,7 @@ class WristFlipAction:
                         gain = (absz - abs(jx[2])) / PROBE
                         gain += 0.5 * (float(np.dot(jz, UP)) - upz) / PROBE
                         drift = float(np.linalg.norm(pp - cur_pos))
-                        score = gain - DRIFT_W_LOCAL * drift
+                        score = gain - DRIFT_W * 0.1 * drift   # 放宽漂移权（0.1×）：主循环找不到有利推进时弱化漂移惩罚再试
                         if score > best_score:
                             best_j, best_dir, best_score = j, s, score
 

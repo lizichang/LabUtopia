@@ -60,7 +60,7 @@ cameras:
 
 robot:
   type: "franka"
-  position: [0.25, 0.32, 0.71]
+  position: [-0.15, 0.17, 0.71]
 
 collector:
   type: "default"

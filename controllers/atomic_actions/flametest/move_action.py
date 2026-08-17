@@ -29,8 +29,11 @@ from .ik_engine import ORIENT_EPS, quat_to_rot, rot_angle
 VERTICAL_XY_EPS = 0.015
 # 垂直段每帧 z 推进量（m/帧）。v46 初版 0.008 实测：z 步大 → 所需关节重配超
 # MAX_JOINT_DELTA(0.015)，钳制后 TCP 横向拖滞 4~9cm（diag 轨迹验证），改小到
-# 钳制内（2mm 步长 @60Hz ≈ 0.12 m/s，TCP 贴线无拖滞，下探/提出略慢但稳）
-VZ_STEP = 0.002
+# 钳制内（2mm 步长 @60Hz ≈ 0.12 m/s，TCP 贴线无拖滞，下探/提出略慢但稳）。
+# 2026-08-14 晚：MAX_JOINT_DELTA 0.008→0.006，同步降到 0.0015（≈0.09 m/s）保持
+# 4:1 比例，垂直段关节量仍在钳制内；药匙勺头宽面正对 camera1 后臂末端微振荡被
+# 放大，降速减小每步起停冲击（见 ik_engine.MAX_JOINT_DELTA 注释）。
+VZ_STEP = 0.0015
 
 
 class MoveAction:

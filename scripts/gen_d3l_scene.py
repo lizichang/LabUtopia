@@ -17,8 +17,8 @@
 布局（V7：试管架中央/样品瓶正后方 10cm/HCl 左前方 15cm/两支滴管插架孔）：
   TestTubeRack  (0.30,  0.00)  底座贴台面 z=0.8965
   TestTube      (0.2787, 0.1193, 0.806)  前排左孔（d2s 校准坐标）
-  DropperSample (0.281, 0.0788, 0.806)   2 排左孔 立放
-  DropperAcid   (0.319, 0.0788, 0.806)   2 排右孔 立放
+  DropperSample (0.2815, -0.1187, 0.806)  后排左孔 立放（离试管最远，用户 2026-08-14 调整）
+  DropperAcid   (0.3202, -0.1187, 0.806)  后排右孔 立放
   SampleBottle  (0.4045, 0.3585)  样品瓶（用户调整：台面前方偏右），底座贴台面
   HClBottle     (0.1696, 0.361)   HCl 试剂瓶（用户调整：台面前方偏左），底座贴台面
 
@@ -45,11 +45,24 @@ HOLE_BOTTOM = 0.806  # = 架 translate z(0.8965) − 0.0905
 EQUIP = [
     ("TestTubeRack", "test_tube_rack.usd", (0.30, 0.00, None), None),
     ("TestTube", "test_tube.usd", (0.2787, 0.1193, HOLE_BOTTOM), None),
-    ("DropperSample", "dropper.usd", (0.281, 0.0788, HOLE_BOTTOM), None),
-    ("DropperAcid", "dropper.usd", (0.319, 0.0788, HOLE_BOTTOM), None),
+    # 滴管挪到离试管最远的后排孔（试管前排 y=+0.119 → 滴管后排 y=-0.1187，
+    # 用户 2026-08-14 要求：两个滴管放到离试管最远的最靠边一列）
+    ("DropperSample", "dropper.usd", (0.2815, -0.1187, HOLE_BOTTOM), None),
+    ("DropperAcid", "dropper.usd", (0.3202, -0.1187, HOLE_BOTTOM), None),
     ("SampleBottle", "sample_bottle.usd", (0.4045, 0.3585, None), None),
     ("HClBottle", "hcl_bottle.usd", (0.1696, 0.361, None), None),
 ]
+
+# 翻放瓶盖（2026-08-17 用户："在两个试剂瓶旁边放上瓶盖（翻着放符合实验室标准）"）。
+# 无现成瓶盖资产，自建薄壁杯形 mesh（闭口端朝下贴台面、开口朝上）。尺寸贴合资产 stopper
+# （Ø25.2mm × H11mm，材质 white 0.9,0.9,0.92）：r_out=0.0135(Ø27 略大于瓶口读作瓶盖)、
+# r_in=0.0115(壁厚 2mm)、h=0.011(同 stopper 高)。放各瓶一侧（x ±65mm 偏移）。
+CAPS = [
+    ("SampleBottleCap", 0.4045 + 0.065, 0.3585),
+    ("HClBottleCap", 0.1696 - 0.065, 0.361),
+]
+CAP_R_OUT, CAP_R_IN, CAP_H = 0.0135, 0.0115, 0.011
+CAP_RECIPE = dict(color=(0.9, 0.9, 0.92), opacity=1.0, roughness=0.4)  # 白塑料，同 stopper 配方
 
 # 液体材质配方（最逼真）：roughness 0.05 光洁水面 + ior 1.33 水折射 + opacity 0.70
 # （2026-08-14 用户反馈"液体痕迹不明显"：0.45 太透、隔着玻璃看不清 → 提到 0.70+提亮）
@@ -57,6 +70,9 @@ EQUIP = [
 WATER = dict(color=(0.58, 0.78, 0.98), opacity=0.70, roughness=0.05, ior=1.33)
 ACID = dict(color=(0.66, 0.86, 0.76), opacity=0.70, roughness=0.05, ior=1.33)
 OPAQUE_WHITE = dict(color=(0.93, 0.93, 0.94), opacity=1.0, roughness=0.5)
+# 滴管内液柱 / 滴落液滴：更亮更不透（op0.9 亮蓝），透过透明玻璃清晰可见
+FILL = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
+DROP = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
 
 # 内建效果 prim: (name, type, radius, height, translate, 材质配方 dict, visible)
 # SampleLiquid = 样品瓶内半瓶液体（cyl 从瓶底 0.80 到液面 0.84）
@@ -72,22 +88,40 @@ EFFECTS = [
     ("AcidLiquid", "cylinder", 0.014, 0.040, (0.1696, 0.361, 0.820), ACID, True),
     ("TubeDrops", "cylinder", 0.009, 0.030, (0.2787, 0.1193, 0.821), WATER, False),
     ("Precipitate", "cylinder", 0.008, 0.003, (0.2787, 0.1193, 0.8075), OPAQUE_WHITE, False),
-    # frustum 的 r = (r_bottom, r_top)：下底 Ø2mm 贴尖嘴、上底 Ø8mm 贴玻璃体。translate
-    # 是 mesh 底心（底在局部 z=0）→ 落在尖嘴 z=0.806，柱体 0.806..0.846 整体在玻璃体
-    # 0..0.12 内、不露在尖嘴外（task._set_fill_follow 用同一约定：translate=尖嘴）
-    ("DropperFill", "frustum", (0.001, 0.004), 0.040, (0.281, 0.0788, 0.806), WATER, False),
+    # frustum 的 r = (r_bottom, r_top)：下底 Ø2mm 贴尖嘴、上底 Ø7mm（内缩玻璃体 Ø8mm 一个壁厚，
+    # 透过透明玻璃可见独立液柱）。h=60mm（收窄段 0..30mm + 直管 30mm，明显可见）。
+    # translate 是 mesh 底心（底在局部 z=0）→ 落在尖嘴 z=0.806，柱体 0.806..0.866 在玻璃体
+    # 0..0.12 内、不露在尖嘴外（task._set_fill_follow 用同一约定：translate=尖嘴）。
+    ("DropperFill", "frustum", (0.001, 0.0035), 0.060, (0.2815, -0.1187, 0.806), FILL, False),
 ]
-# 气泡：试管内液体区 5 颗小白球（世界坐标，r=0.002，均在管壁 Ø19.2 内）
+# ========== 气泡最终方案（2026-08-16 用户验证+问卷选定 A1/B2/C1）==========
+# 用户已确认气泡能显示（TEMP 巨大红泡验证通过）。最终方案：
+# ① 饱和色配方：近黑 diffuse + 强 emissive 单通道（教训：diffuse 亮会被强光洗白，
+#    emissive 主导才出饱和色；亮黄对蓝液柱对比最强）。
+# ② 尺寸 r=0.007（Ø14mm，管壁 Ø19.2/内缘 Ø18 内，贴管轴列、x 抖动 ≤1.5mm 不凸壁）。
+# ③ 玻璃更透明（fix_tube_material：op 0.35→0.12 + ior 1.5）反光减弱，内部看得清。
+# ④ 上升动画由 task._step_bubble_anim 驱动（每颗 z 从液面 0.870 持续上升到 0.944 循环，
+#    随管平移由 Bubbles 父 Xform delta 承担）。本列表 x/y 是基准、z 是初始散布（task 每帧
+#    覆盖 z）。N=12 必须与 task.N_BUBBLES 一致。
+BUBBLE = dict(color=(0.06, 0.05, 0.03), opacity=1.0, roughness=0.3, emissive=(2.2, 1.6, 0.25))
 BUBBLES = [
-    (0.2807, 0.1203, 0.812), (0.2767, 0.1213, 0.818), (0.2797, 0.1173, 0.822),
-    (0.2777, 0.1193, 0.815), (0.2827, 0.1183, 0.820),
+    (0.2787, 0.1193, 0.870), (0.2802, 0.1193, 0.882), (0.2772, 0.1193, 0.894),
+    (0.2797, 0.1193, 0.906), (0.2777, 0.1193, 0.918), (0.2787, 0.1193, 0.930),
+    (0.2802, 0.1193, 0.888), (0.2772, 0.1193, 0.900), (0.2797, 0.1193, 0.912),
+    (0.2777, 0.1193, 0.924), (0.2787, 0.1193, 0.936), (0.2797, 0.1193, 0.944),
 ]
-BUBBLE_R = 0.002
+BUBBLE_R = 0.007
+
+# 挤胶头滴落串：一次挤 = DROPS_PER_GROUP 滴连续坠落（液柱 60mm 很满，一挤该是一串滴
+# 不是一滴——用户 2026-08-14）。DropperDrop 是父 Xform，task 动画驱动 Drop_0.._N 各球。
+DROPS_PER_GROUP = 4
 
 
-def add_material(stage, prim, diffuse, opacity, roughness=0.5, ior=None, double_sided=False):
+def add_material(stage, prim, diffuse, opacity, roughness=0.5, ior=None, double_sided=False,
+                 emissive=None):
     """UsdPreviewSurface 材质。透材质（opacity<1）自动设 doubleSided，
-    否则从外看透过液体时后壁不渲染会像空容器。"""
+    否则从外看透过液体时后壁不渲染会像空容器。emissive：自发光（高亮小件用，
+    如气泡）。"""
     mat_path = str(prim.GetPath()) + "_mat"
     mat = UsdShade.Material.Define(stage, mat_path)
     sh = UsdShade.Shader.Define(stage, mat_path + "/Shader")
@@ -97,6 +131,8 @@ def add_material(stage, prim, diffuse, opacity, roughness=0.5, ior=None, double_
     sh.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(roughness)
     if ior is not None:
         sh.CreateInput("ior", Sdf.ValueTypeNames.Float).Set(ior)
+    if emissive is not None:
+        sh.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*emissive))
     mat.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), "surface")
     UsdShade.MaterialBindingAPI(prim).Bind(mat)
     if double_sided and prim.IsA(UsdGeom.Gprim):
@@ -188,9 +224,73 @@ def add_bubbles(stage):
         s = UsdGeom.Sphere.Define(stage, f"/World/Bubbles/Bubble_{i}")
         s.CreateRadiusAttr(BUBBLE_R)
         s.AddTranslateOp().Set(Gf.Vec3d(x, y, z))
-        add_material(stage, s.GetPrim(), (0.9, 0.9, 0.9), 0.9)
+        add_material(stage, s.GetPrim(), BUBBLE["color"], BUBBLE["opacity"],
+                     roughness=BUBBLE["roughness"], emissive=BUBBLE.get("emissive"))
     UsdGeom.Imageable(g).MakeInvisible()
-    print(f"[effect] Bubbles hidden ({len(BUBBLES)} spheres)")
+    print(f"[effect] Bubbles hidden ({len(BUBBLES)} spheres, r={BUBBLE_R})")
+
+
+def add_dropper_drops(stage):
+    """挤胶头滴落串：/World/DropperDrop 父 Xform + Drop_0.._N 亮蓝小球（r=0.003）。
+    task._on_drop 每次挤生成一串、_step_drop_anim 逐滴错帧坠落。整体初始隐藏；
+    home 位置随意（试管口），task 动画才写实际坐标。"""
+    g = UsdGeom.Xform.Define(stage, "/World/DropperDrop")
+    for i in range(DROPS_PER_GROUP):
+        s = UsdGeom.Sphere.Define(stage, f"/World/DropperDrop/Drop_{i}")
+        s.CreateRadiusAttr(0.003)
+        s.AddTranslateOp().Set(Gf.Vec3d(0.2787, 0.1193, 0.820))
+        add_material(stage, s.GetPrim(), DROP["color"], DROP["opacity"],
+                     roughness=DROP["roughness"], ior=DROP["ior"], double_sided=True)
+    UsdGeom.Imageable(g).MakeInvisible()
+    print(f"[effect] DropperDrop hidden ({DROPS_PER_GROUP} drop spheres)")
+
+
+def add_cap(stage, name, x, y):
+    """翻放瓶盖（实验室标准：闭口端贴台面、开口朝上，内面不触桌防污染）。
+
+    薄壁杯形 mesh：外壁 + 内壁 + 底环(R_in..R_out 实底) + 腔底内圆。n=20 段、
+    subdivisionScheme=none（memory: 自建 mesh 必须设，否则不显色）。局部坐标底在 z=0
+    （= 台面顶），开口在 z=CAP_H。doubleSided 兜底绕序。"""
+    n = 20
+    pts, counts, indices = [], [], []
+
+    def ring(z, r):
+        for i in range(n):
+            a = 2.0 * math.pi * i / n
+            pts.append(Gf.Vec3f(r * math.cos(a), r * math.sin(a), z))
+
+    ring(0.0, CAP_R_OUT)                    # 0..19   外壁底
+    ring(CAP_H, CAP_R_OUT)                  # 20..39  外壁顶
+    ring(0.0, CAP_R_IN)                     # 40..59  内壁底
+    ring(CAP_H, CAP_R_IN)                   # 60..79  内壁顶
+    pts.append(Gf.Vec3f(0, 0, 0))           # 80      底心
+    O, OT, I, IT, C = 0, n, 2 * n, 3 * n, 4 * n
+    for i in range(n):
+        i0, i1 = i, (i + 1) % n
+        counts.append(4); indices += [O + i0, O + i1, OT + i1, OT + i0]   # 外壁
+        counts.append(4); indices += [I + i0, IT + i0, IT + i1, I + i1]   # 内壁（反向绕序朝内）
+    for i in range(n):                                                    # 底环（R_in..R_out 实底）
+        i0, i1 = i, (i + 1) % n
+        counts.append(4); indices += [I + i0, O + i0, O + i1, I + i1]
+    for i in range(n):                                                    # 腔底内圆（底心→内壁底）
+        i0, i1 = i, (i + 1) % n
+        counts.append(3); indices += [C, I + i0, I + i1]
+    mesh = UsdGeom.Mesh.Define(stage, f"/World/{name}")
+    mesh.CreatePointsAttr(pts)
+    mesh.CreateFaceVertexCountsAttr(counts)
+    mesh.CreateFaceVertexIndicesAttr(indices)
+    mesh.CreateSubdivisionSchemeAttr("none")
+    mesh.AddTranslateOp().Set(Gf.Vec3d(x, y, TABLE_TOP))
+    add_material(stage, mesh.GetPrim(), CAP_RECIPE["color"], CAP_RECIPE["opacity"],
+                 roughness=CAP_RECIPE["roughness"], double_sided=True)
+    print(f"[equip] {name} flipped cap (r_out {CAP_R_OUT}, r_in {CAP_R_IN}, h {CAP_H}) "
+          f"at ({x}, {y}, {TABLE_TOP})")
+    return mesh
+
+
+def add_caps(stage):
+    for name, x, y in CAPS:
+        add_cap(stage, name, x, y)
 
 
 def add_env_light(stage):
@@ -292,7 +392,8 @@ def verify(st2):
     bc = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"])
     names = ["TestTubeRack", "TestTube", "DropperSample", "DropperAcid",
              "SampleBottle", "HClBottle", "SampleLiquid", "AcidLiquid",
-             "TubeDrops", "Precipitate", "Bubbles", "DropperFill"]
+             "TubeDrops", "Precipitate", "Bubbles", "DropperFill", "DropperDrop",
+             "SampleBottleCap", "HClBottleCap"]
     for name in names:
         p = st2.GetPrimAtPath(f"/World/{name}")
         if not p.IsValid():
@@ -358,6 +459,52 @@ def fix_bottle_materials(st2):
                     UsdGeom.Gprim(c).CreateDoubleSidedAttr().Set(True)
 
 
+def fix_dropper_materials(st2):
+    """滴管玻璃透明化：dropper.usd 的 glass_001 是 opacity=1.0 不透明光面（把管内液柱
+    整个遮住，用户反馈"液柱不明显"根因）。改成真玻璃 op 0.25（同瓶玻璃配方），
+    管内 DropperFill 液柱才透得出来；胶头（rubber_001）保持不透明。"""
+    for name in ("DropperSample", "DropperAcid"):
+        mat = st2.GetPrimAtPath(f"/World/{name}/_materials/glass_001")
+        if not mat.IsValid():
+            print(f"[mat] {name} glass_001 not found, skip")
+            continue
+        for c in mat.GetChildren():
+            if c.GetTypeName() != "Shader":
+                continue
+            sh = UsdShade.Shader(c)
+            for n, val in GLASS.items():
+                inp = sh.GetInput(n)
+                vt = Sdf.ValueTypeNames.Color3f if n == "diffuseColor" else Sdf.ValueTypeNames.Float
+                if not inp:
+                    inp = sh.CreateInput(n, vt)
+                inp.Set(val)
+            print(f"[mat] {name} glass_001 -> transparent {GLASS}")
+    # 玻璃 mesh 双面渲染（透过玻璃看后壁，不设会漏空）
+    for name in ("DropperSample", "DropperAcid"):
+        g = st2.GetPrimAtPath(f"/World/{name}/glass_body_mesh/glass_body_mesh_001")
+        if g.IsValid() and g.GetTypeName() == "Mesh":
+            UsdGeom.Gprim(g).CreateDoubleSidedAttr().Set(True)
+            print(f"[mat] {g.GetPath()} doubleSided")
+        else:
+            print(f"[mat] {name} glass mesh not found for doubleSided, skip")
+
+
+def fix_tube_material(st2):
+    """试管玻璃透明化：test_tube.usd 自带玻璃 opacity 0.35 → 0.12（更透明、反光更弱，
+    内部气泡/液柱看得更清，用户 2026-08-16）+ 补 ior 1.5 真玻璃 + doubleSided。
+    遍历 /World/TestTube 下 mesh，取 material:binding 覆写 shader（同瓶玻璃修法）。"""
+    p = st2.GetPrimAtPath("/World/TestTube")
+    if not p.IsValid():
+        print("[mat] /World/TestTube not found, skip")
+        return
+    for c in p.GetChildren():
+        if c.GetTypeName() != "Mesh":
+            continue
+        if override_bound_shader(st2, c, {"opacity": 0.12, "ior": 1.5}):
+            UsdGeom.Gprim(c).CreateDoubleSidedAttr().Set(True)
+            print(f"[mat] tube glass {c.GetPath()} -> op 0.12 / ior 1.5 / doubleSided")
+
+
 def main():
     os.makedirs(os.path.join(SCENE_DIR, "textures"), exist_ok=True)
     if not os.path.exists(os.path.join(SCENE_DIR, "textures", "env_bright.png")):
@@ -369,6 +516,8 @@ def main():
         add_equip(stage, name, asset, t, scale)
     add_effects(stage)
     add_bubbles(stage)
+    add_dropper_drops(stage)
+    add_caps(stage)          # 翻放瓶盖（2026-08-17 用户要求，闭口朝下开口朝上）
     add_env_light(stage)
     stage.Export(OUT)  # 烘平：单层自包含，带 lab_clean 的 defaultPrim=/World
 
@@ -379,6 +528,8 @@ def main():
     fix_env_light(st2)
     relocate_absolute_textures(st2)
     fix_bottle_materials(st2)   # 瓶玻璃透明化 + 酸瓶 1mm 液面盘隐藏（AcidLiquid 取代）
+    fix_dropper_materials(st2)  # 滴管玻璃透明化（不透明会遮住管内液柱）
+    fix_tube_material(st2)      # 试管玻璃透明化（op 0.35→0.12，内部气泡/液柱看得更清）
     verify(st2)
     st2.GetRootLayer().Save()
     print("SAVED", OUT)

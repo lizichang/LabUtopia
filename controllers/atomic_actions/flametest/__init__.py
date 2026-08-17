@@ -8,5 +8,6 @@ from .ik_engine import IkMotionEngine
 from .move_action import MoveAction
 from .grip_action import GripAction
 from .hold_action import HoldAction
+from .shake_action import ShakeAction
 
-__all__ = ["IkMotionEngine", "MoveAction", "GripAction", "HoldAction"]
+__all__ = ["IkMotionEngine", "MoveAction", "GripAction", "HoldAction", "ShakeAction"]
