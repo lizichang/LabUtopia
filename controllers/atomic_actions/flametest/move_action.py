@@ -8,11 +8,13 @@ approach / descend / translate / lift_vertical / dip_hold 都是"移到某点
   - translate(pt)     = mv(pt)                   平移
   - dip_hold(pt, n)   = mv(pt, n)                下探到 pt 停留 n 帧
 
-垂直约束（v46）：原实现"解一次 IK + 每帧关节钳制"，joint 空间插值会把 TCP 拉成
-弧线——滴管/瓶塞/灯帽下探和提出时就斜着走、带抖动（用户报"斜着拿/穿模"）。
-若起点 xy 与目标 xy 几乎重合（<1.5cm），判定为垂直段：xy 锁死目标值、z 每帧
-推进 VZ_STEP，逐帧沿垂直线上重新解 IK（cur7 warm start，FK 验证 <6mm，TCP 收敛
-在这条线上），TCP 走严格直线，无斜拉、无弧线抖动。
+直线约束（v46 垂直 / v47 任意单轴）：原实现"解一次 IK + 每帧关节钳制"，joint 空间
+插值会把 TCP 拉成弧线——滴管/瓶塞/灯帽下探和提出时就斜着走、带抖动（用户报
+"斜着拿/穿模"）；水平平移同样会把 TCP 甩高（D2-S ⑥ 法兰转后水平对齐粉末 z 先升高，
+用户 2026-08-17 报）。若 x/y/z 中恰好只有一轴变化超过 AXIS_EPS（垂直 = 仅 z 变；
+水平 = 仅 x 或仅 y 变），判定为直线段：不变两轴锁死目标值、变化轴每帧推进 VZ_STEP，
+逐帧沿直线上重新解 IK（cur7 warm start，FK 验证 <6mm，TCP 收敛在这条线上），TCP 走
+严格直线，无斜拉、无弧线抖动。
 
 冻结判定（v43）：TCP 与目标 3D 距离 <1cm 连续 3 帧 → 冻结关节保持位置，等 dwell
 帧。近奇异抓点处同一 TCP 可由多个 IK 分支到达，冻结即稳住抓点，让任务侧 attach
@@ -24,9 +26,9 @@ from isaacsim.core.utils.types import ArticulationAction
 
 from .ik_engine import ORIENT_EPS, quat_to_rot, rot_angle
 
-# 垂直段判定：起点 xy 与目标 xy 偏差小于此值视为"原地升/降"
-# （approach 冻结保证起止 xy 偏差 <1cm，这里留裕量）
-VERTICAL_XY_EPS = 0.015
+# 直线段判定阈值（v47）：x/y/z 任一轴起点与目标偏差小于此值视为"该轴不变"。
+# 恰好只有一轴变化 → 沿该轴走直线（approach 冻结保证起止偏差 <1cm，这里留裕量）
+AXIS_EPS = 0.015
 # 垂直段每帧 z 推进量（m/帧）。v46 初版 0.008 实测：z 步大 → 所需关节重配超
 # MAX_JOINT_DELTA(0.015)，钳制后 TCP 横向拖滞 4~9cm（diag 轨迹验证），改小到
 # 钳制内（2mm 步长 @60Hz ≈ 0.12 m/s，TCP 贴线无拖滞，下探/提出略慢但稳）。
@@ -62,18 +64,20 @@ class MoveAction:
         self._frozen = None
         self._done = False
         self._solved = False
-        self._vertical = False
-        self._goal_z = None
+        self._walk_axis = None    # 直线段：唯一变化轴的索引（0=x 1=y 2=z）；None=单次 IK
+        self._goal = None         # 直线段：该轴当前推进到的坐标（首帧自 gripper_pos 起逐帧步进）
 
     def forward(self, joints, gripper_pos, grip_target):
         cur = np.asarray(joints[:7], dtype=float)
         if not self._solved:
             self._solved = True
             gp = np.asarray(gripper_pos, dtype=float)
-            self._vertical = float(np.linalg.norm(gp[:2] - self.pos[:2])) < VERTICAL_XY_EPS
-            if self._vertical:
-                # 垂直段：xy 锁死目标值，z 从当前开始逐帧推进（v46）
-                self._goal_z = gp[2]
+            # v47 直线段判定：x/y/z 中恰好只有一轴变化超过阈值 → 沿该轴走直线
+            # （垂直 = 仅 z 变；水平 = 仅 x 或仅 y 变）。两轴以上变化 → 单次 IK。
+            changed = np.abs(self.pos - gp) > AXIS_EPS
+            if int(changed.sum()) == 1:
+                self._walk_axis = int(np.argmax(changed))
+                self._goal = float(gp[self._walk_axis])
                 self._ik_target = None
             else:
                 self._ik_target = self.engine.solve_verified(self.pos, cur, self.orient)
@@ -82,14 +86,16 @@ class MoveAction:
 
         if self._frozen is not None:
             cmd = self._frozen
-        elif self._vertical and self._goal_z is not None:
-            # 垂直段：每帧沿 z 线推进并重新解 IK（cur7 warm start，TCP 走直线）
-            dz = self.pos[2] - self._goal_z
-            step = VZ_STEP if dz > 0 else -VZ_STEP
-            if abs(dz) < VZ_STEP:
-                step = dz
-            self._goal_z += step
-            tgt = np.array([self.pos[0], self.pos[1], self._goal_z])
+        elif self._walk_axis is not None and self._goal is not None:
+            # 直线段：每帧沿变化轴推进并重新解 IK（不变轴锁目标值，TCP 走直线）
+            a = self._walk_axis
+            dv = self.pos[a] - self._goal
+            step = VZ_STEP if dv > 0 else -VZ_STEP
+            if abs(dv) < VZ_STEP:
+                step = dv
+            self._goal += step
+            tgt = self.pos.copy()
+            tgt[a] = self._goal
             ik = self.engine.solve_verified(tgt, cur, self.orient)
             if ik is None:
                 cmd = cur  # 解不出就保持，下一帧再试

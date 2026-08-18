@@ -14,12 +14,12 @@ version: 1.5.0
 
 1. **实物调研**（每个新资产必做，产出"结构规格表"；通法见 reference.md「实物调研与结构拆解通法」）：
    - ① 先读项目库存 `E:\浙江大学\星辰计划\LabVLA_第一期轮转\lab_inventory.json`——equipment 的 name/material/notes 常自带尺寸材质（例："玻璃棒 长约20cm 直径6mm"、"试管 外径15mm 长125mm"）。这是仿真要复现的实物，**优先于任何网上数据**
+   必须上网搜索相关图片，了解实际样貌。
    - ② 缺的尺寸再按信息优先级补：厂家规格表 > 国标 > 3D 模型库 > 实物测量 > 估算（标注"估"）。**严禁凭记忆写尺寸**（坑 16）
    - ③ 拆结构（三步法）：找主轴 → 拆部件（每部件：形状原语/关键尺寸/相对位置）→ 定连接（套入/贴合/独立）
    - ④ 定材质：每部件材质类别（玻璃/金属/陶瓷/塑料）→ 参数（材质参数表见 reference.md）
 2. **需求分析**：确定资产清单、摆放位置、与其他物体的几何约束（如勺子头必须 < 试管内径）
-3. **管线选择**（两条路，先问清楚用户要什么效果）：
-   - **简单资产**（试管、粉末堆、隐藏标记、内部不展示的零件）→ 仿照 `scripts/gen_dissolve_assets.py` 用 USD MeshBuilder 构建 → `scripts/obj2usd.py` 转 USD。快，但外观是"数学几何体拼接"，精细度有限
+3. **管线选择**必须精细逼真
    - **逼真资产**（用户要求"像克隆资产那样"精细外观的器材，如烧杯/量筒/酒精灯/玻璃器皿）→ **Blender bpy 精模管线**：`scripts/blender_asset_template.py`（bmesh 旋转体 + 基本体 helpers + Principled BSDF 材质 + EEVEE 渲染验证 + USD 导出）→ `scripts/post_fix_usd.py`（pxr 后处理补 transmission/opacity）。详见 reference.md「Blender 精模管线」
 4. **建模**：按结构规格表逐部件实现——旋转对称件用 lathe（PROFILE 剖面），非旋转体件用基本体 helpers（cylinder/box/sphere），部件按相对位置摆放（套入/贴合/独立），不要边建边想
 5. **渲染验证**：Blender 管线出 EEVEE 渲染 PNG，**与调研时存的实物图对照**形状/比例/部件齐全度；MeshBuilder 管线用本地 pxr 验证 bbox/geometry_center/参考点

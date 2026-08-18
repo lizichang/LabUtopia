@@ -5,8 +5,9 @@ v44 同构分层（与 flametest_controller 相同的 Lula IK + 元动作组合�
   - meta_actions/（一个 v11 步骤 = 一个元动作，一类一文件）
   - 本控制器：实例化元动作按序 forward()，全部完成 → success。
 
-已实现 ①PickSpatula（横向夹取药匙，含法兰转 90° 后水平往 -X、y 对齐表面皿，到此结束）。
-本阶段只注册该元动作（用户 2026-08-16：只写水平移动这一步，后面动作都不要）。
+已实现 ①PickSpatula（横向夹取药匙 → 竖直提起 → 法兰转 -90° → 水平往 -X 对齐粉末，到此结束）。
+本阶段只注册该元动作（用户 2026-08-17：法兰转后增加动作——机械臂水平往 -X 直到对齐粉末；
+2026-08-16 曾要求删掉法兰转后所有动作，今日重新加入对齐粉末一步）。
 动作级契约（grip 每帧发送、到达冻结、dwell、跨元动作 grip_target 传播）沿用 flametest。
 """
 import os
@@ -45,10 +46,10 @@ class D2SWaterSolubilityTaskController(TaskBaseController):
         ik_home = np.array([0.012, -0.57, 0.0, -2.81, 0.0, 3.037, 0.741])
         self.engine = IkMotionEngine(solver, self.orient, ik_home)
 
-        # 元动作：本阶段只跑到 ①横向夹取药匙（含法兰转 90° 后水平往 -X、y 对齐表面皿），
-        # 到这一步即结束（用户 2026-08-16：只写水平移动这一步，后面动作都不要）
+        # 元动作：本阶段只跑到 ①横向夹取药匙 → 竖直提起 → 法兰转 -90° → 水平往 -X 对齐粉末，
+        # 到这一步即结束（用户 2026-08-17 重新加入法兰转后水平往 -X 对齐粉末一步）
         self.meta_classes = [PickSpatula]
-        self.meta_names = ["S1 pick spatula + flange roll + horizontal align"]
+        self.meta_names = ["S1 pick spatula + flange roll -90° + align powder x"]
         self.meta_actions = [C(self.engine) for C in self.meta_classes]
         self._meta_idx = 0
         self._h5_sample = 0

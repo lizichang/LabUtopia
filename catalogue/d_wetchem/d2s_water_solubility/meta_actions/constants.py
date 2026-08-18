@@ -51,18 +51,26 @@ DISH_XY = (0.5365, 0.0402)
 POWDER_TOP_Z = 0.8141               # 粉丘顶
 POWDER_Z = 0.809                     # 插入 z：勺尖 5mm 沉入粉丘（高于皿沿 2.4mm）
 
-# —— 法兰转完后第一步（用户 2026-08-16 重写：旋转完法兰，先水平往 -X 移动、y 对齐表面皿）——
-# 起点 = pick ④ 提起位 (0.6993,0.3608,1.15)（架上方高位）。目标 = 表面皿正上方，z 保持高位
-# 不下降（水平移动）；朝向 ORIENT_SCOOP（否则 IK 会把 joint7 解回 0、药匙转回竖直）。
-SCOOP_ALIGN = (DISH_XY[0], DISH_XY[1], H)     # (0.5365, 0.0402, 1.15)
-
 # —— 舀取段（flange roll 后药匙水平：勺头朝 -Y、凹槽开口朝 +Z(上)、柄朝 +Y）——
+# 注意：本阶段轨迹到「法兰 -90° → 水平往 -X 对齐粉末」即结束（用户 2026-08-17 重新加入
+# 法兰转后往 -X 一步，2026-08-16 曾删）；以下舀取/倾倒常量是后续步骤（②舀取→③加水→
+# ④振荡）的参考几何，当前未被执行。
 # 勺尖 = TCP + 0.134·toolX（toolX=世界 -Y）；碗心 = TCP + (0,-0.123,-0.0048)。
 # 舀取平面 TCP z = POWDER_Z + 0.0048 = 0.8138：刃底(勺尖)0.809=粉顶下 5mm、刃沿 0.8138
 # 仅低粉顶 0.3mm → 碗槽 4.8mm 深蓄粉；刃底高于皿沿 0.8066 → 推进全程不碰皿。
 # 粉丘中心 (0.5365,0.0403)（bbox x 0.5188-0.5542, y 0.0166-0.064）。
-ORIENT_SCOOP = (-0.5, 0.5, -0.5, 0.5)     # flange roll 后工具朝向 [x,y,z,w]：toolX=-Y toolY=-Z toolZ=+X
+# ORIENT_SCOOP：flange roll(-90°) 后 tool 真实朝向。2026-08-17 修：旧值 (-0.5,0.5,-0.5,0.5)
+# 按引擎 scalar-first 解释 = 另一个 180° 相反的旋转，solve_verified 的 FK 朝向验证永远拒绝
+# 当前关节(post-roll)分支 → 回退 ik_home → joint7 翻到 +83° 药匙面滚歪。实测 linewalk 首帧
+# Lula FK 朝向（scalar-first 序，与 quats_to_rot_matrices / Lula 一致）≈ (0.5,0.5,0.5,0.5)
+# （toolX=(0,0,1) toolY=(1,0,0) toolZ=(0,1,0)，药匙长轴=toolZ 反=水平 -Y、凹槽朝 +Z 上）。
+ORIENT_SCOOP = (0.5, 0.5, 0.5, 0.5)       # [w,x,y,z] scalar-first：flange roll 后 tool 朝向
 SCOOP_PLANE_Z = POWDER_Z + 0.0048         # 舀取平面 TCP z（=0.8138）
+# —— 法兰转完后第一步（用户 2026-08-17 重新加入：法兰 -90° 后机械臂水平往 -X，直到对齐粉末）——
+# 起点 = pick ④ 提起位 (0.6993,0.3608,1.15)（架上方高位）。目标 = 粉丘中心 x 0.5365，
+# y/z 保持高位不下降（水平移动）；朝向 = ORIENT_SCOOP（实测 post-roll tool 朝向，见上，R 行
+# toolX/Y/Z = [[0,0,1],[1,0,0],[0,1,0]]；用错 orient 会把 joint7 解回 0 → 药匙转回竖直）。
+SCOOP_ALIGN_X = (DISH_XY[0], SPAT_XY[1], H)     # (0.5365, 0.3608, 1.15)
 SCOOP_APPROACH = (0.5365, 0.203, SCOOP_PLANE_Z)   # 下降目标 TCP：勺尖在粉 +Y 沿外 5mm（tip y=0.069）
 SCOOP_INSERT   = (0.5365, 0.163, SCOOP_PLANE_Z)   # 水平插入终点 TCP：碗心到粉丘中心 y=0.040（tip y=0.029）
 SCOOP_HOLD = 25                          # 插入到位停留帧数（粉灌入碗槽 / powder_on_spoon）

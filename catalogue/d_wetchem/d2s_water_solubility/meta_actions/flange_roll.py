@@ -1,4 +1,4 @@
-"""FlangeRollAction：只动最后一个关节（panda_joint7，索引 6 = 法兰自转），转到当前+90°。
+"""FlangeRollAction：只动最后一个关节（panda_joint7，索引 6 = 法兰自转），转到当前-90°。
 
 用户 2026-08-14 晚：「现在再加上第二个微动作 机械臂的夹爪的那个最后一个关节 旋转90度，
 只加这一个变化」；我最初错用 WristFlipAction（腕关节簇 3/4/5 贪心），用户纠正「写的不对，
@@ -25,7 +25,7 @@ MAX_FRAMES = 240        # 兜底
 
 
 class FlangeRollAction:
-    """只动最后一个关节转 +90°，到位后 hold dwell 帧完成。"""
+    """只动最后一个关节转 -90°，到位后 hold dwell 帧完成。"""
 
     def __init__(self, dwell=15):
         self.dwell = int(dwell)

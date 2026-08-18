@@ -235,15 +235,16 @@ class D3LAcidReagentTask(BaseTask):
     SHAKE_STILL_FRAMES = SHAKE_STILL_FRAMES
     PHENOMENA_FRAMES = PHENOMENA_FRAMES
 
-    # 气泡上升动画（用户 2026-08-16：气泡要有移动上升效果）：每颗球从液面持续上升到
-    # 管口附近再归位循环（连续冒泡）。z 范围 [BUBBLE_Z_START, BUBBLE_Z_TOP]，逐帧
-    # +BUBBLE_RISE，到顶回底。N_BUBBLES 必须与 gen 脚本 BUBBLES 数量一致（12）。
-    N_BUBBLES = 12
-    BUBBLE_Z_START = 0.870     # 液面处（液体最高 0.866 之上一点，泡从液面冒出）
-    BUBBLE_Z_TOP = 0.944       # 管口下方（管口 0.959，留裕量）
-    BUBBLE_RISE = 0.0008       # 每帧上升量（m，@60Hz ≈ 0.048m/s，1.5s 升完全程；2026-08-16
-                              #   用户："液体像沸腾了一样，有点猛了"→ 0.0012 放慢到 0.0008，从翻滚
-                              #   变平缓冒泡）
+    # 气泡动画（用户 2026-08-17 重构：从试管底部生成 → 穿过液柱上升 → 到当前液面消失，
+    # 不再循环成"页面上方一根黄色柱子震荡"）。小球池：每颗生成时从底部冒出一颗、逐帧
+    # 上升、到液面即隐藏（"破掉"），生成错帧错开 → 稀疏冒泡而非整列同步。x/y 用 gen
+    # 烘焙基准，每帧只写子球局部 z。N_BUBBLES 必须与 gen 脚本 BUBBLES 数量一致（8）。
+    N_BUBBLES = 8
+    BUBBLE_SPAWN_Z = 0.812     # 生成高度（管底 0.806 之上、沉淀柱顶 0.8105 之上，在液柱内）
+    BUBBLE_POP_MARGIN = 0.002  # 离当前液面下方一点即消失（"破在液面"）
+    BUBBLE_RISE = 0.0004       # 每帧上升量（m，@60Hz ≈ 0.024m/s，56mm 全程 ≈2.3s；用户
+                              #   "变化太快"→ 0.0006 再降，配合错帧生成更缓）
+    BUBBLE_SPAWN_INTERVAL = 25  # 每隔 25 帧生成一颗（≈0.4s 一颗，同屏 4-5 颗稀疏冒泡）
 
     DROPPER_SAMPLE = "/World/DropperSample"
     DROPPER_ACID = "/World/DropperAcid"
@@ -298,10 +299,13 @@ class D3LAcidReagentTask(BaseTask):
         self._shake_stop_frames = 0
         self._phenomena_fade_frame = None
         self._phenomena_faded = False
-        # 气泡上升动画状态：基准 x/y（gen 烘焙的局部 translate）保持，每帧只动 z
+        # 气泡动画状态：基准 x/y（gen 烘焙的局部 translate）保持，每帧只动子球局部 z；
+        # _bubble_active[i] 标记第 i 颗是否在飞（池内小球复用，升起→液面消失）
         self._bubbles_visible = False
         self._bubble_bases = []     # [(x, y), ...] 相对试管原位的局部基准
         self._bubble_z = []         # 当前 z（上升中）
+        self._bubble_active = []    # 每颗是否在飞（True 显示中，False 空闲待复用）
+        self._spawn_timer = 0       # 距下次生成剩余帧数
         self._init_bubble_anim()
 
     # ------------------------------------------------------------------
@@ -322,7 +326,7 @@ class D3LAcidReagentTask(BaseTask):
         self._phenomena_fade_frame = None
         self._phenomena_faded = False
         self._bubbles_visible = False
-        self._reset_bubble_z()
+        self._reset_bubble_anim()
         self.object_utils.set_object_position(self.BUBBLES, (0.0, 0.0, 0.0))
         if self._precip_rack is not None:
             self.object_utils.set_object_position(self.PRECIPITATE, self._precip_rack)
@@ -498,9 +502,10 @@ class D3LAcidReagentTask(BaseTask):
     # 气泡上升动画（用户 2026-08-16：气泡要有移动上升效果）
     # ------------------------------------------------------------------
     def _init_bubble_anim(self):
-        """读 N_BUBBLES 颗气泡的烘焙局部 translate 作基准 x/y，并铺初始 z 散布。"""
+        """读 N_BUBBLES 颗气泡的烘焙局部 translate 作基准 x/y；初始全隐藏、待生成。"""
         self._bubble_bases = []
         self._bubble_z = []
+        self._bubble_active = []
         for i in range(self.N_BUBBLES):
             prim = self.stage.GetPrimAtPath(f"{self.BUBBLES}/Bubble_{i}")
             if not prim.IsValid():
@@ -510,28 +515,51 @@ class D3LAcidReagentTask(BaseTask):
                 continue
             v = t.Get()
             self._bubble_bases.append((float(v[0]), float(v[1])))
-            self._bubble_z.append(
-                self.BUBBLE_Z_START + (i / self.N_BUBBLES) * (self.BUBBLE_Z_TOP - self.BUBBLE_Z_START))
+            self._bubble_z.append(self.BUBBLE_SPAWN_Z)
+            self._bubble_active.append(False)
+            self._set_visibility(f"{self.BUBBLES}/Bubble_{i}", False)
+        self._spawn_timer = 0
 
-    def _reset_bubble_z(self):
-        """复位 z 到均匀散布（reset/重跑用，基准 x/y 不变）。"""
-        self._bubble_z = [
-            self.BUBBLE_Z_START + (i / self.N_BUBBLES) * (self.BUBBLE_Z_TOP - self.BUBBLE_Z_START)
-            for i in range(len(self._bubble_bases))
-        ]
+    def _reset_bubble_anim(self):
+        """复位小球池：全部隐藏、z 回生成位、计时清零（reset/重跑用，基准 x/y 不变）。"""
+        for i in range(len(self._bubble_active)):
+            self._bubble_active[i] = False
+            self._bubble_z[i] = self.BUBBLE_SPAWN_Z
+            self._set_visibility(f"{self.BUBBLES}/Bubble_{i}", False)
+        self._spawn_timer = 0
 
     def _step_bubble_anim(self):
-        """气泡上升循环：每颗 z += BUBBLE_RISE，到 BUBBLE_Z_TOP 归位 BUBBLE_Z_START。
+        """气泡动画：小球池按 BUBBLE_SPAWN_INTERVAL 从底部生成一颗、逐帧上升、到**当前
+        液面**即隐藏（"破掉"）——不是循环归位，形成从管底冒出穿液柱的稀疏气泡。
 
         只写子球局部 translate 的 z（x/y 保持基准）；随管平移由 Bubbles 父 Xform 承担
         （父 translate = tube delta，局部 z 不受影响，气泡在管内上升）。仅在气泡可见时
         推进（加酸滴入出现 → 震荡停后消退）。"""
         if not (self.has_bubbles and self._bubbles_visible):
             return
+        # 当前液面 = 破灭高度（液面随滴落长高，贴实时液面；留 margin 破在液面下方）
+        level = min(self._tube_drop_count * self.DROP_LEVEL_STEP, self.DROP_LEVEL_MAX)
+        pop_z = self.TUBE_BOTTOM_Z + level - self.BUBBLE_POP_MARGIN
+        # 生成：计时到且有空闲球 → 从底部冒出一颗
+        if self._spawn_timer <= 0:
+            for i, active in enumerate(self._bubble_active):
+                if not active:
+                    self._bubble_active[i] = True
+                    self._bubble_z[i] = self.BUBBLE_SPAWN_Z
+                    self._set_visibility(f"{self.BUBBLES}/Bubble_{i}", True)
+                    break
+            self._spawn_timer = self.BUBBLE_SPAWN_INTERVAL
+        else:
+            self._spawn_timer -= 1
+        # 推进在飞气泡：上升，到液面消失（隐藏，留作复用）
         for i, (bx, by) in enumerate(self._bubble_bases):
+            if not self._bubble_active[i]:
+                continue
             z = self._bubble_z[i] + self.BUBBLE_RISE
-            if z >= self.BUBBLE_Z_TOP:
-                z = self.BUBBLE_Z_START
+            if z >= pop_z:
+                self._bubble_active[i] = False
+                self._set_visibility(f"{self.BUBBLES}/Bubble_{i}", False)
+                continue
             self._bubble_z[i] = z
             prim = self.stage.GetPrimAtPath(f"{self.BUBBLES}/Bubble_{i}")
             if prim.IsValid():
