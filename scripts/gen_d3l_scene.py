@@ -72,9 +72,10 @@ CAP_RECIPE = dict(color=(0.9, 0.9, 0.92), opacity=1.0, roughness=0.4)  # 白塑�
 # acid 微绿区分酸液/水样
 WATER = dict(color=(0.72, 0.85, 1.0), opacity=0.50, roughness=0.05, ior=1.33)
 ACID = dict(color=(0.66, 0.86, 0.76), opacity=0.70, roughness=0.05, ior=1.33)
-# 沉淀：全哑光(rough 0.85 无自身高光)+ 近纯白(0.97)+ 微弱自发光(0.2)——灯已挪远无漂白风险，
-# 靠一点 emissive 透过 50% 蓝水显形（用户 2026-08-19"沉淀不够明显,要比较亮的白色"）
-OPAQUE_WHITE = dict(color=(0.97, 0.97, 1.0), opacity=1.0, roughness=0.85, emissive=(0.2, 0.2, 0.25))
+# 沉淀：全哑光(rough 0.85 无自身高光)+ 近纯白(0.97)+ 自发光 0.5——灯已挪远无漂白风险，
+# 靠 emissive 透过 50% 蓝水显形（2026-08-19"沉淀不够明显,要比较亮的白色"0.2；2026-08-20
+# "沉淀还是不够明显"→ 0.5,白柱在浅蓝水里更"跳眼"）
+OPAQUE_WHITE = dict(color=(0.97, 0.97, 1.0), opacity=1.0, roughness=0.85, emissive=(0.5, 0.5, 0.6))
 # 滴管内液柱 / 滴落液滴：更亮更不透（op0.9 亮蓝），透过透明玻璃清晰可见
 FILL = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
 DROP = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
@@ -92,7 +93,7 @@ EFFECTS = [
     ("SampleLiquid", "cylinder", 0.014, 0.040, (0.4045, 0.3585, 0.820), WATER, True),
     ("AcidLiquid", "cylinder", 0.014, 0.040, (0.1696, 0.361, 0.820), ACID, True),
     ("TubeDrops", "cylinder", 0.009, 0.030, (0.2787, 0.1193, 0.821), WATER, False),
-    ("Precipitate", "cylinder", 0.008, 0.003, (0.2787, 0.1193, 0.8075), OPAQUE_WHITE, False),
+    ("Precipitate", "cylinder", 0.0088, 0.003, (0.2787, 0.1193, 0.8075), OPAQUE_WHITE, False),
     # frustum 的 r = (r_bottom, r_top)：下底 Ø2mm 贴尖嘴、上底 Ø7mm（内缩玻璃体 Ø8mm 一个壁厚，
     # 透过透明玻璃可见独立液柱）。h=60mm（收窄段 0..30mm + 直管 30mm，明显可见）。
     # translate 是 mesh 底心（底在局部 z=0）→ 落在尖嘴 z=0.806，柱体 0.806..0.866 在玻璃体

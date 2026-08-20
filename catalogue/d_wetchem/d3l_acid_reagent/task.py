@@ -260,8 +260,9 @@ class D3LAcidReagentTask(BaseTask):
     # 模型：_precip_total=已析出总量(只增不减,每酸滴 +PRECIP_DROP_STEP)；_precip_settled=
     # 当前沉降层高(0..total)。液柱浑浊度=(total-settled)/total，震荡时 settled 被荡起变小
     # → 液浊；停震后指数回归 total（先快后慢）。渲染=改 TubeDrops 材质 diffuse/opacity。
-    PRECIP_DROP_STEP = 0.0012      # 每滴酸析出的沉降层厚度(8 滴 ≈9.6mm,略低于 10mm 上限)
-    PRECIP_MAX = 0.010             # 沉降层高上限
+    PRECIP_DROP_STEP = 0.0016      # 每滴酸析出的沉降层厚度(8 滴 ≈12.8mm；2026-08-20 用户:
+                                    #   10mm 沉淀不够明显 → 加厚,约为液柱 60mm 的 1/4)
+    PRECIP_MAX = 0.016             # 沉降层高上限(16mm；8 滴实际 12.8mm 已接近,留裕量)
     PRECIP_SETTLE_RATE = 0.035     # 沉降速度系数/帧(指数趋近 total=先快后慢,≈2s 沉完)
     PRECIP_RESUSPEND_RATE = 0.05   # 震荡再悬浮速度系数/帧(≈0.6s 荡起)
     PRECIP_RESUSPEND_FLOOR = 0.25  # 震荡时沉降层降到 total 的 25%(75% 再悬浮→浊)
