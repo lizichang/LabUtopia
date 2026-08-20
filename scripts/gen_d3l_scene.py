@@ -26,6 +26,7 @@
 """
 import math
 import os
+import random
 import shutil
 from pxr import Usd, UsdGeom, UsdShade, UsdLux, Sdf, Gf
 
@@ -64,12 +65,16 @@ CAPS = [
 CAP_R_OUT, CAP_R_IN, CAP_H = 0.0135, 0.0115, 0.011
 CAP_RECIPE = dict(color=(0.9, 0.9, 0.92), opacity=1.0, roughness=0.4)  # 白塑料，同 stopper 配方
 
-# 液体材质配方（最逼真）：roughness 0.05 光洁水面 + ior 1.33 水折射 + opacity 0.70
-# （2026-08-14 用户反馈"液体痕迹不明显"：0.45 太透、隔着玻璃看不清 → 提到 0.70+提亮）
+# 液体材质配方（最逼真）：roughness 0.05 光洁水面 + ior 1.33 水折射
+# （2026-08-14 用户反馈"液体痕迹不明显"：0.45 太透、隔着玻璃看不清 → 提到 0.70+提亮；
+#   2026-08-19 用户反馈"蓝色液体不够透明看不到沉淀"：0.70 遮管底沉淀 → 0.55；
+#   再反馈"颜色还是太深"：浅蓝 0.58→0.72 + opacity 0.55→0.50，让白沉淀透过浅水显形）
 # acid 微绿区分酸液/水样
-WATER = dict(color=(0.58, 0.78, 0.98), opacity=0.70, roughness=0.05, ior=1.33)
+WATER = dict(color=(0.72, 0.85, 1.0), opacity=0.50, roughness=0.05, ior=1.33)
 ACID = dict(color=(0.66, 0.86, 0.76), opacity=0.70, roughness=0.05, ior=1.33)
-OPAQUE_WHITE = dict(color=(0.93, 0.93, 0.94), opacity=1.0, roughness=0.5)
+# 沉淀：全哑光(rough 0.85 无自身高光)+ 近纯白(0.97)+ 微弱自发光(0.2)——灯已挪远无漂白风险，
+# 靠一点 emissive 透过 50% 蓝水显形（用户 2026-08-19"沉淀不够明显,要比较亮的白色"）
+OPAQUE_WHITE = dict(color=(0.97, 0.97, 1.0), opacity=1.0, roughness=0.85, emissive=(0.2, 0.2, 0.25))
 # 滴管内液柱 / 滴落液滴：更亮更不透（op0.9 亮蓝），透过透明玻璃清晰可见
 FILL = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
 DROP = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
@@ -94,23 +99,43 @@ EFFECTS = [
     # 0..0.12 内、不露在尖嘴外（task._set_fill_follow 用同一约定：translate=尖嘴）。
     ("DropperFill", "frustum", (0.001, 0.0035), 0.060, (0.2815, -0.1187, 0.806), FILL, False),
 ]
-# ========== 气泡最终方案（2026-08-16 用户验证+问卷选定 A1/B2/C1）==========
-# 用户已确认气泡能显示（TEMP 巨大红泡验证通过）。最终方案：
-# ① 饱和色配方：近黑 diffuse + 强 emissive 单通道（教训：diffuse 亮会被强光洗白，
-#    emissive 主导才出饱和色；亮黄对蓝液柱对比最强）。
-# ② 尺寸 r=0.007（Ø14mm，管壁 Ø19.2/内缘 Ø18 内，贴管轴列、x 抖动 ≤1.5mm 不凸壁）。
-# ③ 玻璃更透明（fix_tube_material：op 0.35→0.12 + ior 1.5）反光减弱，内部看得清。
-# ④ 上升动画由 task._step_bubble_anim 驱动（2026-08-17 重构：小球池从管底 0.812 生成 →
-#    穿液柱上升 → 到当前液面消失，错帧错开成稀疏冒泡，不再循环成"黄柱震荡"）。本列表
-#    x/y 是基准、z 是初始散布（task 每帧覆盖 z、子球初始隐藏）。N=8 必须与 task.N_BUBBLES
-#    一致（用户"还是很沸腾"→ 12→8；本次"黄柱震荡"→ 底部冒泡方案）。
-BUBBLE = dict(color=(0.06, 0.05, 0.03), opacity=1.0, roughness=0.3, emissive=(2.2, 1.6, 0.25))
-BUBBLES = [
-    (0.2787, 0.1193, 0.814), (0.2802, 0.1193, 0.822), (0.2772, 0.1193, 0.830),
-    (0.2797, 0.1193, 0.838), (0.2777, 0.1193, 0.846), (0.2787, 0.1193, 0.854),
-    (0.2802, 0.1193, 0.826), (0.2777, 0.1193, 0.842),
-]
-BUBBLE_R = 0.007
+# ========== 气泡方案（2026-08-19 真实感改造，中等档）==========
+# 与真实反应差距修正（用户确认问题）：原来 8 颗 Ø14mm 慢速(0.024m/s)泡从管底一点直线
+# 上飘 → 像"烧开水"。本次改为：Ø4.4mm 离散小泡 ×40 颗池、速度 ~0.06m/s、管底盘状散布区
+# （中心 30 + 近壁环 10，模拟壁面成核）、蛇形上飘（task 每帧加摆动）、每滴酸触发爆发后
+# 渐衰（VIGOR_DECAY，像反应物消耗）。上升动画仍由 task._step_bubble_anim 驱动：
+# 本列表 x/y 是基准、z 全 0.806（task 每帧覆盖 z、子球初始隐藏）。
+# 不变量：len(BUBBLES) 必须 == task.N_BUBBLES(40)，verify() 会断言。
+# 颜色：近黑 diffuse + 强红 emissive 单通道（emissive 主导才出饱和色，才不被 0.70 不透明
+# 蓝液柱遮住）。要改"无色真气泡"见下 1d 配方。
+#
+# —— 1d. 如何改回"无色真气泡"（目前用鲜艳红保证在蓝液柱里可见）——
+# 改下面 BUBBLE dict 三处 + 重跑 `python scripts/gen_d3l_scene.py` 重新烘焙即可：
+#     BUBBLE = dict(color=(0.85, 0.85, 0.85), opacity=0.30, roughness=0.05, emissive=(0.0, 0.0, 0.0))
+# 风险：透明无色泡对蓝液柱(0.70 不透明)可见性差——若看不清，先降上面 EFFECTS 里
+# TubeDrops 的 WATER 液柱 opacity（第 89 行），再调高气泡 opacity 到 0.4~0.5。
+BUBBLE = dict(color=(0.05, 0.02, 0.02), opacity=1.0, roughness=0.3, emissive=(2.6, 0.12, 0.12))
+BUBBLE_R = 0.0022   # Ø4.4mm（管内缘 Ø18mm → 泡缘距壁 ≥ 4.6mm，离散小泡不贴壁）
+
+
+def _gen_bubbles(n_center=30, n_wall=10, seed=42):
+    """生成 40 个基准位（固定种子可复现）：中心盘状区 r≤0.0035 + 近管壁环 r 0.0055~0.0063
+    （模拟壁面成核）。近壁上限 0.0063 + 泡半径 0.0022 = 0.0085 < 管内缘 0.009，不插壁。
+    z 全写 0.806（管底圆底收敛点，task 每帧覆盖）。"""
+    rng = random.Random(seed)
+    out = []
+    for _ in range(n_center):
+        r = 0.0035 * math.sqrt(rng.random())          # 均匀圆盘（sqrt 面积均匀）
+        a = 2.0 * math.pi * rng.random()
+        out.append((0.2787 + r * math.cos(a), 0.1193 + r * math.sin(a), 0.806))
+    for _ in range(n_wall):
+        r = 0.0055 + 0.0008 * rng.random()            # 0.0055~0.0063 近壁一圈
+        a = 2.0 * math.pi * rng.random()
+        out.append((0.2787 + r * math.cos(a), 0.1193 + r * math.sin(a), 0.806))
+    return out
+
+
+BUBBLES = _gen_bubbles()
 
 # 挤胶头滴落串：一次挤 = DROPS_PER_GROUP 滴连续坠落（液柱 60mm 很满，一挤该是一串滴
 # 不是一滴——用户 2026-08-14）。DropperDrop 是父 Xform，task 动画驱动 Drop_0.._N 各球。
@@ -211,6 +236,7 @@ def add_effects(stage):
         translucent = m.get("opacity", 1.0) < 1.0
         add_material(stage, geom.GetPrim(), m["color"], m["opacity"],
                      roughness=m.get("roughness", 0.5), ior=m.get("ior"),
+                     emissive=m.get("emissive"),
                      double_sided=translucent)
         if not visible:
             UsdGeom.Imageable(geom).MakeInvisible()
@@ -317,6 +343,24 @@ def brighten_lights(st2):
     print("[light] CylinderLight intensity 2000 -> 12000")
 
 
+def set_cylinder_light_x(st2, x=-10.0):
+    """CylinderLight 的 translate.x 设为绝对值（用户 2026-08-19：x 调到 -10）。
+    base lab_clean 的灯位 x=2.1 偏 +X 侧；只动 translate 的 x，y/z 保持。"""
+    cyl = st2.GetPrimAtPath("/World/CylinderLight")
+    if not cyl.IsValid():
+        print("[light] /World/CylinderLight not found, skip")
+        return
+    for op in UsdGeom.Xformable(cyl).GetOrderedXformOps():
+        if op.GetOpName() != "xformOp:translate":
+            continue
+        v = op.Get()
+        op.Set(Gf.Vec3d(x, v[1], v[2]))
+        print(f"[light] CylinderLight translate {tuple(round(c, 3) for c in v)} "
+              f"-> {tuple(round(c, 3) for c in (x, v[1], v[2]))}")
+        return
+    print("[light] CylinderLight has no translate op, skip")
+
+
 def fix_env_light(st2):
     """修 env 贴图路径断链（Export 按 lab_clean 解析 ./textures/ → 失效），
     烘平后场景文件在 SCENE_DIR，相对 textures/ 能正确指向场景目录下的贴图。"""
@@ -388,7 +432,8 @@ def relocate_absolute_textures(st2):
 
 
 def verify(st2):
-    """自检：打印各器材/效果世界 bbox，确认孔位/瓶口高度符合设计。"""
+    """自检：打印各器材/效果世界 bbox，确认孔位/瓶口高度符合设计；并断言气泡不变量
+    （数量 == len(BUBBLES) == task.N_BUBBLES、半径 == BUBBLE_R、泡缘不插管壁 Ø18 内缘）。"""
     bc = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"])
     names = ["TestTubeRack", "TestTube", "DropperSample", "DropperAcid",
              "SampleBottle", "HClBottle", "SampleLiquid", "AcidLiquid",
@@ -403,6 +448,21 @@ def verify(st2):
         mn, mx = r.GetMin(), r.GetMax()
         print(f"[verify] {name:15s} min({mn[0]:+.4f},{mn[1]:+.4f},{mn[2]:+.4f}) "
               f"max({mx[0]:+.4f},{mx[1]:+.4f},{mx[2]:+.4f})")
+    # 气泡不变量校验（纯 pxr，改 BUBBLES/BUBBLE_R/task.N_BUBBLES 时防回归）
+    bubbles = st2.GetPrimAtPath("/World/Bubbles")
+    n = len([c for c in bubbles.GetChildren() if c.GetTypeName() == "Sphere"])
+    assert n == len(BUBBLES), f"Bubbles children {n} != len(BUBBLES)={len(BUBBLES)}"
+    TUBE_INNER_R = 0.009  # 管内缘 Ø18mm / 2
+    for i, (bx, by, bz) in enumerate(BUBBLES):
+        p = st2.GetPrimAtPath(f"/World/Bubbles/Bubble_{i}")
+        assert p.IsValid(), f"Bubble_{i} missing"
+        r = UsdGeom.Sphere(p).GetRadiusAttr().Get()
+        assert abs(r - BUBBLE_R) < 1e-9, f"Bubble_{i} r={r} != BUBBLE_R={BUBBLE_R}"
+        dr = math.hypot(bx - 0.2787, by - 0.1193)
+        assert dr + r <= TUBE_INNER_R, \
+            f"Bubble_{i} clips wall: dr+r={dr + r:.4f} > inner {TUBE_INNER_R}"
+    print(f"[verify] Bubbles OK: {n} spheres r={BUBBLE_R}, "
+          f"all inside tube (max dr+r <= {TUBE_INNER_R})")
 
 
 # 瓶玻璃配方：assets 自带 bottle_mat 是 op0.8/rough0.33 磨砂玻璃，隔它看不清液体
@@ -490,9 +550,12 @@ def fix_dropper_materials(st2):
 
 
 def fix_tube_material(st2):
-    """试管玻璃透明化：test_tube.usd 自带玻璃 opacity 0.35 → 0.12（更透明、反光更弱，
-    内部气泡/液柱看得更清，用户 2026-08-16）+ 补 ior 1.5 真玻璃 + doubleSided。
-    遍历 /World/TestTube 下 mesh，取 material:binding 覆写 shader（同瓶玻璃修法）。"""
+    """试管玻璃透明化 + 去反光：test_tube.usd 自带玻璃 opacity 0.35 → 0.12（更透明、反光
+    更弱，内部气泡/液柱看得更清，用户 2026-08-16）+ 补 ior 1.5 真玻璃 + doubleSided。
+    **roughness 0.05 → 0.25**（原极光滑：曲面上 CylinderLight 12000 + DomeLight 2000 的
+    锐利竖向高光带正好盖住管底沉淀，用户 2026-08-19"反光太强看不清沉淀"→ 柔化反光；
+    op 0.12 透明保持，仍看得清内部）。遍历 /World/TestTube 下 mesh，取 material:binding
+    覆写 shader（同瓶玻璃修法）。"""
     p = st2.GetPrimAtPath("/World/TestTube")
     if not p.IsValid():
         print("[mat] /World/TestTube not found, skip")
@@ -500,9 +563,9 @@ def fix_tube_material(st2):
     for c in p.GetChildren():
         if c.GetTypeName() != "Mesh":
             continue
-        if override_bound_shader(st2, c, {"opacity": 0.12, "ior": 1.5}):
+        if override_bound_shader(st2, c, {"opacity": 0.12, "ior": 1.5, "roughness": 0.25}):
             UsdGeom.Gprim(c).CreateDoubleSidedAttr().Set(True)
-            print(f"[mat] tube glass {c.GetPath()} -> op 0.12 / ior 1.5 / doubleSided")
+            print(f"[mat] tube glass {c.GetPath()} -> op 0.12 / ior 1.5 / rough 0.25 / doubleSided")
 
 
 def main():
@@ -525,6 +588,7 @@ def main():
     remove_stoppers(st2)
     remove_rack_env_light(st2)
     brighten_lights(st2)
+    set_cylinder_light_x(st2, x=-10.0)
     fix_env_light(st2)
     relocate_absolute_textures(st2)
     fix_bottle_materials(st2)   # 瓶玻璃透明化 + 酸瓶 1mm 液面盘隐藏（AcidLiquid 取代）

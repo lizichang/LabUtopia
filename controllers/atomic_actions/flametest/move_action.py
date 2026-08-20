@@ -45,7 +45,7 @@ class MoveAction:
     夹爪每帧显式发送 grip_target（v41：杜绝 NaN→applied 替换不可靠）。
     """
 
-    def __init__(self, engine, pos, dwell=0, label="", orient=None):
+    def __init__(self, engine, pos, dwell=0, label="", orient=None, linewalk=True):
         self.engine = engine
         self.pos = np.asarray(pos, dtype=float)
         self.dwell = int(dwell)
@@ -54,6 +54,10 @@ class MoveAction:
         # 目标朝向 + 冻结需朝向收敛（原地转水平时位置已到、朝向仍在解）
         self.orient = orient
         self._rot_target = None if orient is None else quat_to_rot(orient)
+        # linewalk=False：强制单次 IK（解目标一次 + 关节空间钳制逼近），不逐帧重解。
+        # 近奇异区（d2s 入粉下降 y≈底座柱 z 低）逐帧重解会分支翻转/漂移、永不到位，
+        # 单次 IK 在关节空间直达目标，鲁棒；代价是 TCP 非严格直线，仅用于短距下降。
+        self._linewalk = linewalk
         self.reset()
 
     def reset(self):
@@ -66,6 +70,7 @@ class MoveAction:
         self._solved = False
         self._walk_axis = None    # 直线段：唯一变化轴的索引（0=x 1=y 2=z）；None=单次 IK
         self._goal = None         # 直线段：该轴当前推进到的坐标（首帧自 gripper_pos 起逐帧步进）
+        self._last_cmd = None     # 上次命令的关节（直线段 warm start 用，见 forward 注释）
 
     def forward(self, joints, gripper_pos, grip_target):
         cur = np.asarray(joints[:7], dtype=float)
@@ -74,8 +79,9 @@ class MoveAction:
             gp = np.asarray(gripper_pos, dtype=float)
             # v47 直线段判定：x/y/z 中恰好只有一轴变化超过阈值 → 沿该轴走直线
             # （垂直 = 仅 z 变；水平 = 仅 x 或仅 y 变）。两轴以上变化 → 单次 IK。
+            # linewalk=False 时强制走单次 IK（近奇异短距下降用）。
             changed = np.abs(self.pos - gp) > AXIS_EPS
-            if int(changed.sum()) == 1:
+            if self._linewalk and int(changed.sum()) == 1:
                 self._walk_axis = int(np.argmax(changed))
                 self._goal = float(gp[self._walk_axis])
                 self._ik_target = None
@@ -96,13 +102,19 @@ class MoveAction:
             self._goal += step
             tgt = self.pos.copy()
             tgt[a] = self._goal
-            ik = self.engine.solve_verified(tgt, cur, self.orient)
+            # warm start 用上次"已命令"关节而非滞后的实际关节：实际关节受 PD+钳制
+            # 滞后于命令，直接喂实际关节会让 Lula 在近奇异区（如 d2s 入粉 y≈底座柱 z 下降）
+            # 逐帧落入不同局部最小，joint6 单调漂移（实测 0.15→1.94）、永不到位 force-done；
+            # 命令跟踪的 warm start 与 probe 干净走线一致（joint6≈0.07）。钳制仍用实际 cur。
+            ws = self._last_cmd if self._last_cmd is not None else cur
+            ik = self.engine.solve_verified(tgt, ws, self.orient)
             if ik is None:
                 cmd = cur  # 解不出就保持，下一帧再试
             else:
                 delta = np.clip(ik - cur,
                                 -self.engine.MAX_JOINT_DELTA, self.engine.MAX_JOINT_DELTA)
                 cmd = cur + delta
+                self._last_cmd = cmd
         elif self._ik_target is not None:
             delta = np.clip(self._ik_target - cur,
                            -self.engine.MAX_JOINT_DELTA, self.engine.MAX_JOINT_DELTA)

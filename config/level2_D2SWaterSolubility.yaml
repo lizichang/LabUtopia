@@ -39,7 +39,7 @@ task:
 cameras:
   - prim_path: "/World/Camera1"
     name: "camera_1"
-    translation: [1.00, 0.40, 1.15]
+    translation: [1.50, 0.40, 1.15]
     resolution: [512, 512]
     focal_length: 10
     orientation: [0.38519, 0.13095, 0.29403, 0.86489]

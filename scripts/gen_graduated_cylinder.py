@@ -4,8 +4,8 @@
 结构规格（100mL 硼硅玻璃量筒，按 GB 12804-2011 / JIS R 3505）：
   筒身    外径 Ø32（r=16mm），壁厚 1.5mm（内径 Ø29；GB 要求壁厚≥1mm），
           筒身直段高 241.5mm，口沿外翻小唇（r 16→17.5mm，高 2.5mm）
-  嘴部    倒水尖嘴（pour spout）：口沿外缘本身在 +X 方位鼓出抬升成犄角，
-          不是另外贴一块楔（玻璃边缘直接伸长成嘴）
+  嘴部    倒水尖嘴（pour spout）：口沿一圈在 +X 方位被 V 形凹口打断并去除
+          （尖端=筒壁直段顶，左右对称尖口），无外凸引流嘴
   底座    六角形玻璃棱柱（6 段 lathe 即六棱柱），对角 ≈84mm / 对边 ≈73mm，厚 6mm
   全高    250mm ✓ GB 12804-2011：全高 250±10mm；JIS R 3505：外径 φ32、全高 250
   刻度    100mL 分度 1mL（inventory：量筒100mL 刻度精度1mL）：
@@ -43,10 +43,9 @@ LIP_H = 0.2440       # 口沿顶 z（相对筒底）= 241.5 + 2.5
 BASE_R = 0.042       # 六角底座角半径（对角 84mm / 对边 73mm）
 BASE_H = 0.006       # 底座厚（全高 = 6 + 244 = 250mm）
 
-# ---- 倒水尖嘴（pour spout）：口沿外缘鼓出成犄角 ----
-SPOUT_HALF = 0.40    # 尖嘴半张角 rad（≈23°，嘴底宽 ≈13.6mm）
-SPOUT_LEN = 0.004    # 鼓出量（口沿外缘 r 17.5→21.5mm）
-SPOUT_RAISE = 0.002  # 嘴尖相对口沿顶抬升
+# ---- 尖嘴 V 形凹口（pour spout）：口沿在 +X 方位被打断成 V 形凹口 ----
+SPOUT_HALF = 0.40    # 凹口半张角 rad（≈23°，口沿在此范围内被去除）
+NOTCH_DEPTH = 0.0023 # 凹口深度（口沿顶 250→247.7mm，尖端距筒壁顶 0.2mm，无外凸）
 
 # ---- 刻度线 + 数字（100mL，分度 1mL，白油墨）----
 FRONT = 0.5 * math.pi        # 刻度/数字朝向（+Y，前）
@@ -120,9 +119,10 @@ def _belt(mb, group, P0, P1, orient):
 
 
 def build_mouth(mb, group):
-    """口沿 + 倒水尖嘴：玻璃边缘本身在尖嘴方位鼓出成犄角（无另加楔块）。
-    环：ring0=筒壁直段顶 → ring1=口沿外缘（尖嘴区鼓出+抬升）→ ring2=口沿内缘(=内壁口)。
-    面 A=ring0→ring1 外壁（含尖嘴鼓面）；面 B=ring1→ring2 顶面（含尖嘴斜坡）。"""
+    """口沿 + 尖嘴 V 形凹口：口沿一圈在 +X 方位被 V 形凹口打断并去除，
+    无外凸引流嘴；凹口尖端=筒壁直段顶（该处口沿完全消失），左右对称尖口。
+    环：ring0=筒壁直段顶 → ring1=口沿外缘（嘴部回落到筒壁顶成 V 尖）→ ring2=口沿内缘。
+    面 A=ring0→ring1 外壁（嘴部为 V 形回落面）；面 B=ring1→ring2 顶面（嘴部为斜面）。"""
     z0 = BASE_H
     z_wall = z0 + H_TUBE
     z_lip = z0 + LIP_H
@@ -131,18 +131,19 @@ def build_mouth(mb, group):
     def edge(a):
         u = abs(a) / SPOUT_HALF
         if u >= 1.0:
-            return LIP_R, 0.0
-        w = 0.5 * (1.0 + math.cos(math.pi * u))
-        return LIP_R + SPOUT_LEN * w, SPOUT_RAISE * w
+            return LIP_R, z_lip
+        # V 形线性凹口：|a| SPOUT_HALF→0，口沿顶从 z_lip 线性回落到 z_wall+0.2mm，
+        # 半径回到筒壁（无外凸引流嘴）
+        return R_OUT, z_lip - NOTCH_DEPTH * (1.0 - u)
 
     r0 = [(R_OUT * math.cos(a), R_OUT * math.sin(a), z_wall) for a in angs]
     r1 = []
     for a in angs:
-        er, dz = edge(a)
-        r1.append((er * math.cos(a), er * math.sin(a), z_lip + dz))
+        er, ez = edge(a)
+        r1.append((er * math.cos(a), er * math.sin(a), ez))
     r2 = [(R_IN * math.cos(a), R_IN * math.sin(a), z_lip) for a in angs]
-    _belt(mb, group, r0, r1, "radial")   # 口沿外壁（含尖嘴鼓出）
-    _belt(mb, group, r1, r2, "up")       # 口沿顶面（含尖嘴斜坡）
+    _belt(mb, group, r0, r1, "radial")   # 口沿外壁（嘴部 V 形回落面）
+    _belt(mb, group, r1, r2, "up")       # 口沿顶面（嘴部 V 形斜面）
 
 
 # ---- 刻度线 + 数字（笔画字体）----
