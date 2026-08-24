@@ -5,9 +5,15 @@ v44 同构分层（与 flametest_controller 相同的 Lula IK + 元动作组合�
   - meta_actions/（一个 v11 步骤 = 一个元动作，一类一文件）
   - 本控制器：实例化元动作按序 forward()，全部完成 → success。
 
-已实现 ①PickSpatula（横向夹取药匙 → 竖直提起 → 法兰转 -90° → 水平往 -X 对齐粉末，到此结束）。
-本阶段只注册该元动作（用户 2026-08-17：法兰转后增加动作——机械臂水平往 -X 直到对齐粉末；
-2026-08-16 曾要求删掉法兰转后所有动作，今日重新加入对齐粉末一步）。
+已实现 ①PickSpatula（横向夹取药匙 → 竖直提起 → 法兰转 -45° → 对齐粉堆 x=0.537 → 竖直降 24.5cm →
+往 -y 平移 16cm → 法兰 -45°→-90° 挖粉，到此结束）。本阶段只注册该元动作（用户 2026-08-20 先要求删掉法兰转后的旧动作，
+再给出新步骤：法兰转后机械臂移动到粉堆 x 绝对位置 0.537、yz 不变、夹爪世界绝对朝向不变、
+药匙 -45° 夹着 → ⑥ AlignPowderX；2026-08-22 追加 ⑦ LowerPowder：夹爪竖直向下移动 22cm
+（定 22cm，2026-08-23 改回 20cm、2026-08-24 再降 3→23、再 2→25 但 25cm 会穿皿沿、用户改选 24.5cm）、
+x/y 与朝向不变、只变 z，以及 ⑧ ShiftYNeg：夹爪往 -y 移动 16cm
+（2026-08-22 定 15cm、08-23 改 18→23；2026-08-24 皿+粉 +Y 6.5cm 后改回 16cm，终点脱离贴底座失效区）、
+x/z 与朝向严格不变；2026-08-17 曾加"水平往 -X 对齐粉末"、2026-08-20 曾试 DipToPowder 碰粉，
+均已删/弃）。
 动作级契约（grip 每帧发送、到达冻结、dwell、跨元动作 grip_target 传播）沿用 flametest。
 """
 import os
@@ -46,10 +52,10 @@ class D2SWaterSolubilityTaskController(TaskBaseController):
         ik_home = np.array([0.012, -0.57, 0.0, -2.81, 0.0, 3.037, 0.741])
         self.engine = IkMotionEngine(solver, self.orient, ik_home)
 
-        # 元动作：本阶段只跑到 ①横向夹取药匙 → 竖直提起 → 法兰转 -90° → 水平往 -X 对齐粉末，
-        # 到这一步即结束（用户 2026-08-17 重新加入法兰转后水平往 -X 对齐粉末一步）
+        # 元动作：本阶段只跑 ①横向夹取药匙 → 竖直提起 → 法兰转 -45° → 对齐粉堆 x → 竖直降 20cm，
+        # 到此结束（用户 2026-08-20 重给对齐步骤、2026-08-22 追加下降步骤）
         self.meta_classes = [PickSpatula]
-        self.meta_names = ["S1 pick spatula + flange roll -90° + align powder x"]
+        self.meta_names = ["S1 pick spatula + flange roll -45° + align powder x + lower 24.5cm + shift -y 16cm + scoop flange -45°→-90°"]
         self.meta_actions = [C(self.engine) for C in self.meta_classes]
         self._meta_idx = 0
         self._h5_sample = 0

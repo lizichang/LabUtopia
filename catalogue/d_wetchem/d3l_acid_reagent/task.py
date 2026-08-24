@@ -35,7 +35,7 @@ from .meta_actions.constants import (
     DROP_ACID_REST, DROP_ACID_GRASP,
     SAMPLE_BOTTLE_XY, ACID_BOTTLE_XY, TUBE_XY, TUBE_GRASP_TCP,
     SHAKE_TOP_Z, SHAKE_STOP_EPS, SHAKE_STILL_FRAMES, PHENOMENA_FRAMES,
-    EFFECT_TUBE_DROPS, EFFECT_PRECIPITATE, EFFECT_BUBBLES,
+    EFFECT_TUBE_DROPS, EFFECT_PRECIPITATE,
     EFFECT_DROPPER_FILL, EFFECT_DROPPER_DROP,
 )
 
@@ -260,14 +260,22 @@ class D3LAcidReagentTask(BaseTask):
     # 模型：_precip_total=已析出总量(只增不减,每酸滴 +PRECIP_DROP_STEP)；_precip_settled=
     # 当前沉降层高(0..total)。液柱浑浊度=(total-settled)/total，震荡时 settled 被荡起变小
     # → 液浊；停震后指数回归 total（先快后慢）。渲染=改 TubeDrops 材质 diffuse/opacity。
-    PRECIP_DROP_STEP = 0.0016      # 每滴酸析出的沉降层厚度(8 滴 ≈12.8mm；2026-08-20 用户:
-                                    #   10mm 沉淀不够明显 → 加厚,约为液柱 60mm 的 1/4)
-    PRECIP_MAX = 0.016             # 沉降层高上限(16mm；8 滴实际 12.8mm 已接近,留裕量)
-    PRECIP_SETTLE_RATE = 0.035     # 沉降速度系数/帧(指数趋近 total=先快后慢,≈2s 沉完)
-    PRECIP_RESUSPEND_RATE = 0.05   # 震荡再悬浮速度系数/帧(≈0.6s 荡起)
-    PRECIP_RESUSPEND_FLOOR = 0.25  # 震荡时沉降层降到 total 的 25%(75% 再悬浮→浊)
-    CLOUDY = (0.72, 0.74, 0.76)    # 浑浊液体色(悬浮微粒灰白)
-    CLOUDY_OPACITY = 0.88          # 浑浊液不透明度(清澈 0.70 → 浑浊 0.88)
+    PRECIP_DROP_STEP = 0.0008      # 每滴酸析出的沉降层厚度(8 滴 ≈6.4mm)。2026-08-20 用户:
+                                    #   柱太高只要一半 12.8→6.4mm(约液柱 60mm 的 1/9)
+    PRECIP_MAX = 0.008             # 沉降层高上限(8mm；8 滴实际 6.4mm 已接近,留裕量)
+    PRECIP_RESUSPEND_RATE = 0.008  # 震荡悬浮速率系数/帧(浑浊云渐渐盖满液柱,≈5s 盖满)。
+                                    #   2026-08-22 用户"渐变太快要慢":0.08→0.02;
+                                    #   2026-08-23 用户"还是太快":0.02→0.008;
+                                    #   5s 震荡全程浑浊云渐渐盖满,不瞬发
+    PRECIP_FADE_RATE = 0.008       # 消失速率系数/帧(停震即刻渐渐褪去,速率=升起同档)。
+                                    #   2026-08-23 用户纠正:不要"停震后保持1s还有沉淀",应停震
+                                    #   立即渐渐褪去、以与升起相同的速率(≈5s 高位停留期内基本消尽);
+                                    #   沉降柱同步回归 total
+    PRECIP_RESUSPEND_FLOOR = 0.1   # 震荡时沉淀柱缩到 total 的 10%(变浅一点不消失,2026-08-20 用户)
+    # —— 浑浊云（几何实现,不靠改材质）——
+    # 2026-08-20 用户"浑浊和之前一模一样": headless 下运行时改 shader 材质不渲染,液体颜色
+    # 永远不变。改为 PrecipitateCloud 白圆柱盖液柱: 震荡 _cloud_frac→1(整管变沉淀色),
+    # 停震 _cloud_frac→0(蓝液柱 + 管底白柱)。
     PRECIP_SPAWN_MARGIN = 0.0015   # 气泡生成高度 = 沉降层顶 + 该值
 
     DROPPER_SAMPLE = "/World/DropperSample"
@@ -276,9 +284,15 @@ class D3LAcidReagentTask(BaseTask):
 
     TUBE_DROPS = EFFECT_TUBE_DROPS
     PRECIPITATE = EFFECT_PRECIPITATE
-    BUBBLES = EFFECT_BUBBLES
+    PRECIPITATE_CLOUD = "/World/PrecipitateCloud"   # 浑浊云(几何白柱,震荡盖满液柱=整管变白)
     DROPPER_FILL = EFFECT_DROPPER_FILL
     DROPPER_DROP = EFFECT_DROPPER_DROP
+
+    # 滴加酸后液体变色（2026-08-24）：headless 下运行时改材质不渲染,变色走几何——
+    # gen 预烘焙候选色液柱 TubeDropsColor_<色>,task 按 cfg.liquid_color show 对应一根,
+    # 逐滴把 _color_frac 从 0→1,变色柱高度 = 液面高×_color_frac,顶贴液面向下扩散。
+    COLOR_STEP = 0.25          # 每滴酸变色进度步长(acid_cycles=2×4滴=8滴,≈4滴变满)
+    TUBE_DROPS_COLOR = "/World/TubeDropsColor_{name}"
 
     def __init__(self, cfg, world, stage, robot):
         super().__init__(cfg, world, stage, robot)
@@ -294,6 +308,16 @@ class D3LAcidReagentTask(BaseTask):
 
         self.has_bubbles = bool(getattr(cfg, "has_bubbles", False))
         self.has_precipitate = bool(getattr(cfg, "has_precipitate", False))
+        # 液体变色（滴加酸后,目标色由 --result liquid_color=<色> 决定; clear=不变色）
+        self.liquid_color = str(getattr(cfg, "liquid_color", "clear")).strip().lower()
+        self._color_path = (self.TUBE_DROPS_COLOR.format(name=self.liquid_color)
+                            if self.liquid_color != "clear" else None)
+        self._color_frac = 0.0   # 变色进度 0..1（每滴酸 +COLOR_STEP）
+        # 气泡组：颜色跟随液体变色（2026-08-24 用户）——clear=原本液体浅天蓝气泡,其余=
+        # 变色后目标色气泡。gen 预烘焙 Bubbles_<色> 五组,task 按 liquid_color 选一组
+        # （headless 下运行时改材质不渲染,故烘焙多组、运行时只 show 一组）。
+        self._bubbles_path = (f"/World/Bubbles_{self.liquid_color}"
+                              if self.liquid_color != "clear" else "/World/Bubbles_clear")
         # 气泡生成高度：无沉淀=管底圆底点；有沉淀=抬到沉淀柱顶之上（避免被白柱遮住）。
         # 类常量在方法里须用 self. 前缀访问（裸名会 NameError）
         self.BUBBLE_SPAWN_Z = (self.BUBBLE_SPAWN_Z_PRECIP if self.has_precipitate
@@ -344,6 +368,8 @@ class D3LAcidReagentTask(BaseTask):
         # _precip_settled=当前沉降层高(0..total,震荡时被荡起变小→液浊)。
         self._precip_total = 0.0
         self._precip_settled = 0.0
+        self._cloud_frac = 0.0    # 浑浊云盖液柱比例(0..1): 震荡→1 整管变白,停震→0
+        self._precip_prev = None  # 摇晃判定用上一帧夹爪位置(自维护;勿用 _prev_gripper_pos,它已被 _step_phenomena 更新为本帧)
         self._liquid_shader_cache = None
         # 从 TubeDrops 材质实读"清澈基线"（避免与 gen 的 WATER 配方重复维护）
         self._liquid_clear_color = (0.58, 0.78, 0.98)
@@ -366,9 +392,16 @@ class D3LAcidReagentTask(BaseTask):
         for d in self.droppers.values():
             d.reset()
         self.tube.reset()
-        for p in (self.TUBE_DROPS, self.PRECIPITATE, self.BUBBLES,
-                  self.DROPPER_FILL, self.DROPPER_DROP):
+        for p in (self.TUBE_DROPS, self.PRECIPITATE, self.PRECIPITATE_CLOUD,
+                  self._bubbles_path, self.DROPPER_FILL, self.DROPPER_DROP):
             self._set_visibility(p, False)
+        # 变色复位：进度清零、变色液柱隐藏 + 高度归零
+        self._color_frac = 0.0
+        if self._color_path:
+            self._set_visibility(self._color_path, False)
+            p = self.stage.GetPrimAtPath(self._color_path)
+            if p.IsValid():
+                UsdGeom.Cylinder(p).GetHeightAttr().Set(0.0)
         # 现象时序复位：气泡 Xform 回原点（=气泡在管内架位）、沉淀回架内竖插位姿
         self._prev_gripper_pos = None
         self._shake_stop_frames = 0
@@ -376,10 +409,12 @@ class D3LAcidReagentTask(BaseTask):
         self._phenomena_faded = False
         self._bubbles_visible = False
         self._reset_bubble_anim()
-        self.object_utils.set_object_position(self.BUBBLES, (0.0, 0.0, 0.0))
+        self.object_utils.set_object_position(self._bubbles_path, (0.0, 0.0, 0.0))
         # 沉淀复位：总量/沉降层清零、液柱恢复清澈基线、柱高归零（位置回架位在下两行）
         self._precip_total = 0.0
         self._precip_settled = 0.0
+        self._cloud_frac = 0.0
+        self._precip_prev = None
         sh = self._liquid_shader()
         if sh is not None:
             sh.GetInput('diffuseColor').Set(Gf.Vec3f(*self._liquid_clear_color))
@@ -387,6 +422,9 @@ class D3LAcidReagentTask(BaseTask):
         pprim = self.stage.GetPrimAtPath(self.PRECIPITATE)
         if pprim.IsValid():
             UsdGeom.Cylinder(pprim).GetHeightAttr().Set(0.0)
+        cprim = self.stage.GetPrimAtPath(self.PRECIPITATE_CLOUD)
+        if cprim.IsValid():
+            UsdGeom.Cylinder(cprim).GetHeightAttr().Set(0.0)
         if self._precip_rack is not None:
             self.object_utils.set_object_position(self.PRECIPITATE, self._precip_rack)
 
@@ -406,6 +444,7 @@ class D3LAcidReagentTask(BaseTask):
         self.tube.step(gripper_pos, opening)  # 试管跟随/震荡（步9）
         self._step_phenomena(gripper_pos)     # 现象时序：震荡停→3s 后消退（气泡消失,沉淀留管）
         self._step_precipitate(gripper_pos)   # 沉淀：逐滴增厚/先浊后沉/震荡再悬浮/先快后慢沉降
+        self._step_color_liquid()             # 变色液柱：顶贴液面向下扩散（滴加酸后液体变色）
         return self.get_basic_state_info(additional_info={
             "sample_attached": self.droppers["sample"].attached,
             "sample_filled": self.droppers["sample"].filled,
@@ -488,7 +527,7 @@ class D3LAcidReagentTask(BaseTask):
         delta = np.asarray(tube_pos, dtype=float) - TUBE_ORIG   # 随管位移（回架=0）
         if self.has_bubbles:
             # Bubbles Xform 原点即"气泡在架内管内"位（球有各自 translate），整体平移 delta
-            self.object_utils.set_object_position(self.BUBBLES, delta)
+            self.object_utils.set_object_position(self._bubbles_path, delta)
         # 沉淀定位由 _step_precipitate 全权负责（每帧以试管当前管底为基准写，随管平移，
         # 柱高/位置统一在一处管理，避免此处与 _step_precipitate 竞争写）
 
@@ -571,14 +610,20 @@ class D3LAcidReagentTask(BaseTask):
         self._set_visibility(self.TUBE_DROPS, True)
         if name == "acid":
             if self.has_bubbles:
-                self._set_visibility(self.BUBBLES, True)
+                self._set_visibility(self._bubbles_path, True)
                 self._bubbles_visible = True
                 self._vigor = 1.0   # 每滴酸滴入=一次小爆发（反应强度复位，随后逐帧衰减）
             if self.has_precipitate:
                 self._set_visibility(self.PRECIPITATE, True)
-                # 逐滴增厚：每滴酸析出 +PRECIP_DROP_STEP 沉降层（settled 落后 → 先浊后沉）
+                # 加酸阶段逐滴直接落定成柱（不起雾——架内本来就看不到,起雾无意义；
+                # 浑浊只在震荡时试管离架才显示）。2026-08-20 用户: 去掉加酸起雾。
                 self._precip_total = min(self.PRECIP_MAX,
                                          self._precip_total + self.PRECIP_DROP_STEP)
+                self._precip_settled = self._precip_total   # settled 即时追平 → turb=0 不浑浊
+            # 液体变色：每滴酸推进变色进度,show 变色液柱（_step_color_liquid 每帧渲染）
+            if self._color_path:
+                self._color_frac = min(1.0, self._color_frac + self.COLOR_STEP)
+                self._set_visibility(self._color_path, True)
         print(f"[d3l] tube liquid level h={h:.3f}")
 
     # ------------------------------------------------------------------
@@ -601,7 +646,7 @@ class D3LAcidReagentTask(BaseTask):
         self._bubble_speed = []
         self._bubble_phase = []
         for i in range(self.N_BUBBLES):
-            prim = self.stage.GetPrimAtPath(f"{self.BUBBLES}/Bubble_{i}")
+            prim = self.stage.GetPrimAtPath(f"{self._bubbles_path}/Bubble_{i}")
             if not prim.IsValid():
                 continue
             t = prim.GetAttribute("xformOp:translate")
@@ -615,7 +660,7 @@ class D3LAcidReagentTask(BaseTask):
             # 速度 0.85~1.15、相位 0~2π，均由 index 确定性派生（线性同余散步）
             self._bubble_speed.append(0.85 + 0.3 * ((i * 37) % 100) / 100.0)
             self._bubble_phase.append((i * 0.7) % (2.0 * np.pi))
-            self._set_visibility(f"{self.BUBBLES}/Bubble_{i}", False)
+            self._set_visibility(f"{self._bubbles_path}/Bubble_{i}", False)
         self._spawn_timer = 0
 
     def _reset_bubble_anim(self):
@@ -625,7 +670,7 @@ class D3LAcidReagentTask(BaseTask):
             self._bubble_active[i] = False
             self._bubble_z[i] = self._bubble_spawn_z()
             self._bubble_age[i] = 0
-            self._set_visibility(f"{self.BUBBLES}/Bubble_{i}", False)
+            self._set_visibility(f"{self._bubbles_path}/Bubble_{i}", False)
         self._spawn_timer = 0
         self._vigor = 1.0
 
@@ -652,7 +697,7 @@ class D3LAcidReagentTask(BaseTask):
                     self._bubble_active[i] = True
                     self._bubble_z[i] = self._bubble_spawn_z()
                     self._bubble_age[i] = 0
-                    self._set_visibility(f"{self.BUBBLES}/Bubble_{i}", True)
+                    self._set_visibility(f"{self._bubbles_path}/Bubble_{i}", True)
                     break
             self._spawn_timer = max(1, round(self.BUBBLE_SPAWN_INTERVAL / self._vigor))
         else:
@@ -665,7 +710,7 @@ class D3LAcidReagentTask(BaseTask):
             z = self._bubble_z[i] + self.BUBBLE_RISE * self._bubble_speed[i]
             if z >= pop_z:
                 self._bubble_active[i] = False
-                self._set_visibility(f"{self.BUBBLES}/Bubble_{i}", False)
+                self._set_visibility(f"{self._bubbles_path}/Bubble_{i}", False)
                 continue
             self._bubble_z[i] = z
             # 蛇形摆动（x/y 错相正弦），随后把离轴距离钳到 BUBBLE_MAX_RADIUS 防插管壁
@@ -679,7 +724,7 @@ class D3LAcidReagentTask(BaseTask):
                 s = self.BUBBLE_MAX_RADIUS / r
                 cx, cy = TUBE_XY[0] + dx * s, TUBE_XY[1] + dy * s
             self._bubble_age[i] = age + 1
-            prim = self.stage.GetPrimAtPath(f"{self.BUBBLES}/Bubble_{i}")
+            prim = self.stage.GetPrimAtPath(f"{self._bubbles_path}/Bubble_{i}")
             if prim.IsValid():
                 t = prim.GetAttribute("xformOp:translate")
                 if t:
@@ -701,7 +746,7 @@ class D3LAcidReagentTask(BaseTask):
         if self._phenomena_fade_frame is not None:
             if self.frame_idx >= self._phenomena_fade_frame:
                 # 消退只隐藏气泡；沉降柱保留在管内（用户 2026-08-19 选定）
-                self._set_visibility(self.BUBBLES, False)
+                self._set_visibility(self._bubbles_path, False)
                 self._bubbles_visible = False
                 self._phenomena_faded = True
                 self._phenomena_fade_frame = None
@@ -735,21 +780,40 @@ class D3LAcidReagentTask(BaseTask):
         否则试管被拎起时沉淀会被拽回架孔）。"""
         if not self.has_precipitate or self._precip_total <= 0:
             return
-        # 正在震荡 = 试管已抓起 + 在震荡/停留高度区 + 本帧有位移（复用 _prev_gripper_pos，
-        # _step_phenomena 每帧维护；未抓起或低高度时为 None → 走沉降分支）
-        shaking = (self.tube.attached and gripper_pos[2] >= self.SHAKE_TOP_Z
-                   and self._prev_gripper_pos is not None
-                   and float(np.linalg.norm(np.asarray(gripper_pos, dtype=float)
-                           - self._prev_gripper_pos)) > self.SHAKE_STOP_EPS)
-        if shaking:
-            # 再悬浮：沉降层向 total*FLOOR 指数趋近（缩矮），其余转为悬浮微粒 → 液浊
-            target = self._precip_total * self.PRECIP_RESUSPEND_FLOOR
-            self._precip_settled += (target - self._precip_settled) * self.PRECIP_RESUSPEND_RATE
+        # 浑浊云时机（2026-08-22 用户："提起来就出现,应该摇晃时渐渐出现"；
+        # 2026-08-23 用户纠正："停震后保持1s还有沉淀"不要,应停震立即渐渐褪去）：
+        # 试管被拎起后 **水平摇晃**（震荡是 axis=(1,0,0) 水平正弦）时云渐渐升起盖满液柱；
+        # 摇晃一停（含高位停留 5s / 放回 / 松开）立即以升起同速率渐渐褪去 → 液柱澄清。
+        # 停震判定复用 _step_phenomena 的 _shake_stop_frames（连续 20 帧全 3D 位移
+        # < SHAKE_STOP_EPS，已在气泡褪去验证）——高位停留 5s 里夹爪冻结静止 → 计满判停，
+        # 不再被当作"还在摇晃"。它在本方法之前已更新（step 里先调 _step_phenomena）。
+        # 用水平位移区分"摇晃"与"拎起"：拎起是垂直运动（dx≈0）、摇晃是水平运动（dx 主导），
+        # 浑浊云不会在提起来那一刻就冒出来；`not stopped` 挡住停震初的归位抖动误判。
+        # 不用 _prev_gripper_pos：_step_phenomena 已把它更新为本帧位置，再比恒为 0。
+        stopped = self._shake_stop_frames >= self.SHAKE_STILL_FRAMES
+        lifted = (self.tube.attached and gripper_pos[2] >= self.SHAKE_TOP_Z)
+        oscillating = False
+        if lifted:
+            if self._precip_prev is not None:
+                horiz = float(np.linalg.norm(
+                    np.asarray(gripper_pos[:2], dtype=float) - self._precip_prev[:2]))
+                oscillating = (horiz > self.SHAKE_STOP_EPS) and not stopped
+            self._precip_prev = np.asarray(gripper_pos, dtype=float)
         else:
-            # 沉降：向 total 指数趋近（先快后慢，≈2s 沉完）
+            self._precip_prev = None
+        if oscillating:
+            # 摇晃中：柱缩到 total*FLOOR(变浅一点),浑浊云渐渐升起盖满液柱 → 整管变沉淀色
+            target = self._precip_total * self.PRECIP_RESUSPEND_FLOOR
+            self._precip_settled += (target - self._precip_settled) \
+                * self.PRECIP_RESUSPEND_RATE
+            self._cloud_frac += (1.0 - self._cloud_frac) * self.PRECIP_RESUSPEND_RATE
+        else:
+            # 停震（高位停留 5s / 放回 / 松开）：浑浊云立即以升起同速率渐渐褪去,
+            # 柱同步回归 total → 液柱澄清回原色
             self._precip_settled += (self._precip_total - self._precip_settled) \
-                * self.PRECIP_SETTLE_RATE
-        # —— 渲染：沉淀柱高=settled、位置=试管当前管底 + 柱高一半（bottom-center 约定）——
+                * self.PRECIP_FADE_RATE
+            self._cloud_frac += (0.0 - self._cloud_frac) * self.PRECIP_FADE_RATE
+        # —— 渲染（几何,不依赖改材质;位置=试管当前管底 + 柱高一半, bottom-center 约定）——
         settled = max(self._precip_settled, 0.0)
         tube_now = self._get_obj_world(self.TUBE)
         base = tube_now if tube_now is not None else TUBE_ORIG
@@ -758,15 +822,36 @@ class D3LAcidReagentTask(BaseTask):
             UsdGeom.Cylinder(prim).GetHeightAttr().Set(settled)
             self.object_utils.set_object_position(
                 self.PRECIPITATE, (base[0], base[1], base[2] + settled / 2))
-        # —— 液柱浑浊度 =(total-settled)/total：清澈→灰白+不透（悬浮微粒的视觉）——
-        turb = min(1.0, (self._precip_total - settled) / max(self._precip_total, 1e-6))
-        sh = self._liquid_shader()
-        if sh is not None:
-            c = [self._liquid_clear_color[k] + (self.CLOUDY[k] - self._liquid_clear_color[k]) * turb
-                 for k in range(3)]
-            sh.GetInput('diffuseColor').Set(Gf.Vec3f(*c))
-            sh.GetInput('opacity').Set(
-                self._liquid_clear_opacity + (self.CLOUDY_OPACITY - self._liquid_clear_opacity) * turb)
+        # 浑浊云：白柱高 = 当前液面 × cloud_frac(震荡盖满=整管变白,停震缩回=澄清回原色)
+        liquid_level = min(self._tube_drop_count * self.DROP_LEVEL_STEP, self.DROP_LEVEL_MAX)
+        cloud_h = liquid_level * self._cloud_frac
+        cprim = self.stage.GetPrimAtPath(self.PRECIPITATE_CLOUD)
+        if cprim.IsValid():
+            UsdGeom.Cylinder(cprim).GetHeightAttr().Set(cloud_h)
+            self.object_utils.set_object_position(
+                self.PRECIPITATE_CLOUD, (base[0], base[1], base[2] + cloud_h / 2))
+            self._set_visibility(self.PRECIPITATE_CLOUD, cloud_h > 0.0005)
+
+    def _step_color_liquid(self):
+        """变色液柱每帧渲染（2026-08-24）：变色柱高度 = 当前液面 × _color_frac,顶贴液面
+        向下扩散（滴加酸时逐滴长高、最后盖满全管）。定位以试管**当前**管底为基准（同
+        _step_precipitate,不写死 TUBE_XY——试管被拎起时变色液随管走）。"""
+        if not self._color_path or self._color_frac <= 0:
+            return
+        liquid_level = min(self._tube_drop_count * self.DROP_LEVEL_STEP, self.DROP_LEVEL_MAX)
+        h_color = liquid_level * self._color_frac
+        if h_color <= 0.0005:
+            self._set_visibility(self._color_path, False)
+            return
+        tube_now = self._get_obj_world(self.TUBE)
+        base = tube_now if tube_now is not None else TUBE_ORIG
+        prim = self.stage.GetPrimAtPath(self._color_path)
+        if prim.IsValid():
+            UsdGeom.Cylinder(prim).GetHeightAttr().Set(h_color)
+            self.object_utils.set_object_position(
+                self._color_path,
+                (base[0], base[1], base[2] + liquid_level - h_color / 2))
+            self._set_visibility(self._color_path, True)
 
     # ------------------------------------------------------------------
     def _disable_collision(self, root):

@@ -54,11 +54,17 @@ experiment_result:
     label: "滴加后是否产生沉淀"
     type: bool
     default: true
+  liquid_color:
+    label: "滴加酸后液体变色（目标色）"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: clear
 
 # 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
-# task 直接读 cfg.has_bubbles / cfg.has_precipitate。
+# task 直接读 cfg.has_bubbles / cfg.has_precipitate / cfg.liquid_color。
 has_bubbles: true
 has_precipitate: true
+liquid_color: clear
 
 task:
   max_steps: 30000

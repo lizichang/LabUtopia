@@ -72,10 +72,16 @@ CAP_RECIPE = dict(color=(0.9, 0.9, 0.92), opacity=1.0, roughness=0.4)  # 白塑�
 # acid 微绿区分酸液/水样
 WATER = dict(color=(0.72, 0.85, 1.0), opacity=0.50, roughness=0.05, ior=1.33)
 ACID = dict(color=(0.66, 0.86, 0.76), opacity=0.70, roughness=0.05, ior=1.33)
-# 沉淀：全哑光(rough 0.85 无自身高光)+ 近纯白(0.97)+ 自发光 0.5——灯已挪远无漂白风险，
-# 靠 emissive 透过 50% 蓝水显形（2026-08-19"沉淀不够明显,要比较亮的白色"0.2；2026-08-20
-# "沉淀还是不够明显"→ 0.5,白柱在浅蓝水里更"跳眼"）
-OPAQUE_WHITE = dict(color=(0.97, 0.97, 1.0), opacity=1.0, roughness=0.85, emissive=(0.5, 0.5, 0.6))
+# 沉淀：全哑光(rough 0.85 无自身高光)+ 乳白色（2026-08-23 用户要求"沉淀由红色改回乳白色"）。
+# 乳白=暖调微奶油白（R>G>B 略偏暖,不是灰白）；op 1.0 全不透明（半透明白嵌在半透明蓝液柱内
+# 会被蓝液盖住看不清——08-20"白雾没显示"教训,故红色阶段也保持 op 1.0）。emissive 白色温和档
+# 提亮可见性（红单通道 1.8 太强,白两通道过 1 会被光洗成纯白丢乳白调）。
+OPAQUE_WHITE = dict(color=(0.82, 0.80, 0.74), opacity=1.0, roughness=0.85, emissive=(1.0, 0.95, 0.80))
+# 震荡时的"浑浊云"：乳白色不透明圆柱（几何实现——headless 下运行时改 shader 材质不渲染，
+# 2026-08-20 用户反馈"浑浊和之前一模一样"根因）。高度由 task 动画：拎起→盖满整根液柱
+# （整管液体变乳白）；归架→缩到 0（蓝液柱 + 管底乳白柱）。半径 0.0089 略小于液柱 0.009，
+# 盖在蓝液柱内不穿模。2026-08-23 随沉淀改回乳白（08-22 曾改亮红）。
+CLOUD_MILK = dict(color=(0.82, 0.80, 0.74), opacity=1.0, roughness=0.85, emissive=(1.0, 0.95, 0.80))
 # 滴管内液柱 / 滴落液滴：更亮更不透（op0.9 亮蓝），透过透明玻璃清晰可见
 FILL = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
 DROP = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
@@ -94,12 +100,30 @@ EFFECTS = [
     ("AcidLiquid", "cylinder", 0.014, 0.040, (0.1696, 0.361, 0.820), ACID, True),
     ("TubeDrops", "cylinder", 0.009, 0.030, (0.2787, 0.1193, 0.821), WATER, False),
     ("Precipitate", "cylinder", 0.0088, 0.003, (0.2787, 0.1193, 0.8075), OPAQUE_WHITE, False),
+    ("PrecipitateCloud", "cylinder", 0.0089, 0.003, (0.2787, 0.1193, 0.8075), CLOUD_MILK, False),
     # frustum 的 r = (r_bottom, r_top)：下底 Ø2mm 贴尖嘴、上底 Ø7mm（内缩玻璃体 Ø8mm 一个壁厚，
     # 透过透明玻璃可见独立液柱）。h=60mm（收窄段 0..30mm + 直管 30mm，明显可见）。
     # translate 是 mesh 底心（底在局部 z=0）→ 落在尖嘴 z=0.806，柱体 0.806..0.866 在玻璃体
     # 0..0.12 内、不露在尖嘴外（task._set_fill_follow 用同一约定：translate=尖嘴）。
     ("DropperFill", "frustum", (0.001, 0.0035), 0.060, (0.2815, -0.1187, 0.806), FILL, False),
 ]
+
+# ========== 滴加酸后液体变色（2026-08-24）==========
+# headless 渲染下运行时改材质不生效（记忆 headless-render-ignores-materials / 上方
+# CLOUD_MILK 注释已证实），变色必须走几何：为每个候选色预烘焙一根"变色液柱"圆柱
+# （TubeDropsColor_<色>），task 按 cfg.liquid_color show 对应一根，逐滴把 height 从
+# 液面向下长（_color_frac，顶贴液面向下扩散）。
+# 半径 0.0086 略小于液柱 0.009 防穿模；小于 Precipitate 0.0088 / Cloud 0.0089 →
+# 震荡浑浊时云罩住变色柱（看不清颜色），静置云褪后变色液显现。初始全隐藏、height 0。
+# opacity 0.85 半透明（蓝液微透、以目标色为主）。
+LIQUID_COLORS = {
+    "red":    dict(color=(0.95, 0.30, 0.30), opacity=0.85, roughness=0.05, ior=1.33),
+    "blue":   dict(color=(0.20, 0.35, 0.90), opacity=0.85, roughness=0.05, ior=1.33),
+    "green":  dict(color=(0.25, 0.80, 0.40), opacity=0.85, roughness=0.05, ior=1.33),
+    "purple": dict(color=(0.60, 0.30, 0.85), opacity=0.85, roughness=0.05, ior=1.33),
+}
+TUBE_COLOR_R = 0.0086   # 变色液柱半径（略小于液柱 0.009 防穿模）
+
 # ========== 气泡方案（2026-08-19 真实感改造，中等档）==========
 # 与真实反应差距修正（用户确认问题）：原来 8 颗 Ø14mm 慢速(0.024m/s)泡从管底一点直线
 # 上飘 → 像"烧开水"。本次改为：Ø4.4mm 离散小泡 ×40 颗池、速度 ~0.06m/s、管底盘状散布区
@@ -107,15 +131,21 @@ EFFECTS = [
 # 渐衰（VIGOR_DECAY，像反应物消耗）。上升动画仍由 task._step_bubble_anim 驱动：
 # 本列表 x/y 是基准、z 全 0.806（task 每帧覆盖 z、子球初始隐藏）。
 # 不变量：len(BUBBLES) 必须 == task.N_BUBBLES(40)，verify() 会断言。
-# 颜色：近黑 diffuse + 强红 emissive 单通道（emissive 主导才出饱和色，才不被 0.70 不透明
-# 蓝液柱遮住）。要改"无色真气泡"见下 1d 配方。
-#
-# —— 1d. 如何改回"无色真气泡"（目前用鲜艳红保证在蓝液柱里可见）——
-# 改下面 BUBBLE dict 三处 + 重跑 `python scripts/gen_d3l_scene.py` 重新烘焙即可：
-#     BUBBLE = dict(color=(0.85, 0.85, 0.85), opacity=0.30, roughness=0.05, emissive=(0.0, 0.0, 0.0))
-# 风险：透明无色泡对蓝液柱(0.70 不透明)可见性差——若看不清，先降上面 EFFECTS 里
-# TubeDrops 的 WATER 液柱 opacity（第 89 行），再调高气泡 opacity 到 0.4~0.5。
-BUBBLE = dict(color=(0.05, 0.02, 0.02), opacity=1.0, roughness=0.3, emissive=(2.6, 0.12, 0.12))
+# 颜色：跟随液体变色（2026-08-24 用户）——每组近黑 diffuse + 该色 emissive 单通道主导
+# （emissive 主导才出饱和色，才不被 0.50 不透明蓝液柱遮住）。clear = 原本液体浅天蓝
+# （WATER 色），其余 = 变色后目标色。task 按 cfg.liquid_color 选一组 show（headless 下
+# 运行时改材质不渲染，故预烘焙多组）。
+# —— 1d. 如何改回"无色真气泡" ——
+# 把 BUBBLE_GROUPS 里某组 opacity 降到 0.30、emissive 归零 + 重跑 gen 即可；
+# 风险：透明无色泡对蓝液柱可见性差——若看不清，先降 EFFECTS 里 TubeDrops 的
+# WATER 液柱 opacity，再调高气泡 opacity。
+BUBBLE_GROUPS = {
+    "clear":  dict(color=(0.72, 0.85, 1.0), opacity=1.0, roughness=0.3, emissive=(0.7, 1.0, 1.8)),
+    "red":    dict(color=(0.05, 0.02, 0.02), opacity=1.0, roughness=0.3, emissive=(2.6, 0.12, 0.12)),
+    "blue":   dict(color=(0.02, 0.04, 0.10), opacity=1.0, roughness=0.3, emissive=(0.15, 0.45, 2.6)),
+    "green":  dict(color=(0.02, 0.10, 0.04), opacity=1.0, roughness=0.3, emissive=(0.15, 2.4, 0.15)),
+    "purple": dict(color=(0.10, 0.02, 0.12), opacity=1.0, roughness=0.3, emissive=(2.3, 0.18, 2.6)),
+}
 BUBBLE_R = 0.0022   # Ø4.4mm（管内缘 Ø18mm → 泡缘距壁 ≥ 4.6mm，离散小泡不贴壁）
 
 
@@ -245,16 +275,39 @@ def add_effects(stage):
               f"(op {m['opacity']} rough {m.get('roughness', 0.5)} ior {m.get('ior')})")
 
 
+def add_color_liquid(stage):
+    """候选色变色液柱（滴加酸后液体变色，2026-08-24）：为 LIQUID_COLORS 每个候选色建
+    一根同轴圆柱（/World/TubeDropsColor_<色>），初始全隐藏、height 0；task 按
+    cfg.liquid_color show 对应一根，逐滴改 height（顶贴液面向下扩散，_color_frac）。
+    几何实现——headless 下运行时改材质不渲染（见 LIQUID_COLORS 注释）。"""
+    for name, m in LIQUID_COLORS.items():
+        geom = UsdGeom.Cylinder.Define(stage, f"/World/TubeDropsColor_{name}")
+        geom.CreateRadiusAttr(TUBE_COLOR_R)
+        geom.CreateHeightAttr(0.0)
+        geom.CreateAxisAttr("Z")
+        geom.AddTranslateOp().Set(Gf.Vec3d(0.2787, 0.1193, 0.806))
+        translucent = m.get("opacity", 1.0) < 1.0
+        add_material(stage, geom.GetPrim(), m["color"], m["opacity"],
+                     roughness=m.get("roughness", 0.5), ior=m.get("ior"),
+                     double_sided=translucent)
+        UsdGeom.Imageable(geom).MakeInvisible()
+        print(f"[effect] TubeDropsColor_{name} hidden (liquid color, r={TUBE_COLOR_R})")
+
+
 def add_bubbles(stage):
-    g = UsdGeom.Xform.Define(stage, "/World/Bubbles")
-    for i, (x, y, z) in enumerate(BUBBLES):
-        s = UsdGeom.Sphere.Define(stage, f"/World/Bubbles/Bubble_{i}")
-        s.CreateRadiusAttr(BUBBLE_R)
-        s.AddTranslateOp().Set(Gf.Vec3d(x, y, z))
-        add_material(stage, s.GetPrim(), BUBBLE["color"], BUBBLE["opacity"],
-                     roughness=BUBBLE["roughness"], emissive=BUBBLE.get("emissive"))
-    UsdGeom.Imageable(g).MakeInvisible()
-    print(f"[effect] Bubbles hidden ({len(BUBBLES)} spheres, r={BUBBLE_R})")
+    """气泡组 ×5（2026-08-24 用户：气泡颜色跟随液体变色）：/World/Bubbles_<色> 每组 40 颗
+    球（基准同 BUBBLES），颜色 = 该色近黑 diffuse + 单通道 emissive。初始全隐藏；task 按
+    cfg.liquid_color show 对应一组（clear=原本液体浅天蓝，其余=变色后目标色）。"""
+    for name, recipe in BUBBLE_GROUPS.items():
+        g = UsdGeom.Xform.Define(stage, f"/World/Bubbles_{name}")
+        for i, (x, y, z) in enumerate(BUBBLES):
+            s = UsdGeom.Sphere.Define(stage, f"/World/Bubbles_{name}/Bubble_{i}")
+            s.CreateRadiusAttr(BUBBLE_R)
+            s.AddTranslateOp().Set(Gf.Vec3d(x, y, z))
+            add_material(stage, s.GetPrim(), recipe["color"], recipe["opacity"],
+                         roughness=recipe["roughness"], emissive=recipe["emissive"])
+        UsdGeom.Imageable(g).MakeInvisible()
+        print(f"[effect] Bubbles_{name} hidden ({len(BUBBLES)} spheres, r={BUBBLE_R})")
 
 
 def add_dropper_drops(stage):
@@ -438,8 +491,8 @@ def verify(st2):
     bc = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"])
     names = ["TestTubeRack", "TestTube", "DropperSample", "DropperAcid",
              "SampleBottle", "HClBottle", "SampleLiquid", "AcidLiquid",
-             "TubeDrops", "Precipitate", "Bubbles", "DropperFill", "DropperDrop",
-             "SampleBottleCap", "HClBottleCap"]
+             "TubeDrops", "Precipitate", "PrecipitateCloud", "Bubbles",
+             "DropperFill", "DropperDrop", "SampleBottleCap", "HClBottleCap"]
     for name in names:
         p = st2.GetPrimAtPath(f"/World/{name}")
         if not p.IsValid():
@@ -449,21 +502,40 @@ def verify(st2):
         mn, mx = r.GetMin(), r.GetMax()
         print(f"[verify] {name:15s} min({mn[0]:+.4f},{mn[1]:+.4f},{mn[2]:+.4f}) "
               f"max({mx[0]:+.4f},{mx[1]:+.4f},{mx[2]:+.4f})")
-    # 气泡不变量校验（纯 pxr，改 BUBBLES/BUBBLE_R/task.N_BUBBLES 时防回归）
-    bubbles = st2.GetPrimAtPath("/World/Bubbles")
-    n = len([c for c in bubbles.GetChildren() if c.GetTypeName() == "Sphere"])
-    assert n == len(BUBBLES), f"Bubbles children {n} != len(BUBBLES)={len(BUBBLES)}"
+    # 气泡组不变量校验（纯 pxr，改 BUBBLE_GROUPS/BUBBLES/BUBBLE_R/task.N_BUBBLES 防回归）：
+    # 每组数量==len(BUBBLES)==task.N_BUBBLES、半径==BUBBLE_R、泡缘不插管壁、初始隐藏。
     TUBE_INNER_R = 0.009  # 管内缘 Ø18mm / 2
-    for i, (bx, by, bz) in enumerate(BUBBLES):
-        p = st2.GetPrimAtPath(f"/World/Bubbles/Bubble_{i}")
-        assert p.IsValid(), f"Bubble_{i} missing"
-        r = UsdGeom.Sphere(p).GetRadiusAttr().Get()
-        assert abs(r - BUBBLE_R) < 1e-9, f"Bubble_{i} r={r} != BUBBLE_R={BUBBLE_R}"
-        dr = math.hypot(bx - 0.2787, by - 0.1193)
-        assert dr + r <= TUBE_INNER_R, \
-            f"Bubble_{i} clips wall: dr+r={dr + r:.4f} > inner {TUBE_INNER_R}"
-    print(f"[verify] Bubbles OK: {n} spheres r={BUBBLE_R}, "
-          f"all inside tube (max dr+r <= {TUBE_INNER_R})")
+    for gname in BUBBLE_GROUPS:
+        bubbles = st2.GetPrimAtPath(f"/World/Bubbles_{gname}")
+        assert bubbles.IsValid(), f"Bubbles_{gname} missing"
+        n = len([c for c in bubbles.GetChildren() if c.GetTypeName() == "Sphere"])
+        assert n == len(BUBBLES), \
+            f"Bubbles_{gname} children {n} != len(BUBBLES)={len(BUBBLES)}"
+        for i, (bx, by, bz) in enumerate(BUBBLES):
+            p = st2.GetPrimAtPath(f"/World/Bubbles_{gname}/Bubble_{i}")
+            assert p.IsValid(), f"Bubbles_{gname}/Bubble_{i} missing"
+            r = UsdGeom.Sphere(p).GetRadiusAttr().Get()
+            assert abs(r - BUBBLE_R) < 1e-9, \
+                f"{gname} Bubble_{i} r={r} != BUBBLE_R={BUBBLE_R}"
+            dr = math.hypot(bx - 0.2787, by - 0.1193)
+            assert dr + r <= TUBE_INNER_R, \
+                f"{gname} Bubble_{i} clips wall: dr+r={dr + r:.4f} > inner {TUBE_INNER_R}"
+        assert UsdGeom.Imageable(bubbles).ComputeVisibility() == "invisible", \
+            f"Bubbles_{gname} should be hidden initially"
+        print(f"[verify] Bubbles_{gname} OK: {n} spheres r={BUBBLE_R}, "
+              f"all inside tube, hidden")
+    # 候选色变色液柱不变量：每根存在、radius==TUBE_COLOR_R、初始隐藏（task 运行时按
+    # cfg.liquid_color show 对应一根 + 改 height）
+    for name in LIQUID_COLORS:
+        p = st2.GetPrimAtPath(f"/World/TubeDropsColor_{name}")
+        assert p.IsValid(), f"TubeDropsColor_{name} missing"
+        r = UsdGeom.Cylinder(p).GetRadiusAttr().Get()
+        assert abs(r - TUBE_COLOR_R) < 1e-9, \
+            f"TubeDropsColor_{name} r={r} != TUBE_COLOR_R={TUBE_COLOR_R}"
+        vis = UsdGeom.Imageable(p).ComputeVisibility() == "invisible"
+        assert vis, f"TubeDropsColor_{name} should be hidden initially"
+    print(f"[verify] LiquidColor OK: {len(LIQUID_COLORS)} tubes "
+          f"r={TUBE_COLOR_R} all hidden")
 
 
 # 瓶玻璃配方：assets 自带 bottle_mat 是 op0.8/rough0.33 磨砂玻璃，隔它看不清液体
@@ -579,6 +651,7 @@ def main():
     for name, asset, t, scale in EQUIP:
         add_equip(stage, name, asset, t, scale)
     add_effects(stage)
+    add_color_liquid(stage)   # 候选色变色液柱（滴加酸后液体变色，初始全隐藏）
     add_bubbles(stage)
     add_dropper_drops(stage)
     add_caps(stage)          # 翻放瓶盖（2026-08-17 用户要求，闭口朝下开口朝上）

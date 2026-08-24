@@ -48,8 +48,8 @@ class D2SWaterSolubilityTask(BaseTask):
     SPAT_GRIP_CLOSED = GRIP_SPATULA + 0.004   # 夹紧阈值：grip 0.008 + 4mm 裕量
     GRIP_OPEN_THRESH = 0.03                    # 松开阈值（与 flametest 一致）
 
-    # 粉丘实测 bbox：x 0.5188-0.5542（2026-08-14 晚皿+粉 -X 移 15cm 后同步），y 0.0166-0.064，z 0.8021-0.8141
-    POWDER_BBOX = (0.5188, 0.5542, 0.0166, 0.064, 0.8021, 0.8141)
+    # 粉丘实测 bbox：x 0.5188-0.5542（2026-08-14 晚皿+粉 -X 移 15cm 后同步；2026-08-24 +Y 6.5cm），y 0.0814-0.1288，z 0.8021-0.8141
+    POWDER_BBOX = (0.5188, 0.5542, 0.0814, 0.1288, 0.8021, 0.8141)
     TUBE_MOUTH = np.array([TUBE_XY[0], TUBE_XY[1], 0.9593])
 
     # 效果 prim（初始 invisible，task 动画驱动）
