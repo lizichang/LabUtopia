@@ -1,0 +1,112 @@
+name: Level2_D4LAlkaliReagent
+
+task_type: "d4l_alkali_reagent"
+controller_type: "d4l_alkali_reagent"
+
+mode: "collect"
+
+# 场景：d4l_alkali_reagent（D4-L 碱性试剂滴加反应，桌面 z=0.80）
+# 台面（2026-08-24 pxr 实测世界 bbox，gen_d4l_scene.py verify）：
+#   试管架 (0.257,-0.143,0.800)-(0.343,0.143,0.917)、试管前排左孔 (0.279,0.119) 口 z 0.959
+#   取样滴管后排左孔 (0.2815,-0.1187) 尖嘴 z 0.806、加碱滴管后排右孔 (0.3202,-0.1187)
+#   （用户 2026-08-14：两滴管挪到离试管（前排 y=+0.119）最远的后排 y=-0.1187）
+#   样品瓶 (0.4045,0.3585) 口 rim z 0.870 液面 0.840、碱瓶 (0.1696,0.361) 口 rim 0.870
+#   碱瓶 = alkaline_bottle.usd（塑料瓶+橡胶塞，塞子盖瓶口 z 0.8616..0.8748，动态拔塞→倒放→盖回）
+usd_path: "assets/scenes/d_wetchem/d4l_alkali_reagent/d4l_alkali_reagent.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s 一致）
+grasp_xy_threshold: 0.03        # 夹爪距滴管抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+# 开合小于此值算"挤胶头"（排空气/滴液）。0.0035：持握开度 0.0055 之上留 0.002 裕量
+# （防手指晃动误判挤），挤胶头 0.002 之下 0.0015（2026-08-14 开度减半后同步）
+squeeze_close_threshold: 0.0035
+
+# 第一步（取样滴管吸样品→滴入试管）重复遍数：多滴几滴让管内液体更明显（液面逐滴升高）
+sample_cycles: 3
+# 第二步（加碱滴管吸碱液→滴入试管）重复遍数：样品+碱混合，加碱滴入即触发现象（气泡/沉淀）
+alkali_cycles: 2
+# 第三步（步9 拿起试管震荡混合）来回次数（2026-08-16 用户：3→5 次）
+shake_cycles: 5
+
+# 实验结果输入接口（运行前 --result has_bubbles=yes 等；task 读 cfg.has_bubbles 等）
+# 2026-08-16：默认改 true——直接跑命令也能看到气泡/沉淀（用户反馈"还是看不到气泡"根因之一
+# 就是默认 false 不出场）。真实数据采集时按实验结果传 --result has_bubbles=yes/no 覆盖。
+experiment_result:
+  has_bubbles:
+    label: "滴加后是否产生气泡"
+    type: bool
+    default: true
+  has_precipitate:
+    label: "滴加后是否产生沉淀"
+    type: bool
+    default: true
+  liquid_color:
+    label: "滴加碱后液体变色（目标色）"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: clear
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.has_bubbles / cfg.has_precipitate / cfg.liquid_color。
+has_bubbles: true
+has_precipitate: true
+liquid_color: clear
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [0.50, 0.30, 1.15]
+    resolution: [512, 512]
+    focal_length: 17
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.26, -0.06, 1.24]
+    resolution: [512, 512]
+    focal_length: 17
+    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 (0.25, 0.57)：在试管架正前方 +y 方向（架中心 0.30,0.00；架前沿 y=0.143）。
+  # 比旧位 (0.25, 0.32) 再往后 25cm：碱瓶/样品瓶距底座 0.22/0.26m（旧位贴底座 9/16cm），
+  # 全部器材仍在 Franka 0.855m 臂展内（最远加碱滴管 0.50m）。台面 Cube 到 y=1.0，未出桌。
+  position: [0.25, 0.57, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

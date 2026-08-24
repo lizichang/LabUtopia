@@ -22,7 +22,8 @@ from isaacsim.core.utils.prims import set_prim_visibility
 from tasks.base_task import BaseTask
 from .meta_actions.constants import (
     GRIP_SPATULA, SPAT_GRASP, SPAT_HEAD_DIST,
-    POWDER_TOP_Z, POWDER_Z, SCOOP_INSERT, POUR_TCP, TUBE_XY,
+    POWDER_TOP_Z, POWDER_X, POWDER_Z, SCOOP_INSERT, POUR_TCP, TUBE_XY,
+    TUBE_MOUTH_Z, DISH_XY,
 )
 
 # 药匙相对夹爪：平移 (0.112,0,0) + 旋转（toolX→(0,0,-1)、toolY→(0,-1,0)、toolZ→(-1,0,0)）。
@@ -48,9 +49,8 @@ class D2SWaterSolubilityTask(BaseTask):
     SPAT_GRIP_CLOSED = GRIP_SPATULA + 0.004   # 夹紧阈值：grip 0.008 + 4mm 裕量
     GRIP_OPEN_THRESH = 0.03                    # 松开阈值（与 flametest 一致）
 
-    # 粉丘实测 bbox：x 0.5188-0.5542（2026-08-14 晚皿+粉 -X 移 15cm 后同步；2026-08-24 +Y 6.5cm），y 0.0814-0.1288，z 0.8021-0.8141
-    POWDER_BBOX = (0.5188, 0.5542, 0.0814, 0.1288, 0.8021, 0.8141)
-    TUBE_MOUTH = np.array([TUBE_XY[0], TUBE_XY[1], 0.9593])
+    # 粉丘实测 bbox：x 0.5188-0.5542，y 0.0814-0.1288，z 0.8021-0.8141（详见 meta_actions/constants.py）
+    TUBE_MOUTH = np.array([TUBE_XY[0], TUBE_XY[1], TUBE_MOUTH_Z])
 
     # 效果 prim（初始 invisible，task 动画驱动）
     POWDER_EFFECT = "/World/PowderOnSpoon"
@@ -69,6 +69,7 @@ class D2SWaterSolubilityTask(BaseTask):
         self.spatula_state = "rest"     # rest / attached / released
         self.powder_on_spoon = False
         self.poured = False
+        self._prev_flange = None        # 上一帧法兰角（joint7，索引 6），用于判定⑨挖粉旋转开始
 
         self.grasp_xy_threshold = getattr(cfg, "grasp_xy_threshold", 0.03)
         self.gripper_open_threshold = getattr(cfg, "gripper_open_threshold", 0.03)
@@ -81,6 +82,7 @@ class D2SWaterSolubilityTask(BaseTask):
         self._near_frames = 0
         self.powder_on_spoon = False
         self.poured = False
+        self._prev_flange = None
         self._set_spatula_world(_rest_matrix())
         self._set_visibility(self.POWDER_EFFECT, False)
         self._set_visibility(self.TUBE_SAMPLE, False)
@@ -112,6 +114,11 @@ class D2SWaterSolubilityTask(BaseTask):
         if gripper_pos is None or joints is None:
             return
         opening = joints[7]
+        # 法兰（joint7，索引 6）是否在旋转：⑨ 挖粉起判定信号。⑥⑦⑧ 保持世界朝向（法兰恒定），
+        # ⑤ 法兰旋转但勺尖在架位高位，⑨ 法兰旋转且勺尖在粉丘 → 仅⑨首帧满足全部条件。
+        flange_rotating = (self._prev_flange is not None
+                           and abs(joints[6] - self._prev_flange) > 0.005)
+        self._prev_flange = float(joints[6])
 
         if self.spatula_state == "rest":
             if self._near_grasp(gripper_pos, self.SPAT_GRASP):
@@ -130,8 +137,8 @@ class D2SWaterSolubilityTask(BaseTask):
         elif self.spatula_state == "attached":
             self._set_spatula_from_gripper()
             tip = self._spoon_tip_pos(gripper_pos)
-            # 粉末：勺尖沉入粉丘 → 显示粉末，跟随勺尖；倒入 → 粉末入管
-            if not self.powder_on_spoon and self._spoon_in_powder(tip):
+            # 粉末：⑨ 法兰开始旋转（挖粉）→ 显示粉末，跟随勺尖；倒入 → 粉末入管
+            if not self.powder_on_spoon and self._scoop_starting(tip, flange_rotating):
                 self.powder_on_spoon = True
                 self._set_visibility(self.POWDER_EFFECT, True)
                 print(f"[d2s] powder on spoon (tip={np.round(tip, 3)})")
@@ -202,10 +209,16 @@ class D2SWaterSolubilityTask(BaseTask):
         return (np.linalg.norm(gripper_pos[:2] - grasp_pos[:2]) < xy_thresh
                 and abs(gripper_pos[2] - grasp_pos[2]) < z_thresh)
 
-    def _spoon_in_powder(self, tip):
-        x0, x1, y0, y1, z0, z1 = self.POWDER_BBOX
-        return (x0 < tip[0] < x1 and y0 < tip[1] < y1
-                and z0 < tip[2] < z1)
+    def _scoop_starting(self, tip, flange_rotating):
+        """⑨ 法兰 -45°→-90° 开始旋转（挖粉起）判定：法兰正在旋转 且 勺尖在粉丘附近（松带）。
+
+        排除误触发：⑤ 法兰也旋转但勺尖在架位高位（x=0.6993 不在粉堆 x 带、z≈1.03 高于高度带）；
+        ⑥⑦⑧ 法兰保持朝向恒定不旋转（⑦ 勺尖 z 递减、⑧ 平移 z 恒定）；④ 提勺过架顶 x=0.6993 远离。
+        只在 ⑨ 旋转首帧触发（勺尖 (0.537,0.106,0.810) 在松带内）→ 粉末随旋转从粉丘带起。"""
+        near = (abs(tip[0] - POWDER_X) < 0.04
+                and abs(tip[1] - DISH_XY[1]) < 0.08
+                and tip[2] < POWDER_TOP_Z + 0.02)
+        return flange_rotating and near
 
     def _at_pour(self, tip):
         return np.linalg.norm(tip - self.TUBE_MOUTH) < 0.03

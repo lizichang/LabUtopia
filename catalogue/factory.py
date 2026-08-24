@@ -18,6 +18,8 @@ from catalogue.d_wetchem.d2s_water_solubility.task import D2SWaterSolubilityTask
 from catalogue.d_wetchem.d2s_water_solubility.controller import D2SWaterSolubilityTaskController
 from catalogue.d_wetchem.d3l_acid_reagent.task import D3LAcidReagentTask
 from catalogue.d_wetchem.d3l_acid_reagent.controller import D3LAcidReagentTaskController
+from catalogue.d_wetchem.d4l_alkali_reagent.task import D4LAlkaliReagentTask
+from catalogue.d_wetchem.d4l_alkali_reagent.controller import D4LAlkaliReagentTaskController
 
 
 def register_catalogue_actions() -> None:
@@ -49,3 +51,7 @@ def register_catalogue_actions() -> None:
     # D3-L 酸性试剂滴加反应（液体样品，catalogue 内原生：Lula IK + 滴管元动作）
     register_task("d3l_acid_reagent", D3LAcidReagentTask)
     register_controller("d3l_acid_reagent", D3LAcidReagentTaskController)
+
+    # D4-L 碱性试剂滴加反应（碱瓶替换酸瓶 + 橡胶塞动态拔/盖倒放 + 两支滴管滴加）
+    register_task("d4l_alkali_reagent", D4LAlkaliReagentTask)
+    register_controller("d4l_alkali_reagent", D4LAlkaliReagentTaskController)

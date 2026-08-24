@@ -1,28 +1,29 @@
 # -*- coding: utf-8 -*-
-"""生成 d3l_acid_reagent.usd —— D3-L 酸性试剂滴加反应（液体样品）场景（烘平自包含）。
+"""生成 d4l_alkali_reagent.usd —— D4-L 碱性试剂滴加反应（液体样品）场景（烘平自包含）。
 
 基于 lab_clean.usd（干净底场景：台面顶 z=0.80，无器材，defaultPrim=/World）：
 - 直接引用 assets/equipment/ 真实器材（lab_clean 干净，无需删任何 prim、无需抬台面）
 - 试管 + 两支胶头滴管插进试管架孔里（底面 z=0.806 = 架z−0.0905，孔心对齐顶层板孔位）
-- 去瓶塞（样品/酸瓶已开瓶，瓶口 rim=0.070 → 世界 0.870）+ 去试管架残留 env_light
-- 内建效果 prim：SampleLiquid（样品瓶体积）/AcidLiquid（酸瓶体积，可见）
+- 去样品瓶塞（样品已开瓶）+ 去试管架残留 env_light；**碱瓶（alkaline_bottle.usd）自带
+  rubber_stopper 橡胶塞翻放到桌面倒放**（同 D3-L 瓶盖模式，gen 静态摆，无拔塞动作）
+- 内建效果 prim：SampleLiquid（样品瓶体积）/AlkaliLiquid（碱瓶体积，可见）
   /TubeDrops（管内液滴）/Bubbles（气泡）/Precipitate（沉淀），后三初始隐藏（task 动画驱动）
 - 最逼真液体配方：roughness 0.05 光洁水面 + ior 1.33 水折射 + opacity 0.45 + doubleSided
   （参考 lab_003 酒精灯独立 liquid mesh 方案，但比它的灰色不透明 op1.0 更像水）
-- hcl_bottle.usd 自带 liquid 实测是 1mm 厚薄盘（z 0.040..0.041，非半瓶）——隐藏它，
-  改由 AcidLiquid 体积圆柱表现酸液（更真实）
-- 瓶玻璃透明化（assets 的 bottle_mat 是 op 0.8/rough 0.33 磨砂玻璃，隔它看不清液体）
-  → op 0.25 / rough 0.1 / ior 1.5 真玻璃
+- 样品瓶玻璃透明化（assets 的 bottle_mat 是 op 0.8/rough 0.33 磨砂玻璃，隔它看不清液体）
+  → op 0.25 / rough 0.1 / ior 1.5 真玻璃；**碱瓶是塑料瓶（op1.0 不透明）不玻璃化**
 
-布局（V7：试管架中央/样品瓶正后方 10cm/HCl 左前方 15cm/两支滴管插架孔）：
+布局（与 D3-L 相同，仅把 HCl 试剂瓶换成碱性试剂瓶；碱瓶塞子翻放桌面倒放）：
   TestTubeRack  (0.30,  0.00)  底座贴台面 z=0.8965
   TestTube      (0.2787, 0.1193, 0.806)  前排左孔（d2s 校准坐标）
   DropperSample (0.2815, -0.1187, 0.806)  后排左孔 立放（离试管最远，用户 2026-08-14 调整）
-  DropperAcid   (0.3202, -0.1187, 0.806)  后排右孔 立放
+  DropperAlkali (0.3202, -0.1187, 0.806)  后排右孔 立放
   SampleBottle  (0.4045, 0.3585)  样品瓶（用户调整：台面前方偏右），底座贴台面
-  HClBottle     (0.1696, 0.361)   HCl 试剂瓶（用户调整：台面前方偏左），底座贴台面
+  AlkaliBottle  (0.1696, 0.361)   碱性试剂瓶（塑料瓶+橡胶塞，用户 2026-08-24 新建），
+                                  底座贴台面、瓶口敞（rim=0.070 → 世界 0.870）；
+                                  橡胶塞翻放桌面 (0.1046, 0.361) 大端朝下触台面 0.80
 
-用法：python scripts/gen_d3l_scene.py   （运行环境：labutopia conda env 有 pxr）
+用法：python scripts/gen_d4l_scene.py   （运行环境：labutopia conda env 有 pxr）
 """
 import math
 import os
@@ -31,8 +32,8 @@ import shutil
 from pxr import Usd, UsdGeom, UsdShade, UsdLux, Sdf, Gf
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCENE_DIR = os.path.join(REPO, "assets", "scenes", "d_wetchem", "d3l_acid_reagent")
-OUT = os.path.join(SCENE_DIR, "d3l_acid_reagent.usd")
+SCENE_DIR = os.path.join(REPO, "assets", "scenes", "d_wetchem", "d4l_alkali_reagent")
+OUT = os.path.join(SCENE_DIR, "d4l_alkali_reagent.usd")
 LAB_CLEAN = os.path.join(REPO, "assets", "scenes", "base", "lab_clean", "lab_clean.usd")
 EQ = os.path.join(REPO, "assets", "equipment")
 ENV_TEX_SRC = os.path.join(REPO, "assets", "scenes", "d_wetchem", "d2s_water_solubility",
@@ -49,18 +50,20 @@ EQUIP = [
     # 滴管挪到离试管最远的后排孔（试管前排 y=+0.119 → 滴管后排 y=-0.1187，
     # 用户 2026-08-14 要求：两个滴管放到离试管最远的最靠边一列）
     ("DropperSample", "dropper.usd", (0.2815, -0.1187, HOLE_BOTTOM), None),
-    ("DropperAcid", "dropper.usd", (0.3202, -0.1187, HOLE_BOTTOM), None),
+    ("DropperAlkali", "dropper.usd", (0.3202, -0.1187, HOLE_BOTTOM), None),
     ("SampleBottle", "sample_bottle.usd", (0.4045, 0.3585, None), None),
-    ("HClBottle", "hcl_bottle.usd", (0.1696, 0.361, None), None),
+    ("AlkaliBottle", "alkaline_bottle.usd", (0.1696, 0.361, None), None),
 ]
 
 # 翻放瓶盖（2026-08-17 用户："在两个试剂瓶旁边放上瓶盖（翻着放符合实验室标准）"）。
 # 无现成瓶盖资产，自建薄壁杯形 mesh（闭口端朝下贴台面、开口朝上）。尺寸贴合资产 stopper
 # （Ø25.2mm × H11mm，材质 white 0.9,0.9,0.92）：r_out=0.0135(Ø27 略大于瓶口读作瓶盖)、
 # r_in=0.0115(壁厚 2mm)、h=0.011(同 stopper 高)。放各瓶一侧（x ±65mm 偏移）。
+# D4-L：样品瓶放翻放瓶盖；碱瓶塞子 = 自带 rubber_stopper 静态翻放桌面（flip_alkali_stopper），
+# 不放盖。两瓶都不做机械臂拔/盖塞动作（用户 2026-08-24："d3l 也没有拿瓶盖的动作，
+# 我就让你摆放在桌面上"）。
 CAPS = [
     ("SampleBottleCap", 0.4045 + 0.065, 0.3585),
-    ("HClBottleCap", 0.1696 - 0.065, 0.361),
 ]
 CAP_R_OUT, CAP_R_IN, CAP_H = 0.0135, 0.0115, 0.011
 CAP_RECIPE = dict(color=(0.9, 0.9, 0.92), opacity=1.0, roughness=0.4)  # 白塑料，同 stopper 配方
@@ -69,9 +72,9 @@ CAP_RECIPE = dict(color=(0.9, 0.9, 0.92), opacity=1.0, roughness=0.4)  # 白塑�
 # （2026-08-14 用户反馈"液体痕迹不明显"：0.45 太透、隔着玻璃看不清 → 提到 0.70+提亮；
 #   2026-08-19 用户反馈"蓝色液体不够透明看不到沉淀"：0.70 遮管底沉淀 → 0.55；
 #   再反馈"颜色还是太深"：浅蓝 0.58→0.72 + opacity 0.55→0.50，让白沉淀透过浅水显形）
-# acid 微绿区分酸液/水样
+# alkali 青蓝区分碱液/水样（碱液常用无色，但 headless 下无色透明看不见，故给淡青蓝）
 WATER = dict(color=(0.72, 0.85, 1.0), opacity=0.50, roughness=0.05, ior=1.33)
-ACID = dict(color=(0.66, 0.86, 0.76), opacity=0.70, roughness=0.05, ior=1.33)
+ALKALI = dict(color=(0.68, 0.90, 0.90), opacity=0.70, roughness=0.05, ior=1.33)
 # 沉淀：全哑光(rough 0.85 无自身高光)+ 乳白色（2026-08-23 用户要求"沉淀由红色改回乳白色"）。
 # 乳白=暖调微奶油白（R>G>B 略偏暖,不是灰白）；op 1.0 全不透明（半透明白嵌在半透明蓝液柱内
 # 会被蓝液盖住看不清——08-20"白雾没显示"教训,故红色阶段也保持 op 1.0）。emissive 白色温和档
@@ -82,14 +85,15 @@ OPAQUE_WHITE = dict(color=(0.82, 0.80, 0.74), opacity=1.0, roughness=0.85, emiss
 # （整管液体变乳白）；归架→缩到 0（蓝液柱 + 管底乳白柱）。半径 0.0089 略小于液柱 0.009，
 # 盖在蓝液柱内不穿模。2026-08-23 随沉淀改回乳白（08-22 曾改亮红）。
 CLOUD_MILK = dict(color=(0.82, 0.80, 0.74), opacity=1.0, roughness=0.85, emissive=(1.0, 0.95, 0.80))
-# 滴管内液柱 / 滴落液滴：更亮更不透（op0.9 亮蓝），透过透明玻璃清晰可见
-FILL = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
-DROP = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
+# 滴管内液柱 / 滴落液滴：更亮更不透（op0.9 亮青蓝，碱液色），透过透明玻璃清晰可见
+FILL = dict(color=(0.40, 0.85, 0.95), opacity=0.90, roughness=0.05, ior=1.33)
+DROP = dict(color=(0.40, 0.85, 0.95), opacity=0.90, roughness=0.05, ior=1.33)
 
 # 内建效果 prim: (name, type, radius, height, translate, 材质配方 dict, visible)
 # SampleLiquid = 样品瓶内半瓶液体（cyl 从瓶底 0.80 到液面 0.84）
-# AcidLiquid   = 酸瓶内半瓶液体（hcl 资产自带 1mm 薄盘被隐藏，改用真体积）
 # TubeDrops/Precipitate = 管内液滴/沉淀；Bubbles 单独建（小球簇）
+# （D4-L 无 AlkaliLiquid：碱瓶是不透明塑料瓶，内部液体看不见，不加死代码圆柱；
+#   碱瓶自带 liquid 38mm 正常体积保留，fix_bottle_materials 不碰碱瓶）
 # DropperFill = 滴管尖内吸起的液体柱（skill 坑 18：尖端容器内腔是锥形，直圆柱会悬空穿模）。
 #   滴管玻璃体实测：尖嘴 Ø1.6mm(z=0) → 30mm 处 Ø8mm → 直管 Ø8mm 到胶头。吸液后液体填满
 #   收窄尖端，故用截锥 mesh：下底 Ø2mm(尖) → 上底 Ø8mm(体)，高 40mm（覆盖收窄段 0..30mm
@@ -97,7 +101,6 @@ DROP = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
 # TubeDrops = 管内液体（0.008→0.009 贴管壁 Ø19.2 内缘、0.020→0.030 更高更显眼）
 EFFECTS = [
     ("SampleLiquid", "cylinder", 0.014, 0.040, (0.4045, 0.3585, 0.820), WATER, True),
-    ("AcidLiquid", "cylinder", 0.014, 0.040, (0.1696, 0.361, 0.820), ACID, True),
     ("TubeDrops", "cylinder", 0.009, 0.030, (0.2787, 0.1193, 0.821), WATER, False),
     ("Precipitate", "cylinder", 0.0088, 0.003, (0.2787, 0.1193, 0.8075), OPAQUE_WHITE, False),
     ("PrecipitateCloud", "cylinder", 0.0089, 0.003, (0.2787, 0.1193, 0.8075), CLOUD_MILK, False),
@@ -433,12 +436,15 @@ def fix_env_light(st2):
 
 
 def remove_stoppers(st2):
-    """去瓶塞：实验已开瓶，删样品/酸瓶自带的 stopper + stopper_mat
+    """去样品瓶塞：样品已开瓶，删 sample_bottle 自带的 stopper + stopper_mat
     （覆盖在瓶口上 0.068..0.079，删后瓶口 rim=0.070 → 世界 0.870）。
+
+    **碱瓶塞翻放**：alkaline_bottle 自带 rubber_stopper 橡胶塞，D4-L 任务无机械臂
+    拔塞动作（同 D3-L 瓶盖模式），gen 静态翻放到桌面倒放——见 flip_alkali_stopper。
 
     注意：stage.Export 烘平会把引用资产的 root 包装 Xform 合并进引用 prim
     （不是 /World/<瓶>/root/stopper，而是 /World/<瓶>/stopper），故用遍历匹配。"""
-    for name in ("SampleBottle", "HClBottle"):
+    for name in ("SampleBottle",):
         p = st2.GetPrimAtPath(f"/World/{name}")
         if not p.IsValid():
             print(f"[clean] /World/{name} not found, skip")
@@ -450,6 +456,32 @@ def remove_stoppers(st2):
             print(f"[clean] removed {path}")
         if not paths:
             print(f"[clean] /World/{name} has no stopper/stopper_mat")
+    flip_alkali_stopper(st2)
+
+
+def flip_alkali_stopper(st2):
+    """碱瓶橡胶塞：从瓶口摘出，静态倒放桌面（同 D3-L SampleBottleCap 模式，无机械臂
+    动作）。保留原 prim（复用 alkaline_bottle 的 rubber_stopper 几何/材质），只改 local
+    xform：translate 移到碱瓶左侧 65mm、rotateXYZ 绕 y 转 180° 让大端朝下。塞子局部
+    原点在几何底（小端面），世界位姿 = AlkaliBottle_T(0.1696,0.361,0.79965)·S·R_y180·
+    T(-0.065,0,+0.01362) → 世界原点 (0.1046,0.361,0.81327)、大端触台面 0.80（实验室
+    标准倒放：大端朝下触台面、小端朝上不触台面防污染）。"""
+    stopper = None
+    for pp in Usd.PrimRange(st2.GetPrimAtPath("/World/AlkaliBottle")):
+        if pp.GetName() == "rubber_stopper":
+            stopper = pp
+            break
+    if stopper is None:
+        print("[clean] AlkaliBottle rubber_stopper missing, skip flip")
+        return
+    t = stopper.GetAttribute("xformOp:translate")
+    r = stopper.GetAttribute("xformOp:rotateXYZ")
+    if t:
+        t.Set(Gf.Vec3d(-0.065, 0.0, 0.01362))
+    if r:
+        r.Set(Gf.Vec3d(0.0, 180.0, 0.0))
+    print("[clean] AlkaliBottle rubber_stopper flipped to desk "
+          "(inverted, big end down on table 0.80)")
 
 
 def remove_rack_env_light(st2):
@@ -495,10 +527,10 @@ def verify(st2):
     """自检：打印各器材/效果世界 bbox，确认孔位/瓶口高度符合设计；并断言气泡不变量
     （数量 == len(BUBBLES) == task.N_BUBBLES、半径 == BUBBLE_R、泡缘不插管壁 Ø18 内缘）。"""
     bc = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"])
-    names = ["TestTubeRack", "TestTube", "DropperSample", "DropperAcid",
-             "SampleBottle", "HClBottle", "SampleLiquid", "AcidLiquid",
+    names = ["TestTubeRack", "TestTube", "DropperSample", "DropperAlkali",
+             "SampleBottle", "AlkaliBottle", "SampleLiquid",
              "TubeDrops", "Precipitate", "PrecipitateCloud", "Bubbles",
-             "DropperFill", "DropperDrop", "SampleBottleCap", "HClBottleCap"]
+             "DropperFill", "DropperDrop", "SampleBottleCap"]
     for name in names:
         p = st2.GetPrimAtPath(f"/World/{name}")
         if not p.IsValid():
@@ -542,6 +574,31 @@ def verify(st2):
         assert vis, f"TubeDropsColor_{name} should be hidden initially"
     print(f"[verify] LiquidColor OK: {len(LIQUID_COLORS)} tubes "
           f"r={TUBE_COLOR_R} all hidden")
+    # 碱瓶橡胶塞断言：静态倒放桌面（用户 2026-08-24：无拔塞动作，gen 摆桌面）。
+    # 大端朝下触台面 0.80、小端朝上 0.81327（塞子几何高 13.27mm）→ 世界 bbox z 0.80..0.81327、
+    # xy ≈ (0.1046, 0.361)。
+    stopper = None
+    for pp in Usd.PrimRange(st2.GetPrimAtPath("/World/AlkaliBottle")):
+        if pp.GetName() == "rubber_stopper":
+            stopper = pp
+            break
+    assert stopper is not None, "AlkaliBottle rubber_stopper missing"
+    r = bc.ComputeWorldBound(stopper).ComputeAlignedRange()
+    mn, mx = r.GetMin(), r.GetMax()
+    print(f"[verify] AlkaliStopper    min({mn[0]:+.4f},{mn[1]:+.4f},{mn[2]:+.4f}) "
+          f"max({mx[0]:+.4f},{mx[1]:+.4f},{mx[2]:+.4f})")
+    assert abs(mn[2] - 0.800) < 1e-3, f"stopper bottom {mn[2]:.4f} not on table 0.80"
+    assert abs(mx[2] - 0.81327) < 1e-3, f"stopper top {mx[2]:.4f} != 0.81327 (inverted)"
+    # 中心 xy（bbox min/max 是塞子边缘；Ø18.3mm 半宽 0.00915，中心 = 均值）
+    cx = (mn[0] + mx[0]) / 2.0
+    cy = (mn[1] + mx[1]) / 2.0
+    assert abs(cx - 0.1046) < 3e-3, f"stopper center x {cx:.4f} not at 0.1046"
+    assert abs(cy - 0.361) < 3e-3, f"stopper center y {cy:.4f} not at 0.361"
+    # 倒放姿态（大端朝下触台面）：rotateXYZ 必须绕 y 转 180°
+    rot = stopper.GetAttribute("xformOp:rotateXYZ")
+    if rot and rot.HasValue():
+        v = rot.Get()
+        assert abs(v[1] - 180.0) < 1.0, f"stopper rotateXYZ.y={v[1]:.1f} != 180 (not inverted)"
 
 
 # 瓶玻璃配方：assets 自带 bottle_mat 是 op0.8/rough0.33 磨砂玻璃，隔它看不清液体
@@ -578,11 +635,12 @@ def override_bound_shader(st2, prim, recipe):
 
 
 def fix_bottle_materials(st2):
-    """瓶玻璃透明化 + 酸瓶 1mm 液面盘隐藏（改用 AcidLiquid 体积表现）。
+    """样品瓶玻璃透明化（真玻璃 op 0.25 让瓶内 SampleLiquid 透出）。
 
-    hcl_bottle 自带 liquid 实测 z 0.040..0.041 = 1mm 厚薄盘（非半瓶），
-    视觉上只是一片膜，隐藏掉；酸液由内建 AcidLiquid 圆柱（0.80..0.84）表现。"""
-    for name in ("SampleBottle", "HClBottle"):
+    **碱瓶完全不碰**：alkaline_bottle 是塑料瓶（diffuse op1.0 不透明，正常试剂瓶），
+    不自带玻璃化；其 liquid 是 38mm 正常体积（非 hcl 的 1mm 薄盘），无需隐藏
+    （被不透明瓶身挡住本就看不见）。"""
+    for name in ("SampleBottle",):
         p = st2.GetPrimAtPath(f"/World/{name}")
         if not p.IsValid():
             print(f"[mat] /World/{name} not found, skip")
@@ -592,17 +650,18 @@ def fix_bottle_materials(st2):
                 continue
             if c.GetName() == "liquid":
                 UsdGeom.Imageable(c).MakeInvisible()
-                print(f"[mat] hid {c.GetPath()} (1mm liquid disc, replaced by AcidLiquid)")
+                print(f"[mat] hid {c.GetPath()} (sample 1mm liquid disc)")
             else:
                 if override_bound_shader(st2, c, GLASS):
                     UsdGeom.Gprim(c).CreateDoubleSidedAttr().Set(True)
+    print("[mat] AlkaliBottle untouched (opaque plastic bottle, liquid kept)")
 
 
 def fix_dropper_materials(st2):
     """滴管玻璃透明化：dropper.usd 的 glass_001 是 opacity=1.0 不透明光面（把管内液柱
     整个遮住，用户反馈"液柱不明显"根因）。改成真玻璃 op 0.25（同瓶玻璃配方），
     管内 DropperFill 液柱才透得出来；胶头（rubber_001）保持不透明。"""
-    for name in ("DropperSample", "DropperAcid"):
+    for name in ("DropperSample", "DropperAlkali"):
         mat = st2.GetPrimAtPath(f"/World/{name}/_materials/glass_001")
         if not mat.IsValid():
             print(f"[mat] {name} glass_001 not found, skip")
@@ -619,7 +678,7 @@ def fix_dropper_materials(st2):
                 inp.Set(val)
             print(f"[mat] {name} glass_001 -> transparent {GLASS}")
     # 玻璃 mesh 双面渲染（透过玻璃看后壁，不设会漏空）
-    for name in ("DropperSample", "DropperAcid"):
+    for name in ("DropperSample", "DropperAlkali"):
         g = st2.GetPrimAtPath(f"/World/{name}/glass_body_mesh/glass_body_mesh_001")
         if g.IsValid() and g.GetTypeName() == "Mesh":
             UsdGeom.Gprim(g).CreateDoubleSidedAttr().Set(True)
@@ -671,7 +730,7 @@ def main():
     set_cylinder_light_x(st2, x=-10.0)
     fix_env_light(st2)
     relocate_absolute_textures(st2)
-    fix_bottle_materials(st2)   # 瓶玻璃透明化 + 酸瓶 1mm 液面盘隐藏（AcidLiquid 取代）
+    fix_bottle_materials(st2)   # 样品瓶玻璃透明化；碱瓶塑料不碰（不透明试剂瓶，liquid 保留）
     fix_dropper_materials(st2)  # 滴管玻璃透明化（不透明会遮住管内液柱）
     fix_tube_material(st2)      # 试管玻璃透明化（op 0.35→0.12，内部气泡/液柱看得更清）
     verify(st2)

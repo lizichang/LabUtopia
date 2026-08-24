@@ -13,7 +13,7 @@ prim 会出现，烘平后不存在）。
 
 布局（用户 temp_d2s.usd 实测坐标，2026-08-14 二次重排避开 Franka 底座 (0.25,0.32)；台面顶 z=0.80）：
   TestTubeRack  (0.6803, 0.3607)  工作区右侧，底座落台面
-  TestTube      (0.659,  0.48)    架前排右孔（Ø19.2×153mm，尺寸固化在 equipment）
+  TestTube      (0.659,  0.241)    架近侧左孔（Ø19.2×153mm，尺寸固化在 equipment；2026-08-24 用户要求从 +Y 最远侧移到最近侧孔——够得着）
   Spatula       (0.6993, 0.3608, rotZ -180°)  架中心孔，竖插（用户 2026-08-14 转了 -180°，勺头扁平面沿 X，为后续机械臂旋转铺路）
   SurfaceDish   (0.5365, 0.105)   架正后方，表面皿（粉末在皿上，舀取时药匙水平插入；2026-08-14 晚用户要求皿+粉 -X 移 15cm 给挖粉留间隙防穿模；2026-08-24 用户要求皿+粉 +Y 移 6.5cm 让⑧平移量改小、终点脱离贴底座失效区）
   SamplePowder  (0.5383, 0.0992)  表面皿上（powder.usd scale 0.4，离群废料/env_light 由 cleanup 删；随皿 -X 移 15cm、2026-08-24 +Y 6.5cm）
@@ -51,7 +51,7 @@ KEEP = {"table", "Cube", "GroundPlane", "CylinderLight", "PhysicsScene", "Looks"
 # 试管 Ø19.2×153mm 已固化进 equipment/test_tube.usd（原 Ø15 放大 1.2779），勿再场景放大
 EQUIP = [
     ("TestTubeRack", "test_tube_rack.usd", (0.6803, 0.3607, None), None, None),
-    ("TestTube", "test_tube.usd", (0.659, 0.48, 0.806), None, None),
+    ("TestTube", "test_tube.usd", (0.659, 0.241, 0.806), None, None),
     ("Spatula", "spatula.usd", (0.6993, 0.3608, 0.828), None, -180.0),
     ("SurfaceDish", "sample_dish.usd", (0.5365, 0.105, 0.80), None, None),
     ("SamplePowder", "powder.usd", (0.5383, 0.0992, 0.7988), 0.4, None),
@@ -63,8 +63,8 @@ EQUIP = [
 # TubeSample/TubeWater 在放大后试管内（xy=试管新孔位）
 BUILTIN = [
     ("PowderOnSpoon", 0.005, 0.005, (0.6993, 0.3608, 0.965), (0.93, 0.93, 0.94), 1.0),
-    ("TubeSample", 0.006, 0.012, (0.659, 0.48, 0.84), (0.93, 0.93, 0.94), 1.0),
-    ("TubeWater", 0.007, 0.035, (0.659, 0.48, 0.855), (0.55, 0.75, 0.95), 0.6),
+    ("TubeSample", 0.006, 0.012, (0.659, 0.241, 0.84), (0.93, 0.93, 0.94), 1.0),
+    ("TubeWater", 0.007, 0.035, (0.659, 0.241, 0.855), (0.55, 0.75, 0.95), 0.6),
 ]
 
 
