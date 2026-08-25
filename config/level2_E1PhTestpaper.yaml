@@ -1,0 +1,95 @@
+name: Level2_E1PhTestpaper
+
+task_type: "e1_ph_testpaper"
+controller_type: "e1_ph_testpaper"
+
+mode: "collect"
+
+# 场景：e1_ph_testpaper（E1 pH 试纸检测，桌面 z=0.80）
+# 台面（2026-08-25 pxr 实测世界 bbox，gen_e1_scene.py verify）：
+#   试管架 (0.30,0.00) 顶 0.917、试管前排左孔 (0.2787,0.1193) 口 z 0.9593
+#   待测溶液 (0.2787,0.1193,0.808) 液面 0.811
+#   玻璃棒 Ø6×261 竖插前排右孔 (0.319,0.117) 底 z 0.806 顶 z 1.067
+#   试纸条 (0.46,0.32) 已默认铺在白瓷板中央（不再夹取）
+#   白瓷板 (0.46,0.32)、比色卡 (0.62,0.32)
+usd_path: "assets/scenes/e_physical/e1_ph_testpaper/e1_ph_testpaper.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s 一致）
+grasp_xy_threshold: 0.03        # 夹爪距抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+
+# 实验结果输入接口（运行前 --result ph_result=acidic 等；task 读 cfg.ph_result）
+# pH 变色接口（用户要求「颜色反应根据输入显示不同颜色」）：试纸中央 3 个同几何不同色
+# 斑变体（acidic 红 / neutral 黄绿 / alkaline 蓝）预制隐藏，task 按此枚举显示其一。
+experiment_result:
+  ph_result:
+    label: "pH 试纸检测结果（变色档）"
+    type: enum
+    options: [acidic, neutral, alkaline]
+    default: neutral
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.ph_result。
+ph_result: neutral
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 前侧拉远俯拍整个工作区（eye 拉后到 y=1.0/z=1.45，look-at 工作区中心 (0.35,0.12,0.85)，
+    # up=+Z）。原 0.45,0.70,1.15 视线 (-0.45,-0.41,-0.79) 打到桌面 (0.25,0.52) 在工作区后方。
+    translation: [0.35, 1.00, 1.45]
+    resolution: [512, 512]
+    focal_length: 17
+    orientation: [0.0, 0.0, 0.46726, 0.88412]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 顶部俯视，略抬高并对中工作区中心 (0.35,0.12,0.85)，up=+Y。
+    translation: [0.35, -0.05, 1.30]
+    resolution: [512, 512]
+    focal_length: 17
+    orientation: [0.98374, 0.17962, 0.0, 0.0]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 (0.25, 0.57)：E1 目录「中央前方左→右排列」布局（白瓷板/比色卡前排行
+  # y=0.32，试管架居中 y=0）。全部器材在 Franka 0.855m 臂展内（最远比色卡 (0.62,0.32)
+  # → 距底座 sqrt(0.37²+0.25²)=0.45m）。
+  position: [0.25, 0.57, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

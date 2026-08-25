@@ -1,18 +1,19 @@
-"""ShiftXPos：⑪ 往 +Y 18cm 后，再往 +X 平移 10cm（锁 y/z + 保持世界朝向，只变 x）。
+"""ShiftXPos：⑪ 往 +Y 24cm 后，再往 +X 平移 11cm（锁 y/z + 保持世界朝向，只变 x）。
 
 用户 2026-08-24（逐字）：「然后再往+x移动5cm（只有x变）」→「最后一步还需要再往前伸到试管口」
-（5cm 改 12cm）→「最后一步减少2厘米深得有点太靠前了」（12cm 改 10cm）。
-（⑪ 已回调 17cm 让勺尖对准管口 y；⑫ 让勺尖伸到管口前——⑪⑫ 合起来把药匙从粉丘上方
+（5cm 改 12cm）→「最后一步减少2厘米深得有点太靠前了」（12cm 改 10cm）；
+2026-08-25「第12步先加1cm」→ 11cm（勺尖 x 0.647 在管口中心 0.659 前 1.2cm）。
+（⑪ 已回调 24cm；⑫ 让勺尖伸到管口前——⑪⑫ 合起来把药匙从粉丘上方
 水平挪到试管口近前。）
 
 - 朝向：首帧 fk_pose 采样当前**实际**工具朝向（= ⑪ 结束的法兰 -90° 朝向，药匙水平）
   → 转引擎 [w,x,y,z]（scalar-first）→ 整段保持，即"世界里绝对朝向不变"。与 ⑥⑦⑧ 同。
-- 位置：y/z 锁首帧当前值（y=0.3808 ⑪ 后、z=1.0593 ⑩ 后），仅 x 增 X_SHIFT_POS (0.10m)。
+- 位置：y/z 锁首帧当前值（y=0.4408 ⑪ 后、z=1.0993 ⑩ 后 14cm），仅 x 增 X_SHIFT_POS (0.11m)。
   MoveAction 自动判单轴水平段（仅 x 变 → x 逐帧推进、y/z 锁目标值、TCP 走严格直线，v47 机制）。
 - 复用 MoveAction 已验证逻辑：单轴直线 + 冻结 + dwell + 夹爪每帧发 grip_target。
 
-完成后：TCP (0.637, 0.3808, 1.0593)；勺尖 = TCP + 0.134·(0,-1,0) = (0.637, 0.2368, 1.0593)
-（勺尖在管口中心 0.659 前 2.2cm，用户 2026-08-24 判定 12cm 时太靠前、减 2cm）。
+完成后：TCP (0.647, 0.4408, 1.0993)；勺尖 = TCP + 0.134·(0,-1,0) = (0.647, 0.3068, 1.0993)
+（勺尖在管口中心 0.659 前 1.2cm，用户 2026-08-24 判定 12cm 时太靠前、减 2cm，2026-08-25 加 1cm）。
 """
 import numpy as np
 from scipy.spatial.transform import Rotation as SciRotation
@@ -48,7 +49,7 @@ class ShiftXPos:
             _, R = self.engine.fk_pose(cur)
             orient_q = _R_to_quat_wxyz(R)
             gp = np.asarray(gripper_pos, dtype=float)
-            pos = np.array([gp[0] + self.shift, gp[1], gp[2]])   # y/z 锁当前值，x 增 10cm
+            pos = np.array([gp[0] + self.shift, gp[1], gp[2]])   # y/z 锁当前值，x 增 11cm
             print(f"[shiftx+] sampled orient=[{orient_q[0]:.4f},{orient_q[1]:.4f},"
                   f"{orient_q[2]:.4f},{orient_q[3]:.4f}] "
                   f"target=({pos[0]:.4f},{pos[1]:.4f},{pos[2]:.4f})")

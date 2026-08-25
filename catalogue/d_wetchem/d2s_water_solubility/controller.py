@@ -6,7 +6,8 @@ v44 同构分层（与 flametest_controller 相同的 Lula IK + 元动作组合�
   - 本控制器：实例化元动作按序 forward()，全部完成 → success。
 
 已实现 ①PickSpatula（横向夹取药匙 → 竖直提起 → 法兰转 -45° → 对齐粉堆 x=0.537 → 竖直降 24.5cm →
-往 -y 平移 16cm → 法兰 -45°→-90° 挖粉 → 抬升到管口上方 10cm → 往 +y 平移 18cm → 往 +x 平移 10cm，到此结束）。
+往 -y 平移 16cm → 法兰 -45°→-90° 挖粉 → 抬升到管口上方 14cm → 往 +y 平移 24cm → 往 +x 平移 11cm → 法兰回卷 -90°→0° 同时往 -y 移 14cm → ⑭ 药匙放回试管架（ReturnSpatula，水平移回同时 ORIENT_FWD 调竖直→降回→松爪→撤离，2026-08-25 用户「现在加动作，把药匙放回试管架」）→
+S3 夹洗瓶肚子（PickWashBottle，2026-08-25 用户「现在加动作，机械臂像加药匙的方法一样水平横着夹住wash bottle的肚子（就是能挤压的部分）」：x 偏移下探避前壁吸管 → 水平移入瓶身中心 → 横夹肚子 → 竖直提起，到此结束）。
 本阶段只注册该元动作（用户 2026-08-20 先要求删掉法兰转后的旧动作，
 再给出新步骤：法兰转后机械臂移动到粉堆 x 绝对位置 0.537、yz 不变、夹爪世界绝对朝向不变、
 药匙 -45° 夹着 → ⑥ AlignPowderX；2026-08-22 追加 ⑦ LowerPowder：夹爪竖直向下移动 22cm
@@ -27,7 +28,7 @@ from isaacsim.core.utils.extensions import get_extension_path_from_name
 
 from controllers.base_controller import BaseController as TaskBaseController
 from controllers.atomic_actions.flametest import IkMotionEngine
-from .meta_actions import PickSpatula
+from .meta_actions import PickSpatula, ReturnSpatula, PickWashBottle, SqueezeWater, ReturnWashBottle
 from .meta_actions.constants import GRIP_OPEN
 
 
@@ -53,10 +54,13 @@ class D2SWaterSolubilityTaskController(TaskBaseController):
         ik_home = np.array([0.012, -0.57, 0.0, -2.81, 0.0, 3.037, 0.741])
         self.engine = IkMotionEngine(solver, self.orient, ik_home)
 
-        # 元动作：本阶段只跑 ①横向夹取药匙 → 竖直提起 → 法兰转 -45° → 对齐粉堆 x → 竖直降 20cm，
-        # 到此结束（用户 2026-08-20 重给对齐步骤、2026-08-22 追加下降步骤）
-        self.meta_classes = [PickSpatula]
-        self.meta_names = ["S1 pick spatula + flange roll -45° + align powder x + lower 24.5cm + shift -y 16cm + scoop flange -45°→-90° + lift to tube mouth +10cm + shift +y 18cm + shift +x 10cm"]
+        # 元动作：① 全流程舀粉倒入试管 → ⑭ 药匙放回试管架 → S3 夹洗瓶肚子 → S4 挤水 → S5 放回洗瓶
+        self.meta_classes = [PickSpatula, ReturnSpatula, PickWashBottle, SqueezeWater, ReturnWashBottle]
+        self.meta_names = ["S1 pick spatula + flange roll -45° + align powder x + lower 24.5cm + shift -y 16cm + scoop flange -45°→-90° + lift to tube mouth +14cm + shift +y 24cm + shift +x 11cm + roll flange -90°→0° + shift -y 14cm + pour powder",
+                           "S2 return spatula to rack",
+                           "S3 pick wash bottle belly (x-offset descent, horizontal grip, lift)",
+                           "S4 squeeze wash bottle (water stream into tube)",
+                           "S5 return wash bottle"]
         self.meta_actions = [C(self.engine) for C in self.meta_classes]
         self._meta_idx = 0
         self._h5_sample = 0

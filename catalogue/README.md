@@ -87,7 +87,7 @@ catalogue/
 
 | 编号 | 目录 | 名称 | 类型 | 状态 |
 |---|---|---|---|---|
-| E1 | `e_physical/e1_ph_testpaper/` | pH 试纸检测 | 单动作 | 待开发 |
+| E1 | `e_physical/e1_ph_testpaper/` | pH 试纸检测 | 单动作 | 已填（IK 元动作，试纸预铺白瓷板） |
 | E2 | `e_physical/e2_magnetic/` | 磁性检测 | 单动作 | 待开发 |
 | E3 | `e_physical/e3_density/` | 密度测定 | 单动作 | 待开发 |
 | E4 | `e_physical/e4_weighing/` | 称量（独立操作） | 单动作 | 待开发 |

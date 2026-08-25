@@ -77,6 +77,7 @@ version: 1.5.0
 31. **USD root prim 必须 Def 不是 Over**：`Sdf.CreatePrimInLayer` 默认 SpecifierOver，旧脚本建 `/World/AlcoholLamp` 根后只设 typeName → 根是 Over、无 Def 背书，严格 USD 查看器可能不显示。修复：幂等把根设成 `SpecifierDef`（fix 脚本 `ensure_lamp_root_def()`）。读修复后 crate 的层级用 `layer.GetPrimAtPath(path).nameChildren`——usd-core 26.8 的 `stage.Traverse()`/`GetChildren()` 会返回空（遍历怪癖，非物体缺失）。
 32. **LFS crate 直接改坐标（defaultPrim 必须 token 形式）**：v17.usd 是 LFS 二进制不能手编辑文本。用 usd-core `Sdf.Layer.FindOrOpen` → `GetPrimAtPath` → 改 `xformOp:translate` default → `layer.Export(tmp_usda)` → 把 `defaultPrim = "/World"` 替换成 token 形式 `"World"` → `tl.Export(tmp_crate)` → `os.replace`。不替换 defaultPrim 会写错路径。命令模板见 reference「移动物体位置同步清单」。
 33. **器材放试管架必须插孔（放板上 = 瞎放）**：试管架顶层板有 14 个真实孔（2列×7行，Ø≈22.4mm，相对架原点列 x≈±0.019、行 y=-0.1188..+0.1161）。放器材时 xy 必须对准**孔心**（±3mm），不是对准架中心/板面——曾把试管(0.30,0.08)、药匙(0.22,0.13)放在架中心附近被用户判为"瞎放"。正确世界坐标 = 架translate + (孔x, 孔y, -0.0905)（-0.0905=底层板顶相对架原点 z，架底座在原点下 -0.0965）；底面 z = 架translate_z − 0.0905。D2-S 实测：试管 Ø19.2mm（尺寸已固化进 test_tube.usd，勿再场景缩放）插前排左孔、药匙竖插前排右孔。孔位明细见参考几何参数表
+34. **场景布局必须前瞻考虑机械臂可达与操作朝向（先布局，不是卡住才救火）**：摆器材前先想——机械臂底座在哪、这个实验机械臂要做的每个操作（挂温度计/滴加/夹取/倾倒）从哪个方向伸入、器材离底座多远。**距离**：太近=底座周围盲区+挡臂伸不开（B2 初版铁架台离臂太近，臂根本伸不开）；太远=超臂展够不着（Franka 臂展 0.855m，最远物品必须在内）。**朝向**：被操作部位（挂温度计的钩、滴加的管口、抓取的孔/夹/柄）必须**朝向机械臂**，approach 方向才合理（B2：铁架台初版朝向反→机械臂没法把温度计挂上钩、没法滴加，用户把整组绕 Z180° 转过来+整体移远）。**布局从任务操作语义反推**，别先摆完再挪底座救火；底座向后 = -Y（D2-S 实测）。详见 reference「机械臂可达性与操作朝向」。
 
 ## 检查清单
 
@@ -108,6 +109,7 @@ version: 1.5.0
 - [ ] 亮场景小体积显色物材质已用近黑 diffuse + 单通道主导 emissive（坑 28）
 - [ ] 多材质 mesh 的每个 GeomSubset 都核对过 material:binding（坑 29）
 - [ ] 环境暗时已查 DomeLight 贴图亮度，非无脑调 intensity（坑 30）
+- [ ] 场景布局已前瞻核对机械臂可达与操作朝向：器材离底座留有操作空间（非盲区/超臂展）、被操作部位朝向机械臂、底座向后=-Y（坑 34）
 - [ ] 新建 root prim 已设 SpecifierDef 而非 Over（坑 31）
 - [ ] 放试管架的器材 xy 已对准孔心（14 孔 2列×7行，孔心坐标见关键约束/参考几何参数表），底面 z = 架translate_z − 0.0905，非对准架中心（坑 33）
 

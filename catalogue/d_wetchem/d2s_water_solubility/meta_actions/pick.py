@@ -33,24 +33,37 @@ DipToPowder；随后给出新步骤「法兰旋转后机械臂移动到粉堆的
   ⑨ 挖粉 ScoopUpAction()                                   # 法兰 -45°→-90°（只动最后一关节再转 -45°，用户
                                                             #   2026-08-24「要挖起来，法兰从-45旋转到-90」）：勺尖
                                                             #   随旋转上升 9.5cm 从粉丘挖起、凹槽朝上蓄粉，TCP 不动、不重解 IK
-  ⑩ 抬升 LiftToTube(e)                                     # 保持世界朝向、x/y 锁当前，仅 z 升到管口上方 10cm
-                                                            #   （1.0593 = 管口顶 0.9593+0.10，用户 2026-08-24「将爪子
-                                                            #   抬升到试管管口高2cm」→「把第10步的2cm改成10cm」）：
-                                                            #   为下一步水平移到管口倾倒留净空
-  ⑪ 平移+y18cm ShiftYPos(e)                                # 保持世界朝向、x/z 锁当前，仅 y 增 18cm（2026-08-24 试管移到
-                                                            #   架最近侧孔 y=0.241 后回调 17cm，再「倒数第二步y再增加1cm」
-                                                            #   →18cm：TCP y 0.2008→0.3808，勺尖 y 0.2468（管口中心后
-                                                            #   5.8mm），从粉丘上方水平移到试管口近前
-  ⑫ 平移+x10cm ShiftXPos(e)                                # 保持世界朝向、y/z 锁当前，仅 x 增 10cm（用户 2026-08-24
+  ⑩ 抬升 LiftToTube(e)                                     # 保持世界朝向、x/y 锁当前，仅 z 升到管口上方 14cm
+                                                            #   （1.0993 = 管口顶 0.9593+0.14，用户 2026-08-24「将爪子
+                                                            #   抬升到试管管口高2cm」→「把第10步的2cm改成10cm」→
+                                                            #   「第十步抬升再抬升4cm」）：为下一步水平移到管口倾倒留净空
+  ⑪ 平移+y24cm ShiftYPos(e)                                # 保持世界朝向、x/z 锁当前，仅 y 增 24cm（2026-08-24 试管移到
+                                                            #   架最近侧孔 y=0.241 后回调 17cm，再「倒数第二步y再增加1cm」→18cm、
+                                                            #   再「倒数第二步再多移动6cm」→24cm、再「第11步移动y那一步减少2cm」
+                                                            #   →22cm、再「第十一步多移动2cm」→24cm：TCP y 0.2008→0.4408，勺尖
+                                                            #   y 0.3068（管口中心 0.241 后 6.6cm），从粉丘上方移到试管口近前；
+                                                            #   ⑬ 同步 -Y +2cm 抵消；2026-08-25 曾试 27cm 后用户回退
+  ⑫ 平移+x11cm ShiftXPos(e)                                # 保持世界朝向、y/z 锁当前，仅 x 增 11cm（用户 2026-08-24
                                                             #   「然后再往+x移动5cm」→12cm 伸到管口→「最后一步减少2厘米
-                                                            #   深得有点太靠前」→10cm：TCP x 0.537→0.637，勺尖 x 0.637
-                                                            #   （管口中心 0.659 前 2.2cm）
+                                                            #   深得有点太靠前」→10cm、2026-08-25「第12步先加1cm」→11cm：
+                                                            #   TCP x 0.537→0.647，勺尖 x 0.647
+                                                            #   （管口中心 0.659 前 1.2cm）
+  ⑬ 回卷+平移 FlangeRollShiftYNeg(e)                        # 法兰 -90°→0°（+90°回卷）同时 TCP 只往 -Y 移 14cm，
+                                                            #   同始同终（用户 2026-08-24「边往-y移动边旋转法兰到-45度，
+                                                            #   同时开始同时结束」，同日「最后一步旋转45改成60」→60°、
+                                                            #   「改为法兰旋转到0」→0°、「然后9cm变成13cm」→-Y 13cm、
+                                                            #   「最后一步向-y移动再增加2cm」→15cm、再「第十三步也再多往回
+                                                            #   2cm正好抵消」→17cm、2026-08-25「现在只调整最后一步，
+                                                            #   17cm减少到14cm」→14cm）：TCP y 0.4408→0.3008（⑪ +2cm 起点随移、
+                                                            #   ⑬ 不再抵消），勺尖 z=0.9653 在管口顶 0.9593 上 6mm、
+                                                            #   y 在管口中心 0.241 后 6cm，为倾倒/倒粉留位
 """
 from ._base import BaseMetaAction, mv, grip
 from .align_powder_x import AlignPowderX
 from .constants import (H, GRIP_SPATULA, ORIENT_FWD,
                         SPAT_LIFT_Z, SPAT_XY, SPAT_GRASP)
 from .flange_roll import FlangeRollAction
+from .flange_roll_shift_y_neg import FlangeRollShiftYNeg
 from .lift_to_tube import LiftToTube
 from .lower_powder import LowerPowder
 from .scoop_up import ScoopUpAction
@@ -73,7 +86,8 @@ class PickSpatula(BaseMetaAction):
             LowerPowder(e),                                   # ⑦ 保持世界朝向、x/y 锁当前，竖直下降 24.5cm
             ShiftYNeg(e),                                     # ⑧ 保持世界朝向、x/z 锁当前，往 -y 平移 16cm
             ScoopUpAction(),                                  # ⑨ 法兰 -45°→-90°（只动 joint7 再转 -45°）：勺尖从粉丘挖起、凹槽朝上蓄粉
-            LiftToTube(e),                                    # ⑩ 保持世界朝向、x/y 锁当前，仅 z 升到管口上方 10cm（1.0593）
-            ShiftYPos(e),                                     # ⑪ 保持世界朝向、x/z 锁当前，往 +y 平移 18cm（0.2008→0.3808）
-            ShiftXPos(e),                                     # ⑫ 保持世界朝向、y/z 锁当前，往 +x 平移 10cm（0.537→0.637，12cm 太靠前减 2cm）
+            LiftToTube(e),                                    # ⑩ 保持世界朝向、x/y 锁当前，仅 z 升到管口上方 14cm（1.0993）
+            ShiftYPos(e),                                     # ⑪ 保持世界朝向、x/z 锁当前，往 +y 平移 24cm（0.2008→0.4408）
+            ShiftXPos(e),                                     # ⑫ 保持世界朝向、y/z 锁当前，往 +x 平移 11cm（0.537→0.647，12cm 太靠前减 2cm、加 1cm）
+            FlangeRollShiftYNeg(e),                           # ⑬ 法兰回卷 -90°→0°（+90°）同时往 -y 平移 14cm（同始同终）
         ]

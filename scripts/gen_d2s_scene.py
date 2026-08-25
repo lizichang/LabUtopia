@@ -17,7 +17,7 @@ prim 会出现，烘平后不存在）。
   Spatula       (0.6993, 0.3608, rotZ -180°)  架中心孔，竖插（用户 2026-08-14 转了 -180°，勺头扁平面沿 X，为后续机械臂旋转铺路）
   SurfaceDish   (0.5365, 0.105)   架正后方，表面皿（粉末在皿上，舀取时药匙水平插入；2026-08-14 晚用户要求皿+粉 -X 移 15cm 给挖粉留间隙防穿模；2026-08-24 用户要求皿+粉 +Y 移 6.5cm 让⑧平移量改小、终点脱离贴底座失效区）
   SamplePowder  (0.5383, 0.0992)  表面皿上（powder.usd scale 0.4，离群废料/env_light 由 cleanup 删；随皿 -X 移 15cm、2026-08-24 +Y 6.5cm）
-  WashBottle    (0.6809, -0.2241) 工作区 -Y 下方（远离机械臂，倒水时再取）
+  WashBottle    (0.370, 0.525)   工作区近侧（远离机械臂，倒水时再取）；2026-08-25 rotZ -180°（用户「移动到 x:0.370,y:0.525 后，+Y→+X 转 90°」）：红色嘴尖朝 +X，从 +X 侧挤水
 
 烘平后处理（单层里已是真实 prim）：
   - 保留试管架完整结构（4 角柱 + 3 层板；曾有 cleanup 按宽高比误删角柱，已移除）
@@ -55,7 +55,7 @@ EQUIP = [
     ("Spatula", "spatula.usd", (0.6993, 0.3608, 0.828), None, -180.0),
     ("SurfaceDish", "sample_dish.usd", (0.5365, 0.105, 0.80), None, None),
     ("SamplePowder", "powder.usd", (0.5383, 0.0992, 0.7988), 0.4, None),
-    ("WashBottle", "wash_bottle.usd", (0.6809, -0.2241, 0.80), None, None),
+    ("WashBottle", "wash_bottle.usd", (0.370, 0.525, 0.80), None, -180.0),  # rotZ -180°（2026-08-25 用户「移动到 x:0.370,y:0.525 后，+Y→+X 转90°」）：红色嘴尖朝 +X
 ]
 
 # 内建效果 prim: (name, radius, height, translate, color, opacity)
@@ -65,7 +65,15 @@ BUILTIN = [
     ("PowderOnSpoon", 0.005, 0.005, (0.6993, 0.3608, 0.965), (0.93, 0.93, 0.94), 1.0),
     ("TubeSample", 0.006, 0.012, (0.659, 0.241, 0.84), (0.93, 0.93, 0.94), 1.0),
     ("TubeWater", 0.007, 0.035, (0.659, 0.241, 0.855), (0.55, 0.75, 0.95), 0.6),
+    # 挤水水流（S4）：竖直细柱从红嘴终位 (0.649,0.231,0.994) 探入管口（task 检测夹爪开度驱动）
+    ("WaterStream", 0.003, 0.04, (0.649, 0.231, 0.974), (0.50, 0.72, 0.95), 0.7),
 ]
+
+# 药粉下落效果（task._step_powder_anim 驱动）：父 PowderDrop + N 颗小粉粒，仿 D2L/D3L
+# DropperDrop（父 Xform + Drop_0..N 球）。⑬ 药匙竖直后粉粒从勺尖错帧坠落进试管。
+POWDER_DROPS = 14            # 粉粒数（连续细粉流观感）
+POWDER_DROP_R = 0.003        # 粉粒半径（同 D2L 滴球 r=0.003）
+POWDER_DROP_COLOR = (0.93, 0.93, 0.94)
 
 
 def add_material(stage, prim, diffuse, opacity):
@@ -147,6 +155,17 @@ def add_effects(stage):
         add_material(stage, geom.GetPrim(), color, opacity)
         UsdGeom.Imageable(geom).MakeInvisible()
         print(f"[effect] {name} hidden at {t}")
+    # 药粉下落：父 PowderDrop + N 颗粉粒（父+单粒全隐藏，task 下落动画逐颗驱动）。
+    # home 位放试管口（同 D2L DropperDrop 惯例），task 每帧写实际坐标。
+    drop = UsdGeom.Xform.Define(stage, "/World/PowderDrop")
+    for i in range(POWDER_DROPS):
+        sph = UsdGeom.Sphere.Define(stage, f"/World/PowderDrop/Drop_{i}")
+        sph.CreateRadiusAttr(POWDER_DROP_R)
+        sph.AddTranslateOp().Set(Gf.Vec3d(0.659, 0.241, 0.9593))
+        add_material(stage, sph.GetPrim(), POWDER_DROP_COLOR, 1.0)
+        UsdGeom.Imageable(sph).MakeInvisible()
+    UsdGeom.Imageable(drop).MakeInvisible()
+    print(f"[effect] PowderDrop hidden ({POWDER_DROPS} powder grains)")
 
 
 def add_env_light(stage):

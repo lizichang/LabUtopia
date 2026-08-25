@@ -484,20 +484,21 @@ def flip_alkali_stopper(st2):
           "(inverted, big end down on table 0.80)")
 
 
-def remove_rack_env_light(st2):
-    """试管架资产自带 flametest 残留 DomeLight（root/TestTubeRack/env_light），
-    会与场景 env_light 双灯，删掉。"""
-    rack = st2.GetPrimAtPath("/World/TestTubeRack")
-    if not rack.IsValid():
-        print("[clean] /World/TestTubeRack not found, skip")
-        return
-    paths = [p.GetPath() for p in Usd.PrimRange(rack)
-             if p.GetTypeName() == "DomeLight" or "env_light" in p.GetName()]
+def remove_stray_env_lights(st2):
+    """清理器材资产自带的残留 DomeLight（根因 2026-08-24：alkaline_bottle.usd /
+    test_tube_rack.usd 等自带 color_0C0C0C 纯黑环境贴图 DomeLight，残留会污染环境光
+    → 整场景变暗 + 黑反射块，同 v17 环境暗根因）。只保留 gen 自建的 /World/env_light
+    （亮环境贴图）与 /World/CylinderLight 主光。TestTubeRack 残留曾由旧版单独清理，
+    现泛化到全部器材（覆盖碱瓶 AlkaliBottle 等）。"""
+    keep = {"/World/env_light"}
+    root = st2.GetPrimAtPath("/World")
+    paths = [p.GetPath() for p in Usd.PrimRange(root)
+             if p.GetTypeName() == "DomeLight" and p.GetPath().pathString not in keep]
     for path in paths:
         st2.RemovePrim(path)
-        print(f"[clean] removed rack light {path}")
+        print(f"[clean] removed stray DomeLight {path}")
     if not paths:
-        print("[clean] no DomeLight in TestTubeRack")
+        print("[clean] no stray DomeLight under /World")
 
 
 def relocate_absolute_textures(st2):
@@ -599,6 +600,11 @@ def verify(st2):
     if rot and rot.HasValue():
         v = rot.Get()
         assert abs(v[1] - 180.0) < 1.0, f"stopper rotateXYZ.y={v[1]:.1f} != 180 (not inverted)"
+    # 残留 DomeLight 必须清干净（纯黑环境贴图会污染整场景光照，2026-08-24 用户反馈 D2-L 偏暗）
+    stray = [p.GetPath().pathString for p in Usd.PrimRange(st2.GetPrimAtPath("/World"))
+             if p.GetTypeName() == "DomeLight" and p.GetPath().pathString != "/World/env_light"]
+    assert not stray, f"stray DomeLight remains: {stray}"
+    print("[verify] no stray DomeLight")
 
 
 # 瓶玻璃配方：assets 自带 bottle_mat 是 op0.8/rough0.33 磨砂玻璃，隔它看不清液体
@@ -725,7 +731,7 @@ def main():
 
     st2 = Usd.Stage.Open(OUT)
     remove_stoppers(st2)
-    remove_rack_env_light(st2)
+    remove_stray_env_lights(st2)
     brighten_lights(st2)
     set_cylinder_light_x(st2, x=-10.0)
     fix_env_light(st2)

@@ -1,0 +1,107 @@
+name: Level2_D2LWaterSolubility
+
+task_type: "d2l_water_solubility"
+controller_type: "d2l_water_solubility"
+
+mode: "collect"
+
+# 场景：d2l_water_solubility（D2-L 液体样品水溶性测试，桌面 z=0.80）
+# 台面（2026-08-24 布局对齐 D2-S，pxr 实测世界 bbox，gen_d2l_scene.py verify）：
+#   试管架 (0.6803,0.3607) z 0.800..0.917、试管架最近侧孔 (0.659,0.241) 口 z 0.9593
+#   取样滴管架中心孔 (0.6993,0.3608) 尖嘴 z 0.806（D2-S 药匙位，0.904m 已验证可达）
+#   样品瓶 (0.6809,-0.10) 口 rim z 0.870 液面 0.840（半瓶液体样品；与洗瓶/架 y 共线）
+#   洗瓶 (0.6809,-0.2241) 绕 Z +90° 瓶嘴 -Y（对齐 D2-S 坐标）—— ②注水步骤（WashBottlePass）用
+usd_path: "assets/scenes/d_wetchem/d2l_water_solubility/d2l_water_solubility.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s/d3l/d4l 一致）
+grasp_xy_threshold: 0.03        # 夹爪距滴管抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+# 开合小于此值算"挤胶头"（排空气/滴液）。0.0035：持握开度 0.0055 之上留 0.002 裕量
+# （防手指晃动误判挤），挤胶头 0.002 之下 0.0015（2026-08-14 开度减半后同步）
+squeeze_close_threshold: 0.0035
+
+# 第一步（取样滴管吸样品→滴入试管）重复遍数：多滴几滴让管内液体更明显（液面逐滴升高）
+sample_cycles: 2
+# 第二步（洗瓶注水）挤压次数：一次挤压 2-3mL（WashBottlePass，后续步骤补）
+wash_cycles: 1
+# 第三步（拿起试管震荡混合）来回次数（2026-08-16 用户：3→5 次；震荡步骤才分化现象）
+shake_cycles: 5
+
+# 实验结果输入接口（运行前 --result mixing=cloudy 等；task 读 cfg.mixing 等）
+# 现象三档（用户 2026-08-24 确认）：
+#   miscible（互溶）  震荡前先显示分层，震荡中层扩散长满整管（均一混液）
+#   layered（不溶分层）震荡后仍保持上下两层（油水分层）
+#   cloudy（浑浊）    震荡中整管白浊（Cloud 乳白柱盖满），归架后澄清露分层
+# 默认 miscible：直接跑命令也能看到"分层→震荡→互溶"完整过程。
+experiment_result:
+  mixing:
+    label: "震荡后混合情况（互溶/分层/浑浊）"
+    type: enum
+    options: [miscible, layered, cloudy]
+    default: miscible
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.mixing。
+mixing: miscible
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [1.50, 0.40, 1.15]
+    resolution: [512, 512]
+    focal_length: 10
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.8, 0.1, 1.44]
+    resolution: [512, 512]
+    focal_length: 10
+    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 [0.1, 0.05, 0.71]（2026-08-24 实跑后修正：D2-S 底座 [-0.15,0.05] 是按**手指朝前**
+  # 持药匙设计的，0.93m 可达；D2-L 持滴管必须**手指朝下**（竖直夹住），有效臂展 ~0.82m，
+  # 旧底座把所有目标推到 0.93-1.0m → 全程 IK FAIL（连首目标高位都失败）。
+  # 拉到 [0.1,0.05]：最远目标（滴管高位 0.6993,0.3608,1.15）0.806m，其余全 ≤0.76m；
+  # 器材仍 D2-S 坐标，洗瓶 (0.6809,-0.2241) 0.66m 可达（比 D2-S 还近）。
+  # 判据：关键终点相对底座 y ≥0.15 或 <0 才稳——滴管 0.31、试管 0.19、样品瓶 -0.15、洗瓶 -0.27。
+  position: [0.1, 0.05, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

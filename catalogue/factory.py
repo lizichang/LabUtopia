@@ -20,6 +20,12 @@ from catalogue.d_wetchem.d3l_acid_reagent.task import D3LAcidReagentTask
 from catalogue.d_wetchem.d3l_acid_reagent.controller import D3LAcidReagentTaskController
 from catalogue.d_wetchem.d4l_alkali_reagent.task import D4LAlkaliReagentTask
 from catalogue.d_wetchem.d4l_alkali_reagent.controller import D4LAlkaliReagentTaskController
+from catalogue.d_wetchem.d2l_water_solubility.task import D2LWaterSolubilityTask
+from catalogue.d_wetchem.d2l_water_solubility.controller import D2LWaterSolubilityTaskController
+from catalogue.b_thermal.b2_alcohol_heat_liquid.task import B2AlcoholHeatLiquidTask
+from catalogue.b_thermal.b2_alcohol_heat_liquid.controller import B2AlcoholHeatLiquidTaskController
+from catalogue.e_physical.e1_ph_testpaper.task import E1PhTestpaperTask
+from catalogue.e_physical.e1_ph_testpaper.controller import E1PhTestpaperTaskController
 
 
 def register_catalogue_actions() -> None:
@@ -55,3 +61,15 @@ def register_catalogue_actions() -> None:
     # D4-L 碱性试剂滴加反应（碱瓶替换酸瓶 + 橡胶塞动态拔/盖倒放 + 两支滴管滴加）
     register_task("d4l_alkali_reagent", D4LAlkaliReagentTask)
     register_controller("d4l_alkali_reagent", D4LAlkaliReagentTaskController)
+
+    # D2-L 液体样品水溶性测试（取样滴管吸样→滴入试管；v1 先做第一步，注水/震荡后续补）
+    register_task("d2l_water_solubility", D2LWaterSolubilityTask)
+    register_controller("d2l_water_solubility", D2LWaterSolubilityTaskController)
+
+    # B2 沸点测定（酒精灯加热试管液体 → 温度计读数 → 沸腾 → 记录沸点；v1 自动观测，无机械臂元动作）
+    register_task("b2_alcohol_heat_liquid", B2AlcoholHeatLiquidTask)
+    register_controller("b2_alcohol_heat_liquid", B2AlcoholHeatLiquidTaskController)
+
+    # E1 pH 试纸检测（catalogue 内原生：Lula IK + 平移跟随元动作 + pH 色斑变色接口）
+    register_task("e1_ph_testpaper", E1PhTestpaperTask)
+    register_controller("e1_ph_testpaper", E1PhTestpaperTaskController)
