@@ -28,7 +28,8 @@ from isaacsim.core.utils.extensions import get_extension_path_from_name
 
 from controllers.base_controller import BaseController as TaskBaseController
 from controllers.atomic_actions.flametest import IkMotionEngine
-from .meta_actions import PickSpatula, ReturnSpatula, PickWashBottle, SqueezeWater, ReturnWashBottle
+from .meta_actions import (PickSpatula, ReturnSpatula, PickWashBottle, SqueezeWater,
+                           ReturnWashBottle, TubeShakePass)
 from .meta_actions.constants import GRIP_OPEN
 
 
@@ -55,13 +56,25 @@ class D2SWaterSolubilityTaskController(TaskBaseController):
         self.engine = IkMotionEngine(solver, self.orient, ik_home)
 
         # 元动作：① 全流程舀粉倒入试管 → ⑭ 药匙放回试管架 → S3 夹洗瓶肚子 → S4 挤水 → S5 放回洗瓶
-        self.meta_classes = [PickSpatula, ReturnSpatula, PickWashBottle, SqueezeWater, ReturnWashBottle]
+        # → S6 拿起试管震荡使粉末溶于水（参考 d3l TubeShakePass）
+        self.meta_classes = [PickSpatula, ReturnSpatula, PickWashBottle, SqueezeWater,
+                             ReturnWashBottle, TubeShakePass]
         self.meta_names = ["S1 pick spatula + flange roll -45° + align powder x + lower 24.5cm + shift -y 16cm + scoop flange -45°→-90° + lift to tube mouth +14cm + shift +y 24cm + shift +x 11cm + roll flange -90°→0° + shift -y 14cm + pour powder",
                            "S2 return spatula to rack",
                            "S3 pick wash bottle belly (x-offset descent, horizontal grip, lift)",
                            "S4 squeeze wash bottle (water stream into tube)",
-                           "S5 return wash bottle"]
-        self.meta_actions = [C(self.engine) for C in self.meta_classes]
+                           "S5 return wash bottle",
+                           "S6 shake tube to dissolve powder (d3l TubeShakePass)"]
+        # TubeShakePass 带 cycles 参数，不能再用 [C(self.engine) for C in ...] 统一构造
+        shake_cycles = max(1, int(getattr(cfg, "shake_cycles", 3)))
+        self.meta_actions = [
+            PickSpatula(self.engine),
+            ReturnSpatula(self.engine),
+            PickWashBottle(self.engine),
+            SqueezeWater(self.engine),
+            ReturnWashBottle(self.engine),
+            TubeShakePass(self.engine, cycles=shake_cycles),
+        ]
         self._meta_idx = 0
         self._h5_sample = 0
         self._start = True

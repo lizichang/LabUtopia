@@ -24,6 +24,8 @@ from .meta_actions.constants import (
     GRIP_SPATULA, SPAT_GRASP, SPAT_HEAD_DIST,
     POWDER_TOP_Z, POWDER_X, POWDER_Z, SCOOP_INSERT, POUR_TCP, TUBE_XY,
     TUBE_MOUTH_Z, DISH_XY, WASH_GRASP, GRIP_WASHBOT, WASH_SQUEEZE_CLOSED,
+    GRIP_TUBE, TUBE_GRASP_TCP, TUBE_ORIG_Z, TUBE_HELD_OFFSET_Z,
+    LIQUID_COLOR_NAMES,
 )
 
 # 药匙相对夹爪：平移 (0.112,0,0) + 旋转（toolX→(0,0,-1)、toolY→(0,-1,0)、toolZ→(-1,0,0)）。
@@ -67,12 +69,35 @@ class D2SWaterSolubilityTask(BaseTask):
     # 粉丘实测 bbox：x 0.5188-0.5542，y 0.0814-0.1288，z 0.8021-0.8141（详见 meta_actions/constants.py）
     TUBE_MOUTH = np.array([TUBE_XY[0], TUBE_XY[1], TUBE_MOUTH_Z])
 
+    # 试管震荡（S6 拿起试管震荡使粉末溶于水，参考 d3l TubeShakePass）：试管 Ø19.2×153mm
+    # 立插架近侧左孔 (0.659,0.241)，管底 z=0.806（gen BUILTIN translate）。持握 = 纯平移
+    # （只写 translate 保竖立，不写 4x4），管底吊夹爪下方 0.1393m；管内粉/水随管平移。
+    TUBE = "/World/TestTube"
+    TUBE_ORIG = np.array([TUBE_XY[0], TUBE_XY[1], TUBE_ORIG_Z])   # 管底架内竖插位
+    TUBE_GRASP = np.array(TUBE_GRASP_TCP)                          # 抓点（管口下 14mm）
+    TUBE_GRIP_CLOSED = GRIP_TUBE + 0.004   # 夹紧阈值：grip 0.0096 + 4mm 裕量（同药匙）
+    TUBE_SAMPLE_REST = np.array([TUBE_XY[0], TUBE_XY[1], 0.84])    # 管内粉 rest 位（gen BUILTIN）
+    TUBE_WATER_REST = np.array([TUBE_XY[0], TUBE_XY[1], 0.855])    # 管内水 rest 位（gen BUILTIN）
+    TUBE_SAMPLE_H = 0.012      # 粉末柱高（与 gen TUBE_SAMPLE_H 对齐）
+    WATER_HEIGHT = 0.035       # 液体柱高（洗瓶注水一次，与 gen TUBE_LIQUID_H 对齐）
+
     # 效果 prim（初始 invisible，task 动画驱动）
     POWDER_EFFECT = "/World/PowderOnSpoon"
-    TUBE_SAMPLE = "/World/TubeSample"
-    TUBE_WATER = "/World/TubeWater"
-    # 挤水水流（S4）：竖直细柱从红嘴探入管口，task 检测夹爪开度驱动显示
+    TUBE_WATER = "/World/TubeWater"    # 溶剂水柱（淡蓝，S4 注水显示；不溶最终态液体）
+    # 现象色变体（2026-08-25 用户：终端输入溶解度+液体颜色，颜色=粉末色兼溶解后液体色；
+    # headless 运行时改材质不渲染 → gen 预烘焙各色，task 按 cfg.liquid_color 拼路径驱动对应的一个）
+    CLOUD_TMPL = "/World/Cloud_{}"     # 浑浊云（带粉末色，震荡升起/停震褪去；三档都先浑浊）
+    TUBE_SAMPLE_TMPL = "/World/TubeSample_{}"           # 粉末柱（输入色）
+    TUBE_SOLUTION_TMPL = "/World/TubeSolution_{}"       # 溶解液柱（输入色全，可溶最终态）
+    TUBE_SOLUTION_LIGHT_TMPL = "/World/TubeSolutionLight_{}"   # 溶解液柱（输入色浅，微溶最终态）
+    # 挤水水流（S4）：父 WaterStream + N 颗小水滴球沿抛物线从红嘴坠入试管口（用户
+    # 「水流太粗/草率就是一个圆柱体」「从红嘴出来一个抛物线落进试管口」
+    #  「x坐标再增大1cm」「要有水流感觉」）。task 挤水时逐颗错帧发射。
     WATER_STREAM = "/World/WaterStream"
+    WATER_DROPS = 16           # 水滴池大小（与 gen_d2s_scene 的 WATER_DROPS 对齐）
+    WATER_STAGGER = 2          # 相邻水滴发射间隔帧（错成连续水流）
+    WATER_FALL = 12            # 每滴沿抛物线坠落帧数（重力加速视觉）
+    WATER_START = np.array([0.649, 0.231, 0.994])   # 红嘴尖（水平射出起点），终点用 TUBE_MOUTH
     # 药粉下落动画（仿 D2L/D3L DropperDrop：父 PowderDrop + N 颗粉粒 + 队列错帧起落）
     POWDER_DROP = "/World/PowderDrop"
     POWDER_DROPS = 14          # 粉粒数（连续细粉流观感，与 gen_d2s_scene 的 POWDER_DROPS 对齐）
@@ -104,11 +129,41 @@ class D2SWaterSolubilityTask(BaseTask):
         self.powder_falling = False     # 倒粉下落动画进行中
         self._powder_queue = []         # 下落动画队列（delay/t/hang/fall/start/target）
         self._prev_flange = None        # 上一帧法兰角（joint7，索引 6），用于判定⑨挖粉旋转开始
-        self.squeezing = False          # 挤水进行中（水流显示）
+        self.squeezing = False          # 挤水进行中（持续发射水滴）
         self.water_in_tube = False      # 已挤入水（管内水显示，只触发一次）
+        self._water_queue = []          # 在飞水滴队列（prim/t）
+        self._water_next_prim = 0       # 下一颗水滴用哪个 Drop_i（round-robin 复用池）
+        self._water_spawn = 0           # 距下次发射水滴的倒计时帧
+
+        # 试管震荡（S6）：静态碰撞体持握期关碰撞（同药匙/洗瓶）；纯平移持握保竖立。
+        self._disable_collision(self.TUBE)
+        self.tube_state = "rest"        # rest / attached / released
+        self._tube_near_frames = 0
+        self._tube_pos = self.TUBE_ORIG.copy()   # 试管底当前世界位（现象渲染定位用）
 
         self.grasp_xy_threshold = getattr(cfg, "grasp_xy_threshold", 0.03)
         self.gripper_open_threshold = getattr(cfg, "gripper_open_threshold", 0.03)
+
+        # 现象参数（2026-08-25 用户：终端输入溶解度+液体颜色）——main.py 已按
+        # experiment_result schema 把 CLI/交互结果写回 cfg.solubility / cfg.liquid_color。
+        self.solubility = getattr(cfg, "solubility", "soluble")
+        if self.solubility not in ("soluble", "insoluble", "slightly_soluble"):
+            self.solubility = "soluble"
+        self.liquid_color = getattr(cfg, "liquid_color", "white")
+        if self.liquid_color not in LIQUID_COLOR_NAMES:
+            self.liquid_color = "white"
+        # 预烘焙色变体路径（粉末/溶解液/浅溶解液/浑浊云 = 输入色）
+        self.TUBE_SAMPLE = self.TUBE_SAMPLE_TMPL.format(self.liquid_color)
+        self.TUBE_SOLUTION = self.TUBE_SOLUTION_TMPL.format(self.liquid_color)
+        self.TUBE_SOLUTION_LIGHT = self.TUBE_SOLUTION_LIGHT_TMPL.format(self.liquid_color)
+        self.CLOUD = self.CLOUD_TMPL.format(self.liquid_color)
+        # 浑浊→分化状态机
+        self._cloud_frac = 0.0       # 浑浊云高度占比 0..1（震荡升起）
+        self._settle_frac = 0.0      # 停震分化进度 0..1（澄清/沉淀/变浅）
+        self._settling = False       # 已进入分化（浑浊起够 ≥0.5 才允许）
+        self._prev_gripper = None    # 震荡判定：上一帧夹爪位
+        self._shake_stop_frames = 0  # 连续"静止"帧数（≥SHAKE_STILL_FRAMES 判停震）
+        self._seen_oscillation = False  # 高位区是否已观察到真正水平位移（防提起竖直帧提前冒浑浊云）
 
     # ------------------------------------------------------------------
     def reset(self):
@@ -128,10 +183,15 @@ class D2SWaterSolubilityTask(BaseTask):
         self._set_washbottle_world(_washbottle_rest_matrix())
         self.squeezing = False
         self.water_in_tube = False
+        self._water_queue = []
+        self._water_next_prim = 0
+        self._water_spawn = 0
         self._set_visibility(self.POWDER_EFFECT, False)
         self._set_visibility(self.TUBE_SAMPLE, False)
         self._set_visibility(self.TUBE_WATER, False)
         self._set_visibility(self.WATER_STREAM, False)
+        for i in range(self.WATER_DROPS):
+            self._set_visibility(f"{self.WATER_STREAM}/Drop_{i}", False)
         self._set_visibility(self.POWDER_DROP, False)
         for i in range(self.POWDER_DROPS):
             self._set_visibility(f"{self.POWDER_DROP}/Drop_{i}", False)
@@ -141,17 +201,41 @@ class D2SWaterSolubilityTask(BaseTask):
             cyl = UsdGeom.Cylinder(prim)
             cyl.GetRadiusAttr().Set(0.005)
             cyl.GetHeightAttr().Set(0.005)
+        # 试管震荡复位：回架 + 管内粉/水回 rest 位 + 尺寸还原 + 现象状态清零
+        self.tube_state = "rest"
+        self._tube_near_frames = 0
+        self._tube_pos = self.TUBE_ORIG.copy()
+        self._cloud_frac = 0.0
+        self._settle_frac = 0.0
+        self._settling = False
+        self._prev_gripper = None
+        self._shake_stop_frames = 0
+        self._seen_oscillation = False
+        self._set_tube_world(self.TUBE_ORIG)
+        for path in (self.TUBE_SAMPLE, self.TUBE_WATER,
+                     self.TUBE_SOLUTION, self.TUBE_SOLUTION_LIGHT, self.CLOUD):
+            self._set_visibility(path, False)
+        self._set_tube_column(self.TUBE_SAMPLE, self.TUBE_SAMPLE_H, self.TUBE_SAMPLE_REST, r=0.006)
+        self._set_tube_column(self.TUBE_WATER, self.WATER_HEIGHT, self.TUBE_WATER_REST)
+        self._set_tube_column(self.TUBE_SOLUTION, self.WATER_HEIGHT, self.TUBE_WATER_REST)
+        self._set_tube_column(self.TUBE_SOLUTION_LIGHT, self.WATER_HEIGHT, self.TUBE_WATER_REST)
+        self._set_tube_column(self.CLOUD, 0.0, np.array([TUBE_XY[0], TUBE_XY[1], TUBE_ORIG_Z]))
 
     def step(self):
         self.frame_idx += 1
         if not self.check_frame_limits():
             return None
+        gripper_pos = self.robot.get_gripper_position()   # 试管现象震荡判定用（各子方法自取）
         self._update_spatula()
         self._update_washbottle()   # S3 洗瓶持握（rest/attached/released）
-        self._step_powder_anim()   # 下落动画独立推进（倒入完成 / 药匙释放后仍收尾）
+        self._update_tube()         # S6 试管震荡持握（rest/attached/released）
+        self._step_powder_anim()    # 药粉下落动画独立推进（倒入完成 / 药匙释放后仍收尾）
+        self._step_water_anim()     # 挤水水流动画（挤水时发射水滴、松爪后收尾）
+        self._step_phenomenon(gripper_pos)   # 试管内现象：先浑浊 → 按溶解度分化
         return self.get_basic_state_info(additional_info={
             "spatula_state": self.spatula_state,
             "washbottle_state": self.washbottle_state,
+            "tube_state": self.tube_state,
             "powder_on_spoon": self.powder_on_spoon,
             "poured": self.poured,
         })
@@ -159,7 +243,7 @@ class D2SWaterSolubilityTask(BaseTask):
     def on_task_complete(self, success):
         print(f"[d2s] episode done success={success} "
               f"spatula={self.spatula_state} washbottle={self.washbottle_state} "
-              f"powder_on_spoon={self.powder_on_spoon} poured={self.poured}")
+              f"tube={self.tube_state} powder_on_spoon={self.powder_on_spoon} poured={self.poured}")
         super().on_task_complete(success)
 
     # ------------------------------------------------------------------
@@ -245,12 +329,13 @@ class D2SWaterSolubilityTask(BaseTask):
             if not self.water_in_tube:
                 if not self.squeezing and opening < self.WASH_SQUEEZE_CLOSED:
                     self.squeezing = True
+                    self._water_spawn = self.WATER_STAGGER   # 下一帧立即发射首滴
                     self._set_visibility(self.WATER_STREAM, True)
                     print(f"[d2s] washbottle squeezing (grip={opening:.4f}) water stream")
                 elif self.squeezing and opening >= self.WASH_SQUEEZE_CLOSED:
+                    # 松爪：停止发射，让在飞水滴由 _step_water_anim 收尾坠落，再显管内水
                     self.squeezing = False
                     self.water_in_tube = True
-                    self._set_visibility(self.WATER_STREAM, False)
                     self._set_visibility(self.TUBE_WATER, True)
                     print("[d2s] water in tube")
             if opening > self.WASH_GRIP_OPEN:   # 完全开爪才算松开（见类常量注释）
@@ -413,6 +498,43 @@ class D2SWaterSolubilityTask(BaseTask):
                     self._set_visibility(self.TUBE_SAMPLE, True)
                     print("[d2s] powder poured into tube")
 
+    def _step_water_anim(self):
+        """挤水水流：挤水期间每 WATER_STAGGER 帧发射一颗水滴，沿抛物线（x/y 线性、z t²
+        重力加速）从红嘴尖坠入试管口中心；松爪后停止发射、让在飞水滴落完再隐藏父节点。
+
+        抛物线（水平初速、只受重力）：x = x0+(x1-x0)·t，z = z0-(z0-z1)·t²（t∈[0,1]），
+        起点 WATER_START=红嘴尖 (0.649,0.231,0.994)、终点 TUBE_MOUTH=管口中心 (0.659,0.241,0.9593)。
+        水滴池 WATER_DROPS 颗 round-robin 复用：复用周期=池大小×发射间隔 ≫ 单滴坠落帧数，无同 prim 碰撞。
+        """
+        if self.squeezing:
+            self._water_spawn += 1
+            if self._water_spawn >= self.WATER_STAGGER:
+                self._water_spawn = 0
+                idx = self._water_next_prim % self.WATER_DROPS
+                self._water_next_prim += 1
+                self._set_visibility(f"{self.WATER_STREAM}/Drop_{idx}", True)
+                self.object_utils.set_object_position(
+                    f"{self.WATER_STREAM}/Drop_{idx}", self.WATER_START.copy())
+                self._water_queue.append({"prim": idx, "t": 0})
+        if not self._water_queue:
+            return
+        remaining = []
+        for d in self._water_queue:
+            d["t"] += 1
+            if d["t"] >= self.WATER_FALL:
+                self._set_visibility(f"{self.WATER_STREAM}/Drop_{d['prim']}", False)
+                continue
+            frac = d["t"] / self.WATER_FALL
+            x = self.WATER_START[0] + (self.TUBE_MOUTH[0] - self.WATER_START[0]) * frac
+            y = self.WATER_START[1] + (self.TUBE_MOUTH[1] - self.WATER_START[1]) * frac
+            z = self.WATER_START[2] - (self.WATER_START[2] - self.TUBE_MOUTH[2]) * frac * frac
+            self.object_utils.set_object_position(
+                f"{self.WATER_STREAM}/Drop_{d['prim']}", np.array([x, y, z]))
+            remaining.append(d)
+        self._water_queue = remaining
+        if not remaining and not self.squeezing:
+            self._set_visibility(self.WATER_STREAM, False)
+
     def _shrink_powder_blob(self, landed_frac):
         """勺上粉堆随下落进度缩小（粉粒落定越多、勺上剩得越少，避免整块粉堆闪现消失）。"""
         if landed_frac <= 0:
@@ -423,6 +545,169 @@ class D2SWaterSolubilityTask(BaseTask):
             cyl = UsdGeom.Cylinder(prim)
             cyl.GetRadiusAttr().Set(0.005 * remain)
             cyl.GetHeightAttr().Set(0.005 * remain)
+
+    # ------------------------------------------------------------------
+    # 试管震荡持握（S6 拿起试管震荡使粉末溶于水，参考 d3l TubeShakePass）
+    # ------------------------------------------------------------------
+    def _update_tube(self):
+        """每帧试管持握：rest → 近抓点+合拢 → attached（跟随 + 粉/水随管平移）→ released（回架）。
+
+        与药匙/洗瓶不同：试管只做纯平移（不旋转），set_object_position 写首 op（translate），
+        姿态恒竖立；持握 = TCP + (0,0,TUBE_HELD_OFFSET_Z)（管底吊夹爪下方 0.1393m）。
+        """
+        gripper_pos = self.robot.get_gripper_position()
+        joints = self.robot.get_joint_positions()
+        if gripper_pos is None or joints is None:
+            return
+        opening = joints[7]
+        held = np.asarray(gripper_pos, dtype=float) + np.array([0.0, 0.0, TUBE_HELD_OFFSET_Z])
+
+        if self.tube_state == "rest":
+            if self._near_grasp(gripper_pos, self.TUBE_GRASP):
+                self._tube_near_frames += 1
+            else:
+                self._tube_near_frames = 0
+            if (self._tube_near_frames >= self.GRASP_NEAR_FRAMES
+                    and opening < self.TUBE_GRIP_CLOSED):
+                self.tube_state = "attached"
+                self._set_tube_world(held)
+                print(f"[d2s] tube attached (grip={opening:.4f})")
+        elif self.tube_state == "attached":
+            self._set_tube_world(held)
+            self._follow_tube_effects(held)
+            if opening > self.gripper_open_threshold:
+                self.tube_state = "released"
+                self._set_tube_world(self.TUBE_ORIG)
+                self._follow_tube_effects(self.TUBE_ORIG)
+                print("[d2s] tube released to rack")
+
+    def _set_tube_world(self, pos):
+        """把试管写到给定世界位置（只写 translate，保竖立姿态，同 d3l _set_obj_world）。"""
+        self._tube_pos = np.asarray(pos, dtype=float)   # 现象渲染定位（底中心）
+        self.object_utils.set_object_position(self.TUBE, self._tube_pos)
+
+    def _follow_tube_effects(self, tube_pos):
+        """试管被拿起时管内粉/水/溶液/浑浊云随管平移（保持相对管底的偏移 delta）。"""
+        delta = np.asarray(tube_pos, dtype=float) - self.TUBE_ORIG
+        cloud_rest = np.array([TUBE_XY[0], TUBE_XY[1], TUBE_ORIG_Z])
+        for path, rest in ((self.TUBE_SAMPLE, self.TUBE_SAMPLE_REST),
+                           (self.TUBE_WATER, self.TUBE_WATER_REST),
+                           (self.TUBE_SOLUTION, self.TUBE_WATER_REST),
+                           (self.TUBE_SOLUTION_LIGHT, self.TUBE_WATER_REST),
+                           (self.CLOUD, cloud_rest)):
+            self.object_utils.set_object_position(path, rest + delta)
+
+    # —— 试管内现象（2026-08-25 用户：终端输入溶解度+液体颜色，三档都先浑浊再分化）——
+    SHAKE_TOP_Z = 1.07           # 进入震荡判定区的高度（SHAKE_CENTER_TCP z=1.09 往下 2cm）
+    SHAKE_STOP_EPS = 0.0005      # 水平单帧位移 < 此值算"静止"（d3l 同款）
+    SHAKE_STILL_FRAMES = 20      # 连续静止这么多帧判停震（震荡相邻峰值间仅 2 帧不会累计到）
+    CLOUD_RISE_RATE = 0.012      # 震荡时浑浊云升起速率/帧（~83 帧盖满 0.047m 液柱+粉）
+    CLOUD_FADE_RATE = 0.02       # 停震后浑浊云褪去速率/帧（浑浊渐沉淀/澄清）
+    SETTLE_FRAMES = 240          # 停震后分化动画帧数（可溶澄清/不溶沉淀/微溶变浅）
+
+    def _detect_oscillating(self, gripper_pos):
+        """当前是否在震荡：试管已抓起 + 夹爪在震荡高度区 + 已出现过真正水平位移（_seen_oscillation）
+        + 未连续静止。2026-08-25 用户「刚滴入还没震荡拿起来就是灰色的液体」→ 加 _seen_oscillation 门控：
+        提起试管竖直停在顶端那 20 帧也算"静止"，旧判据会提前冒浑浊云；现在必须先观察到水平位移
+        （真正的震荡来回）才允许云升起，纯竖直提起/放下不冒云。"""
+        if self.tube_state != "attached" or gripper_pos is None:
+            self._prev_gripper = None
+            self._shake_stop_frames = 0
+            self._seen_oscillation = False
+            return False
+        gp = np.asarray(gripper_pos, dtype=float)
+        if gp[2] < self.SHAKE_TOP_Z:      # 高位区外（下降/提起初段）不判震荡
+            self._prev_gripper = None
+            self._shake_stop_frames = 0
+            self._seen_oscillation = False
+            return False
+        move = 0.0
+        if self._prev_gripper is not None:
+            move = float(np.linalg.norm(gp[:2] - self._prev_gripper[:2]))
+        self._prev_gripper = gp
+        if move >= self.SHAKE_STOP_EPS:
+            self._seen_oscillation = True
+            self._shake_stop_frames = 0
+        else:
+            self._shake_stop_frames += 1
+        return self._seen_oscillation and self._shake_stop_frames < self.SHAKE_STILL_FRAMES
+
+    def _step_phenomenon(self, gripper_pos):
+        """三档现象（cfg.solubility + cfg.liquid_color）：
+        三档都先「逐渐变浑浊」——震荡中 Cloud 云从管底盖满液柱+粉末（_cloud_frac 升起）；
+        停震（夹爪静止且浑浊已起够 ≥0.5）才进入分化 _settle_frac，浑浊云同步褪去：
+          soluble           浑浊渐澄清 + 粉末溶尽 + 液体变成输入色（全）
+          insoluble         浑浊渐沉淀 + 粉末留管底 + 液体回溶剂水色
+          slightly_soluble  浑浊渐沉淀 + 粉末留管底 + 液体渐渐变输入色（浅）
+        """
+        if not self.water_in_tube:
+            return
+        oscillating = self._detect_oscillating(gripper_pos)
+        if oscillating and self._cloud_frac < 1.0:
+            self._cloud_frac = min(1.0, self._cloud_frac + self.CLOUD_RISE_RATE)
+        elif not oscillating:
+            if self._cloud_frac >= 0.5 or self._settling:
+                self._settling = True
+                if self._settle_frac < 1.0:
+                    self._settle_frac = min(1.0, self._settle_frac + 1.0 / self.SETTLE_FRAMES)
+                    self._cloud_frac = max(0.0, self._cloud_frac - self.CLOUD_FADE_RATE)
+        self._render_phenomenon()
+
+    def _render_phenomenon(self):
+        """按当前 _cloud_frac/_settle_frac 渲染试管内现象（粉末/水/溶解液/浑浊云几何+可见性）。"""
+        bx, by, bz = self._tube_pos
+        hw = self.WATER_HEIGHT
+        hp = self.TUBE_SAMPLE_H
+        # 浑浊云：从管底盖满（水+粉），_cloud_frac 驱动
+        cloud_h = (hw + hp) * self._cloud_frac
+        if cloud_h > 0.0005:
+            self._set_tube_column(self.CLOUD, cloud_h, (bx, by, bz + cloud_h / 2))
+            self._set_visibility(self.CLOUD, True)
+        else:
+            self._set_visibility(self.CLOUD, False)
+        # 粉末：可溶 → 随分化溶解缩小（溶尽隐藏）；不溶/微溶 → 保持全高留管底
+        if self.solubility == "soluble":
+            ph = hp * (1.0 - self._settle_frac)
+            pr = 0.006 * (1.0 - self._settle_frac)
+        else:
+            ph, pr = hp, 0.006
+        if ph > 0.0005:
+            self._set_tube_column(self.TUBE_SAMPLE, ph, (bx, by, bz + ph / 2), r=pr)
+            self._set_visibility(self.TUBE_SAMPLE, True)
+        else:
+            self._set_visibility(self.TUBE_SAMPLE, False)
+        # 液体：
+        if self.solubility == "insoluble":
+            # 不溶：浑浊沉淀后液体回溶剂水色（水柱恒显，粉末留底）
+            self._set_tube_column(self.TUBE_WATER, hw, (bx, by, bz + hw / 2))
+            self._set_visibility(self.TUBE_WATER, True)
+            self._set_visibility(self.TUBE_SOLUTION, False)
+            self._set_visibility(self.TUBE_SOLUTION_LIGHT, False)
+        else:
+            # 可溶/微溶：分化中溶解液柱从底渐长，完成后水柱隐藏
+            sol_path = (self.TUBE_SOLUTION if self.solubility == "soluble"
+                        else self.TUBE_SOLUTION_LIGHT)
+            sh = hw * self._settle_frac
+            if sh > 0.0005:
+                self._set_tube_column(sol_path, sh, (bx, by, bz + sh / 2))
+                self._set_visibility(sol_path, True)
+            else:
+                self._set_visibility(sol_path, False)
+            if self._settle_frac >= 1.0:
+                self._set_visibility(self.TUBE_WATER, False)
+            else:
+                self._set_tube_column(self.TUBE_WATER, hw, (bx, by, bz + hw / 2))
+                self._set_visibility(self.TUBE_WATER, True)
+
+    def _set_tube_column(self, path, h, center, r=None):
+        """设置试管内圆柱效果：高度 + 底部中心位置（r 可选，粉末溶解时同步收细）。"""
+        prim = self.stage.GetPrimAtPath(path)
+        if prim.IsValid():
+            cyl = UsdGeom.Cylinder(prim)
+            cyl.GetHeightAttr().Set(h)
+            if r is not None:
+                cyl.GetRadiusAttr().Set(r)
+        self.object_utils.set_object_position(path, np.asarray(center, dtype=float))
 
     # ------------------------------------------------------------------
     def _disable_collision(self, root):

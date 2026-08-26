@@ -60,14 +60,52 @@ EQUIP = [
 
 # 内建效果 prim: (name, radius, height, translate, color, opacity)
 # PowderOnSpoon 在药匙尖端（spatula tip world z=0.828+0.135=0.963，xy 随药匙新坐标）
-# TubeSample/TubeWater 在放大后试管内（xy=试管新孔位）
+# TubeSample/TubeWater 改为预烘焙色变体（add_tube_effect_variants），见 SOLUBILITY_COLORS
 BUILTIN = [
     ("PowderOnSpoon", 0.005, 0.005, (0.6993, 0.3608, 0.965), (0.93, 0.93, 0.94), 1.0),
-    ("TubeSample", 0.006, 0.012, (0.659, 0.241, 0.84), (0.93, 0.93, 0.94), 1.0),
-    ("TubeWater", 0.007, 0.035, (0.659, 0.241, 0.855), (0.55, 0.75, 0.95), 0.6),
-    # 挤水水流（S4）：竖直细柱从红嘴终位 (0.649,0.231,0.994) 探入管口（task 检测夹爪开度驱动）
-    ("WaterStream", 0.003, 0.04, (0.649, 0.231, 0.974), (0.50, 0.72, 0.95), 0.7),
 ]
+
+# 试管内现象效果配色（2026-08-25 用户：终端输入溶解度+液体颜色，颜色=粉末色兼溶解后液体色，默认白）。
+# headless 下运行时改材质/纹理不渲染（记忆 headless-render-ignores-materials），故预烘焙各色变体，
+# task 按 cfg.liquid_color 只 show 对应那个；浑浊云 Cloud 单 prim 震荡中升起/停震褪去。
+# 饱和色用「近黑 diffuse + 单通道 emissive」（d3l LIQUID_COLORS 同款），CylinderLight 12000 下才不被洗白。
+SOLUBILITY_COLORS = {
+    "white":  dict(diffuse=(0.93, 0.93, 0.94), opacity=1.0, roughness=0.5),
+    "red":    dict(diffuse=(0.10, 0.03, 0.03), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(2.2, 0.12, 0.12)),
+    "blue":   dict(diffuse=(0.03, 0.05, 0.12), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(0.12, 0.30, 2.2)),
+    "green":  dict(diffuse=(0.03, 0.10, 0.04), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(0.12, 2.0, 0.12)),
+    "purple": dict(diffuse=(0.12, 0.03, 0.12), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(2.0, 0.15, 2.2)),
+}
+# 微溶：液体 = 输入色更浅（emissive ×0.4 + opacity 0.8 透出底部粉末）
+SOLUBILITY_LIGHT = {
+    c: dict(r, opacity=0.80,
+            emissive=(tuple(v * 0.4 for v in r["emissive"]) if r.get("emissive") else None))
+    for c, r in SOLUBILITY_COLORS.items()
+}
+# 浑浊云（震荡中盖满液柱，粉末悬浮）＝乳白底混入粉末色 → 浑浊带粉末颜色（用户 2026-08-25
+# 「浑浊的表现都是灰色吗」→ 按输入色着色：蓝粉浑浊=淡蓝乳白、红粉=淡粉乳白…；白粉=现在的乳白灰）。
+# diffuse 偏向乳白（0.4 粉 + 0.6 奶），emissive 偏向奶色（0.35 粉 + 0.65 奶）——不透明几何 headless 可见。
+_CLOUD_MILK_D = (0.82, 0.80, 0.74)
+_CLOUD_MILK_E = (1.0, 0.95, 0.80)
+CLOUD_COLORS = {
+    c: dict(
+        diffuse=tuple(0.4 * r["diffuse"][i] + 0.6 * _CLOUD_MILK_D[i] for i in range(3)),
+        opacity=1.0,
+        roughness=0.85,
+        emissive=tuple(0.35 * (r.get("emissive") or (0.9, 0.9, 0.9))[i]
+                       + 0.65 * _CLOUD_MILK_E[i] for i in range(3)),
+    )
+    for c, r in SOLUBILITY_COLORS.items()
+}
+TUBE_SAMPLE_R = 0.006     # 粉末柱半径（管内，同旧 TubeSample）
+TUBE_SAMPLE_H = 0.012     # 粉末柱高
+TUBE_LIQUID_R = 0.007     # 液体柱半径（同旧 TubeWater）
+TUBE_LIQUID_H = 0.035     # 液体柱高（洗瓶注水一次）
+CLOUD_R = 0.0065          # 浑浊云半径（略小于液体柱，盖液柱不穿管壁）
 
 # 药粉下落效果（task._step_powder_anim 驱动）：父 PowderDrop + N 颗小粉粒，仿 D2L/D3L
 # DropperDrop（父 Xform + Drop_0..N 球）。⑬ 药匙竖直后粉粒从勺尖错帧坠落进试管。
@@ -75,17 +113,33 @@ POWDER_DROPS = 14            # 粉粒数（连续细粉流观感）
 POWDER_DROP_R = 0.003        # 粉粒半径（同 D2L 滴球 r=0.003）
 POWDER_DROP_COLOR = (0.93, 0.93, 0.94)
 
+# 挤水水流（S4 挤水）：父 WaterStream + N 颗小水滴球（task._step_water_anim 驱动）。
+# 用户「水流太粗/草率就是一个圆柱体」→ 改细水滴（比吸管 Ø3.4mm 细）沿抛物线从红嘴
+# 坠入试管口（「x坐标再增大1cm」→ 终点 x=0.659=管口中心，非原 0.649 直柱）。
+WATER_DROPS = 16             # 水滴池大小（round-robin 复用，task 挤水时循环发射）
+WATER_DROP_R = 0.0015        # 水滴半径 1.5mm（Ø3mm，比吸管 Ø3.4mm 略细，符合物理）
+WATER_DROP_COLOR = (0.35, 0.65, 0.95)   # 水蓝色（与 TubeWater 同系，稍饱和更可见）
+WATER_START = (0.649, 0.231, 0.994)     # 红嘴尖（水平射出起点）
+WATER_END = (0.659, 0.241, 0.9593)      # 试管口中心（水滴 home 位）
 
-def add_material(stage, prim, diffuse, opacity):
+
+def add_material(stage, prim, diffuse, opacity, roughness=0.5, ior=None, emissive=None,
+                 double_sided=False):
     mat_path = str(prim.GetPath()) + "_mat"
     mat = UsdShade.Material.Define(stage, mat_path)
     sh = UsdShade.Shader.Define(stage, mat_path + "/Shader")
     sh.CreateIdAttr("UsdPreviewSurface")
     sh.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*diffuse))
     sh.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(opacity)
-    sh.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+    sh.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(roughness)
+    if ior is not None:
+        sh.CreateInput("ior", Sdf.ValueTypeNames.Float).Set(ior)
+    if emissive is not None:
+        sh.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*emissive))
     mat.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), "surface")
     UsdShade.MaterialBindingAPI(prim).Bind(mat)
+    if double_sided and prim.IsA(UsdGeom.Gprim):
+        UsdGeom.Gprim(prim).CreateDoubleSidedAttr().Set(True)
 
 
 def remove_lab001_equipment(stage):
@@ -166,6 +220,56 @@ def add_effects(stage):
         UsdGeom.Imageable(sph).MakeInvisible()
     UsdGeom.Imageable(drop).MakeInvisible()
     print(f"[effect] PowderDrop hidden ({POWDER_DROPS} powder grains)")
+    # 挤水水流：父 WaterStream + N 颗小水滴球（父+单粒全隐藏，task 挤水时沿抛物线
+    # 逐颗错帧坠落，仿 PowderDrop 队列动画）。home 位放红嘴尖 WATER_START，task 每帧写实际坐标。
+    water = UsdGeom.Xform.Define(stage, "/World/WaterStream")
+    for i in range(WATER_DROPS):
+        sph = UsdGeom.Sphere.Define(stage, f"/World/WaterStream/Drop_{i}")
+        sph.CreateRadiusAttr(WATER_DROP_R)
+        sph.AddTranslateOp().Set(Gf.Vec3d(*WATER_START))
+        add_material(stage, sph.GetPrim(), WATER_DROP_COLOR, 1.0)
+        UsdGeom.Imageable(sph).MakeInvisible()
+    UsdGeom.Imageable(water).MakeInvisible()
+    print(f"[effect] WaterStream hidden ({WATER_DROPS} water drops)")
+
+
+def add_tube_effect_variants(stage):
+    """试管内现象效果 prim（全部初始隐藏，task 按 cfg.liquid_color/solubility 驱动）：
+      TubeSample_<色>         粉末柱（输入色，⑬ 倒粉后显示）
+      TubeWater               溶剂水柱（淡蓝，S4 注水后显示；不溶最终态液体）
+      TubeSolution_<色>       溶解液柱（输入色全，可溶最终态）
+      TubeSolutionLight_<色>  溶解液柱（输入色浅，微溶最终态）
+      Cloud_<色>              浑浊云（带粉末色，震荡升起、停震褪去；三档都先浑浊）
+    几何中心：粉末 0.84、液体 0.855、云 0.806（管底），xy=试管孔 (0.659,0.241)。
+    """
+    tx, ty = 0.659, 0.241
+
+    def make_cyl(name, r, h, t, recipe):
+        geom = UsdGeom.Cylinder.Define(stage, f"/World/{name}")
+        geom.CreateRadiusAttr(r)
+        geom.CreateHeightAttr(h)
+        geom.CreateAxisAttr("Z")
+        geom.AddTranslateOp().Set(Gf.Vec3d(*t))
+        add_material(stage, geom.GetPrim(), recipe["diffuse"], recipe.get("opacity", 1.0),
+                     roughness=recipe.get("roughness", 0.5), ior=recipe.get("ior"),
+                     emissive=recipe.get("emissive"))
+        UsdGeom.Imageable(geom).MakeInvisible()
+        print(f"[effect] {name} hidden at {t}")
+
+    for c, m in SOLUBILITY_COLORS.items():
+        make_cyl(f"TubeSample_{c}", TUBE_SAMPLE_R, TUBE_SAMPLE_H, (tx, ty, 0.84), m)
+    # 蒸馏水（S4 注水）：无色透明（用户 2026-08-25 更正「滴加的水做成无色透明的这才应该是蒸馏水」）。
+    # 不用自发光淡蓝——真正蒸馏水就是透明无色；opacity 0.10 仅保留微弱液面/折射边缘感，
+    # 现象全由粉末+浑浊云+溶解液变体承载（不溶终态=无色水里粉留底）
+    make_cyl("TubeWater", TUBE_LIQUID_R, TUBE_LIQUID_H, (tx, ty, 0.855),
+             dict(diffuse=(0.90, 0.95, 1.0), opacity=0.10, roughness=0.1, ior=1.33))
+    for c, m in SOLUBILITY_COLORS.items():
+        make_cyl(f"TubeSolution_{c}", TUBE_LIQUID_R, TUBE_LIQUID_H, (tx, ty, 0.855), m)
+    for c, m in SOLUBILITY_LIGHT.items():
+        make_cyl(f"TubeSolutionLight_{c}", TUBE_LIQUID_R, TUBE_LIQUID_H, (tx, ty, 0.855), m)
+    for c, m in CLOUD_COLORS.items():
+        make_cyl(f"Cloud_{c}", CLOUD_R, 0.0, (tx, ty, 0.806), m)
+    print("[effect] tube variants hidden (5 powder / 1 water / 5 solution / 5 light / 5 cloud)")
 
 
 def add_env_light(stage):
@@ -230,6 +334,26 @@ def brighten_lights(st2):
         return
     UsdLux.CylinderLight(cyl).GetIntensityAttr().Set(12000.0)
     print("[light] CylinderLight intensity 2000 -> 12000")
+
+
+def set_cylinder_light_x(st2, x=-10.0):
+    """CylinderLight 的 translate.x 设为绝对值（d2l/d3l 同款）：lab_001 自带灯位 x=2.1
+    偏 +X 侧，正对试管/药匙近距离直射，玻璃反光强（用户 2026-08-25「反光太强看不清
+    试管里面的现象」）。挪到 x=-10 远离工作区，从远处侧面打光，玻璃高光不再直射相机。
+    只动 translate.x，y/z 保持。"""
+    cyl = st2.GetPrimAtPath("/World/CylinderLight")
+    if not cyl.IsValid():
+        print("[light] /World/CylinderLight not found, skip")
+        return
+    for op in UsdGeom.Xformable(cyl).GetOrderedXformOps():
+        if op.GetOpName() != "xformOp:translate":
+            continue
+        v = op.Get()
+        op.Set(Gf.Vec3d(x, v[1], v[2]))
+        print(f"[light] CylinderLight translate {tuple(round(c, 3) for c in v)} "
+              f"-> {tuple(round(c, 3) for c in (x, v[1], v[2]))}")
+        return
+    print("[light] CylinderLight has no translate op, skip")
 
 
 def brighten_spatula(stage):
@@ -317,6 +441,53 @@ def powder(stage):
                 print(f"[powder] texture {base} -> {newp}")
 
 
+def override_bound_shader(st2, prim, recipe):
+    """重写 prim 绑定材质的 shader 参数。烘平后材质绑定在 mesh prim 上但
+    MaterialBindingAPI 未 apply（会告警），故直接用 material:binding relationship
+    取材质路径再找 shader（照搬 d3l gen 的 override_bound_shader）。"""
+    rel = prim.GetRelationship("material:binding")
+    if not rel:
+        return False
+    targets = rel.GetTargets()
+    if not targets:
+        return False
+    mat = st2.GetPrimAtPath(targets[0])
+    if not mat.IsValid():
+        return False
+    for c in mat.GetChildren():
+        if c.GetTypeName() != "Shader":
+            continue
+        sh = UsdShade.Shader(c)
+        for name, val in recipe.items():
+            inp = sh.GetInput(name)
+            vt = Sdf.ValueTypeNames.Color3f if name == "diffuseColor" else Sdf.ValueTypeNames.Float
+            if not inp:
+                inp = sh.CreateInput(name, vt)
+            inp.Set(val)
+        print(f"[mat] {prim.GetPath()} -> {c.GetPath()} {recipe}")
+        return True
+    return False
+
+
+def fix_tube_material(st2):
+    """试管玻璃透明化 + 去反光（照搬 d3l fix_tube_material）：test_tube.usd 自带玻璃
+    opacity 0.35 / roughness 0.05（极光滑），曲面上 CylinderLight 12000 + DomeLight 2000
+    的锐利竖向高光带正好盖住管内溶解现象，用户 2026-08-25「反光太强看不清试管里面的
+    现象」→ opacity 0.35→0.12 更透明、roughness 0.05→0.25 柔化反光、补 ior 1.5 真玻璃
+    + doubleSided（透过玻璃看后壁，不设会漏空）。遍历 /World/TestTube 下 mesh，取
+    material:binding 覆写 shader（同 d3l 瓶玻璃修法）。"""
+    p = st2.GetPrimAtPath("/World/TestTube")
+    if not p.IsValid():
+        print("[mat] /World/TestTube not found, skip")
+        return
+    for c in p.GetChildren():
+        if c.GetTypeName() != "Mesh":
+            continue
+        if override_bound_shader(st2, c, {"opacity": 0.12, "ior": 1.5, "roughness": 0.25}):
+            UsdGeom.Gprim(c).CreateDoubleSidedAttr().Set(True)
+            print(f"[mat] tube glass {c.GetPath()} -> op 0.12 / ior 1.5 / rough 0.25 / doubleSided")
+
+
 def main():
     os.makedirs(SCENE_DIR, exist_ok=True)
     stage = Usd.Stage.Open(LAB001)
@@ -325,6 +496,7 @@ def main():
     for name, asset, t, scale, rot_z in EQUIP:
         add_equip(stage, name, asset, t, scale, rot_z)
     add_effects(stage)
+    add_tube_effect_variants(stage)   # 试管内现象效果（TubeSample_<色>/溶液/浅溶液/云，全隐藏）
     add_env_light(stage)
     stage.Export(OUT)  # 烘平：单层自包含，带 lab_001 的 defaultPrim=/World
 
@@ -333,8 +505,10 @@ def main():
     powder(st2)              # 粉末：防御性清理 + 纹理重定位（资产本体已删废料/env_light）
     strip_dome_lights(st2)   # 扫除试管架/洗瓶等残留 DomeLight（flametest 黑贴图压暗环境）
     brighten_spatula(st2)    # 药匙 = 银黑不锈钢（metallic 1.0 + 深灰 diffuse，去 emissive 防发白）
+    fix_tube_material(st2)   # 试管玻璃去反光（rough 0.05→0.25 + op 0.12 + ior 1.5，d3l 同款）
     fix_env_light(st2)       # env 贴图路径断链（Export 解析到 lab_001）→ 场景目录
     brighten_lights(st2)     # 主光 2000→12000：药匙细金属杆 headless 实测纯黑
+    set_cylinder_light_x(st2, x=-10.0)   # 主光挪远侧（d2l/d3l 同款，去试管反光）
     st2.GetRootLayer().Save()
     print("SAVED", OUT)
 

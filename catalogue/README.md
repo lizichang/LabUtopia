@@ -76,7 +76,7 @@ catalogue/
 | D9-S | `d_wetchem/d9s_gas_indicator/` | 气体检测/指示剂滴加（固） | 单动作 | 模板 → dropperdrip |
 | D9-L | `d_wetchem/d9l_gas_indicator/` | 气体检测/指示剂滴加（液） | 单动作 | 模板 → dropperdrip |
 | D10 | `d_wetchem/d10_solid_reagent_add/` | 固体试剂添加反应（液） | 单动作 | 待开发 |
-| D11 | `d_wetchem/d11_testpaper_gas/` | 试纸气体检测 | 单动作 | 待开发 |
+| D6 | `d_wetchem/d6_testpaper_gas/` | 试纸气体检测 | 单动作 | 待开发 |
 | D12 | `d_wetchem/d12_testpaper_gas2/` | 试纸气体检测（另一类型） | 单动作 | 待开发 |
 | D13 | `d_wetchem/d13_multi_drip/` | 多步试剂连续滴加反应 | 复合 | 待开发 |
 | D14 | `d_wetchem/d14_virtual_tube/` | 同管多试剂串联（VirtualTube） | 链式宏 | 待开发 |

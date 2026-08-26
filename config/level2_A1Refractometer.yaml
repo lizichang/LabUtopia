@@ -1,0 +1,102 @@
+name: Level2_A1Refractometer
+
+task_type: "a1_refractometer"
+controller_type: "a1_refractometer"
+
+mode: "collect"
+
+# 场景：a1_refractometer（A1 折光率测量，桌面 z=0.80）
+# 台面（2026-08-25 pxr 实测世界 bbox，gen_a1_scene.py verify）：
+#   折光仪 (0.30,0.00) 棱镜中心 (0.30,0.11) 顶 z 0.9175（盖内置 -50° 掀开态）
+#   样品瓶 (0.10,0.34) 口 rim z 0.870 液面 0.840，白塞 0.868..0.879（机械臂直拔）
+#   试管架 (0.55,0.20) 架顶 z 0.917、孔底 z 0.806，滴管插左孔 (0.531,0.1996) 尖嘴 z 0.806
+#   机械臂底座 (0.25,0.57,0.71)：瓶距底座 0.27m、滴管 0.47m、棱镜 0.46m（均 >0.15 失效区）
+usd_path: "assets/scenes/a_instrument/a1_refractometer/a1_refractometer.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s/d4l 一致）
+grasp_xy_threshold: 0.03        # 夹爪距抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+# 开合小于此值算"挤胶头"（排空气/滴样）。0.0035：持握开度 0.0055 之上留 0.002 裕量
+# （防手指晃动误判挤），挤胶头 0.002 之下 0.0015（同 d4l 约定）
+squeeze_close_threshold: 0.0035
+
+# 实验结果输入接口（运行前 --result n_d=1.4000 等；task 读 cfg.n_d → 选对应预烘焙读数屏）
+# 屏幕 nD 读数由输入决定（d3l 同款：headless 下运行时改材质不渲染 → gen 预烘焙每档一张
+# 贴图 + 一个 ScreenGlow_<key> prim，task 按 cfg.n_d 只 show 一个）。档位须与
+# meta_actions/constants.py 与 scripts/gen_a1_scene.py 的 N_D_OPTIONS 三处一致，勿单边改。
+experiment_result:
+  n_d:
+    label: "折光率读数（nD，显示屏显示值）"
+    type: enum
+    options: ["1.3300", "1.3610", "1.4000", "1.4600"]
+    default: "1.4000"
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# 引号必须保留——"1.4000" 是字符串 key 前缀；YAML 浮点 1.4000 会变成 1.4，str() 对不上档位。
+n_d: "1.4000"
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [0.80, 0.50, 1.45]
+    resolution: [512, 512]
+    focal_length: 17
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 2026-08-25 直拍折光仪黑色显示屏（用户要求）：屏幕中心 (0.30,-0.156,0.854)
+    # 朝 -y 前方、后倾 19.5°（法线 (0,-0.943,+0.333)），机位放屏幕法线方向 0.35m、
+    # look-at 屏幕中心。orientation 为 [w,x,y,z] 序（scalar-first，camera_axes="usd"
+    # 不转换，直接写 prim；已用现有 camera1 反推确认该约定）。focal 17→35 让屏幕
+    # 占画面 ~48%（水平 FOV 33.3°、0.35m 处视场宽 0.21m）。
+    translation: [0.30, -0.486, 0.970]
+    resolution: [512, 512]
+    focal_length: 35
+    orientation: [0.816552, 0.577271, 0.0, 0.0]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 (0.25, 0.67)：在折光仪正后方 +y 方向（2026-08-25 放瓶塞时卡死——原 0.57 离
+  # 下探点 CAP_DESK(0.16,0.34,0.877) 仅 0.25m 又低，Lula IK 解不出冻结；往 +y 退 10cm
+  # 远离工作区给臂留伸展空间）。退后瓶 (0.10,0.34) 距底座 0.36m、滴管 (0.531,0.1996)
+  # 0.55m、棱镜 (0.30,0.11) 0.56m——全部 >0.15 失效区，且都在 Franka 0.855m 臂展内。
+  # 台面 Cube 到 y=1.0，未出桌。
+  position: [0.25, 0.67, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

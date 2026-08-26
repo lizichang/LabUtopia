@@ -31,6 +31,29 @@ infer:
 grasp_xy_threshold: 0.03        # 夹爪距药匙抓点多近算"到位"
 gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
 gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+shake_cycles: 5                 # S6 试管震荡来回次数
+
+# 实验结果输入接口（运行前 --result solubility=soluble liquid_color=blue 等；task 读 cfg.solubility 等）
+# 现象三档（用户 2026-08-25 描述）：三档都先「整管逐渐变浑浊」（震荡中浑浊云盖满液柱），停震后分化：
+#   soluble（可溶）        浑浊渐澄清 + 液体变成输入色（全），粉末溶尽
+#   insoluble（不溶）      浑浊渐沉淀 + 粉末停留试管底部，液体回溶剂水色
+#   slightly_soluble（微溶）粉末停留试管底部 + 液体渐渐变成输入色但比输入色浅
+# liquid_color = 粉末颜色兼（若可溶）溶解后液体颜色；默认 white（保持现在白色）。
+experiment_result:
+  solubility:
+    label: "溶解情况（可溶/不溶/微溶）"
+    type: enum
+    options: [soluble, insoluble, slightly_soluble]
+    default: soluble
+  liquid_color:
+    label: "粉末/溶解液颜色"
+    type: enum
+    options: [white, red, blue, green, purple]
+    default: white
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+solubility: soluble
+liquid_color: white
 
 task:
   max_steps: 30000
@@ -39,7 +62,7 @@ task:
 cameras:
   - prim_path: "/World/Camera1"
     name: "camera_1"
-    translation: [1.50, 0.40, 1.15]
+    translation: [1.20, 0.40, 1.15]
     resolution: [512, 512]
     focal_length: 10
     orientation: [0.38519, 0.13095, 0.29403, 0.86489]

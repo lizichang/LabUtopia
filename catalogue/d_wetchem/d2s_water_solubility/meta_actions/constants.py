@@ -122,8 +122,26 @@ WASH_TO_TUBE_Y = WASH_XY[1] - 0.294          # = 0.231（⑦ TCP 目标 y）
 # —— 挤水段（S4 挤肚子出水，效果 prim 由 task 检测夹爪开度驱动）——
 WASH_SQUEEZE = 0.020            # 挤水开度：夹爪 0.030→0.020（4cm 开口，压 6.4cm 瓶身 2cm 出水）
 WASH_SQUEEZE_CLOSED = 0.025     # task 挤水判定：opening < 0.025 算正在挤（介于持握 0.030 与挤压 0.020 之间）
-WASH_SQUEEZE_DWELL = 60         # 挤水保持帧数（水流持续 ~1s @60Hz）
-# 水流效果 prim（gen BUILTIN WaterStream 竖直细柱）：红嘴终位 (0.649,0.231,0.994) 探入管口
-WATER_STREAM_XY = (0.649, 0.231)   # 水流柱 x,y（= 红嘴终位 x,y = WASH_TO_TUBE_X+0.106, WASH_TO_TUBE_Y）
-WATER_STREAM_Z = 0.974             # 水流柱中心 z（顶 0.994 = 红嘴、底 0.954 探入管口 0.9593）
-WATER_STREAM_H = 0.04              # 水流柱高（0.994→0.954）
+WASH_SQUEEZE_DWELL = 150        # 挤水保持帧数（水流持续 ~2.5s @60Hz，用户「时间太短多挤一点」）
+# 水流效果（S4 挤水）：不再用竖直细柱，改「父 WaterStream + N 颗小水滴球沿抛物线从红嘴
+# 坠入试管口」（用户「水流太粗/草率就是一个圆柱体」）。几何在 gen_d2s_scene.py 的
+# WATER_* 常量；动画在 task.py _step_water_anim（起始=红嘴尖 (0.649,0.231,0.994)、
+# 终点=管口中心 (0.659,0.241,0.9593)）。
+
+# —— 试管抓取与震荡（S6 拿起试管震荡使粉末溶于水，参考 d3l TubeShakePass）——
+# 试管 Ø19.2×153mm 立插架近侧左孔 (0.659,0.241)，管底 z=0.806、管口 z=0.9593、架顶 0.917。
+# 抓管身中段（管口下 14mm）：TCP z=0.9453，管底 0.1393m 吊在夹爪下方（纯平移保竖立）。
+# 震荡高度 z=1.09：管底 0.9507 清架顶 0.917（裕量 34mm），管内粉/水随管平移。
+GRIP_TUBE = 0.0096            # 抓试管：开度≈管身 Ø19.2mm/2（同 d3l）
+TUBE_GRASP_TCP = (TUBE_XY[0], TUBE_XY[1], TUBE_MOUTH_Z - 0.014)   # (0.659,0.241,0.9453)
+SHAKE_CENTER_TCP = (TUBE_XY[0], TUBE_XY[1], 1.09)   # 震荡中心（高位，管底清架顶）
+SHAKE_AMPLITUDE = 0.04        # 单向往复半幅 ±40mm（同 d3l，0.02 不够）
+SHAKE_PERIOD = 60             # 一个来回帧数（60Hz ≈1s/来回）
+SHAKE_HOLD_FRAMES = 300       # 震荡结束后高位停留帧数（5s @60Hz，观察溶解现象）
+TUBE_ORIG_Z = 0.806           # 管底世界 z（架内竖插）
+TUBE_HELD_OFFSET_Z = TUBE_ORIG_Z - TUBE_GRASP_TCP[2]   # ≈ -0.1393（管底吊夹爪下方）
+DISSOLVE_FRAMES = 240         # 震荡时粉末溶解进度帧数（~4s 全溶，覆盖震荡 180 帧 + 停留初段）
+
+# —— 现象（2026-08-25 用户：终端输入溶解度+液体颜色，三档都先浑浊再分化）——
+# 颜色名与 config liquid_color.options、gen SOLUBILITY_COLORS 键一致（task 校验 cfg.liquid_color）
+LIQUID_COLOR_NAMES = ("white", "red", "blue", "green", "purple")

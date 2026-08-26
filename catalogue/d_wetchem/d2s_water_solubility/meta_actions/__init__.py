@@ -16,12 +16,13 @@ atomic_actions/flametest 的 IK 原子动作。已实现：
      DipToPowder 碰粉，均已删/弃）。
 后续按 v11 步骤逐个补：② 舀取粉末 → ③ 加蒸馏水 → ④ 振荡 → （试管留在架上，不放操作位）。
 """
-from ._base import BaseMetaAction, mv, grip, hold
+from ._base import BaseMetaAction, mv, grip, hold, shake
 from .pick import PickSpatula
 from .return_spatula import ReturnSpatula
 from .pick_wash_bottle import PickWashBottle
 from .squeeze_water import SqueezeWater
 from .return_wash_bottle import ReturnWashBottle
+from .tube_shake_pass import TubeShakePass
 
-__all__ = ["BaseMetaAction", "mv", "grip", "hold", "PickSpatula", "ReturnSpatula",
-           "PickWashBottle", "SqueezeWater", "ReturnWashBottle"]
+__all__ = ["BaseMetaAction", "mv", "grip", "hold", "shake", "PickSpatula", "ReturnSpatula",
+           "PickWashBottle", "SqueezeWater", "ReturnWashBottle", "TubeShakePass"]

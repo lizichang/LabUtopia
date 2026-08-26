@@ -16,7 +16,7 @@ class ShakeAction:
     """在 center 附近沿 axis 正弦振荡 cycles 个来回后完成。"""
 
     def __init__(self, engine, center, axis=(1, 0, 0), amplitude=0.02,
-                 cycles=3, period=60, label="shake"):
+                 cycles=3, period=60, label="shake", orient=None):
         self.engine = engine
         self.center = np.asarray(center, dtype=float)
         self.axis = np.asarray(axis, dtype=float)
@@ -25,6 +25,9 @@ class ShakeAction:
         self.cycles = int(cycles)
         self.period = int(period)
         self.label = label
+        # 可选朝向（w,x,y,z）：None 沿用引擎默认（手指朝下）；显式传时震荡全程
+        # 保持该朝向（D2-S 试管远在 +X，手指朝前 ORIENT_FWD 才够得着）。
+        self.orient = orient
         self.reset()
 
     def reset(self):
@@ -37,7 +40,7 @@ class ShakeAction:
         # 相位从 0 走 2π·cycles（每 period 帧一个来回），正弦 0→峰值→0 往复
         phase = 2.0 * np.pi * (self._frame / self.period)
         tgt = self.center + self.axis * (self.amplitude * np.sin(phase))
-        ik = self.engine.solve_verified(tgt, cur)
+        ik = self.engine.solve_verified(tgt, cur, orient=self.orient)
         if ik is None:
             cmd = cur  # 解不出就保持，下一帧再试（振荡相位继续走）
         else:

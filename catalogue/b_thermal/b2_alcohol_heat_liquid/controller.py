@@ -23,7 +23,7 @@ from isaacsim.core.utils.extensions import get_extension_path_from_name
 
 from controllers.base_controller import BaseController as TaskBaseController
 from controllers.atomic_actions.flametest import IkMotionEngine
-from .meta_actions import DropperDripPass
+from .meta_actions import DropperDripPass, HangThermometer
 from .meta_actions.constants import GRIP_OPEN
 
 
@@ -36,7 +36,7 @@ class B2AlcoholHeatLiquidTaskController(TaskBaseController):
     # ------------------------------------------------------------------
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
-        print("[b2] controller VERSION v2 (DropperDripPass IK-driven + v1 phase watch)")
+        print("[b2] controller VERSION v3.1 (DropperDripPass + HangThermometer step1 IK-driven + v1 phase watch)")
         self.orient = euler_angles_to_quat(np.array([0, np.pi, 0]))
         # Lula IK 求解器（同 flametest/d2s/d3l）：精确关节控制替代 RMP
         mg_path = get_extension_path_from_name("isaacsim.robot_motion.motion_generation")
@@ -49,11 +49,13 @@ class B2AlcoholHeatLiquidTaskController(TaskBaseController):
         ik_home = np.array([0.012, -0.57, 0.0, -2.81, 0.0, 3.037, 0.741])
         self.engine = IkMotionEngine(solver, self.orient, ik_home)
 
-        # 段 1：滴加元动作（一次持握内循环吸液-滴液 cfg.sample_cycles 遍）
+        # 段 1：滴加元动作（一次持握内循环吸液-滴液 cfg.sample_cycles 遍）→ 挂温度计
         sample_cycles = max(1, int(getattr(cfg, "sample_cycles", 3)))
-        self.meta_classes = [DropperDripPass]
-        self.meta_names = [f"dropper aspirate+drip into tube x{sample_cycles}"]
-        self.meta_actions = [DropperDripPass(self.engine, cycles=sample_cycles)]
+        self.meta_classes = [DropperDripPass, HangThermometer]
+        self.meta_names = [f"dropper aspirate+drip into tube x{sample_cycles}",
+                           "grab thermometer + tilt to tube mouth (step 1 of 2)"]
+        self.meta_actions = [DropperDripPass(self.engine, cycles=sample_cycles),
+                             HangThermometer(self.engine)]
         self._meta_idx = 0
         self._h5_sample = 0
         self._start = True

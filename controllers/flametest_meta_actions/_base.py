@@ -76,7 +76,12 @@ def hold(engine, n):
     return HoldAction(engine, n)
 
 
-def shake(engine, center, axis=(1, 0, 0), amplitude=0.02, cycles=3, period=60):
-    """在 center 附近沿 axis 正弦振荡 cycles 个来回（默认 x 轴 ±20mm、1s/来回）。"""
+def shake(engine, center, axis=(1, 0, 0), amplitude=0.02, cycles=3, period=60,
+          orient=None):
+    """在 center 附近沿 axis 正弦振荡 cycles 个来回（默认 x 轴 ±20mm、1s/来回）。
+
+    orient=None 沿用引擎默认朝向（手指朝下）；显式传时震荡全程保持该朝向
+    （D2-S 试管远在 +X，手指朝前 ORIENT_FWD 才够得着，见 ShakeAction）。
+    """
     return ShakeAction(engine, center, axis=axis, amplitude=amplitude,
-                       cycles=cycles, period=period)
+                       cycles=cycles, period=period, orient=orient)

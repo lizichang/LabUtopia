@@ -1,0 +1,93 @@
+name: Level2_E2Magnetic
+
+task_type: "e2_magnetic"
+controller_type: "e2_magnetic"
+
+mode: "collect"
+
+# 场景：e2_magnetic（E2 磁性检测，桌面 z=0.80）
+# 台面（2026-08-26 pxr 实测世界 bbox，gen_e2_scene.py verify；待测固体预铺在表面皿上，
+# 删掉药匙/试管架/样品瓶/瓶盖；操作区前移 y=0.20 远离底座，避免磁铁离臂太近抓不到）：
+#   条形磁铁   (0.40,0.20) 100×15×15mm 平放（长轴 X，顶 0.815）
+#   表面皿     (0.56,0.20) Ø60×6.5mm（铺 DishPowder 薄层=待测固体，粉顶 0.8086）
+usd_path: "assets/scenes/e_physical/e2_magnetic/e2_magnetic.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s/e1 一致）
+grasp_xy_threshold: 0.03        # 夹爪距抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+
+# 实验结果输入接口（运行前 --result magnetic=magnetic 等；task 读 cfg.magnetic）
+# 磁性检测动画：cfg.magnetic=magnetic 时磁铁靠近 → MagnetGrains 颗粒簇被吸起；
+# non_magnetic 时无动画（磁铁照常靠近，颗粒不动）。
+experiment_result:
+  magnetic:
+    label: "磁性检测结果（是否被磁铁吸引）"
+    type: enum
+    options: [magnetic, non_magnetic]
+    default: magnetic
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.magnetic。
+magnetic: magnetic
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 前侧拉远俯拍整个工作区（复用 E1 相机位，工作区中心 (0.46,0.31,0.85)；
+    # 分辨率提到 1024 让 2.5mm 细铁粉颗粒清晰可辨）。
+    translation: [0.35, 1.00, 1.45]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.0, 0.0, 0.46726, 0.88412]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 顶部俯视，略抬高并对中工作区中心，up=+Y（复用 E1）。
+    translation: [0.35, -0.05, 1.30]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.98374, 0.17962, 0.0, 0.0]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [1024, 1024]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 (0.25, 0.57)：E2 目录简化版「磁铁中央前方，表面皿磁铁右侧」布局，操作区前移
+  # y=0.20 远离底座（同 E1 底座位）。磁铁/表面皿均在 Franka 0.855m 臂展内（磁铁 (0.40,0.20)
+  # → 距底座 sqrt(0.15²+0.37²)=0.40m、皿 (0.56,0.20) → 0.48m，与 E1 抓取件 0.46m 同级）。
+  position: [0.25, 0.57, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

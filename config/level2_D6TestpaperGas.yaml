@@ -1,0 +1,107 @@
+name: Level2_D6TestpaperGas
+
+task_type: "d6_testpaper_gas"
+controller_type: "d6_testpaper_gas"
+
+mode: "collect"
+
+# 场景：d6_testpaper_gas（D6 试纸气体检测（通用），桌面 z=0.80）
+# 台面（2026-08-26 pxr 实测世界 bbox，gen_d6_scene.py verify；试纸夹预夹好试纸，
+# 机械臂不碰试纸；试管含预置反应混合物，操作区前移远离底座 y=0.57）：
+#   试管架 (0.28,0.16) 顶板 0.917、反应试管前排左孔 (0.260,0.276) 口 z 0.9593
+#   蒸馏水滴管后排右孔 (0.300,0.041) 尖嘴 z 0.806（预吸好蒸馏水）
+#   试纸夹 (0.48,0.20) 立杆顶 0.99，夹试纸水平伸出 +X，湿润端中心 (0.5375,0.20) z 0.99
+usd_path: "assets/scenes/d_wetchem/d6_testpaper_gas/d6_testpaper_gas.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s/d3l/e2 一致）
+grasp_xy_threshold: 0.03        # 夹爪距抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+# 开合小于此值算"挤胶头"（润湿试纸出水）。0.0035：持握开度 0.0055 之上留 0.002 裕量
+# （防手指晃动误判挤），挤胶头 0.002 之下 0.0015（同 d3l/d2l）
+squeeze_close_threshold: 0.0035
+
+# 实验结果输入接口（运行前 --result gas_result=alkaline_blue 等；task 读 cfg.gas_result 等）
+# 试纸气体检测接口（用户要求「颜色反应根据输入显示不同颜色」）：
+#   gas_result（试纸检测结果 = 试纸类型 × 是否变蓝）4 档，task 检测时切换湿润端 visibility：
+#     oxidative_blue   淀粉碘化钾试纸（米白）→ 变蓝（检出氧化性气体）
+#     oxidative_negative  淀粉碘化钾试纸 → 不变色（未检出）
+#     alkaline_blue    红色石蕊试纸 → 变蓝（检出碱性气体）
+#     alkaline_negative   红色石蕊试纸 → 不变色（未检出）
+#   liquid_color（试管内预置反应液颜色）6 色，task 显示对应液柱变体（预留接口）。
+experiment_result:
+  gas_result:
+    label: "试纸气体检测结果（试纸类型 × 是否变蓝）"
+    type: enum
+    options: [oxidative_blue, oxidative_negative, alkaline_blue, alkaline_negative]
+    default: oxidative_blue
+  liquid_color:
+    label: "试管内反应液颜色"
+    type: enum
+    options: [colorless, blue, red, green, yellow, purple]
+    default: blue
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.gas_result / cfg.liquid_color。
+gas_result: oxidative_blue
+liquid_color: blue
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 前侧拉远俯拍整个工作区（工作区中心 ≈(0.38,0.25,0.85)，复用 E1/E2 相机位）。
+    translation: [0.35, 1.00, 1.45]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.0, 0.0, 0.46726, 0.88412]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 顶部俯视，略抬高并对中工作区中心，up=+Y（复用 E1/E2）。
+    translation: [0.35, -0.05, 1.30]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.98374, 0.17962, 0.0, 0.0]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [1024, 1024]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 (0.25, 0.57)：D6 操作区前移 y≈0.04-0.28 远离底座（同 E1/E2 底座位），全部器材在
+  # Franka 0.855m 臂展内（试纸夹 (0.48,0.20) → 距底座 0.44m、试管 (0.260,0.276) → 0.29m、
+  # 滴管 (0.300,0.041) → 0.53m）。
+  position: [0.25, 0.57, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

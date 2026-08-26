@@ -13,14 +13,15 @@
 - 去资产自带 env_light 残留（重复 DomeLight）；CylinderLight 2000→12000；样品瓶玻璃透明化
   （bottle 真玻璃，**stopper 保持白盖不透明**）；滴管玻璃透明化（管内液柱透出）。
 - 内建效果 prim（task 动画驱动）：瓶内液面 SampleLiquid（可见）、棱镜液滴 PrismDrop（隐藏）、
-  滴管尖液柱 DropperFill（隐藏）、挤胶头滴落球 DropperDrop（隐藏）、屏幕读数发光 ScreenGlow（隐藏）。
+  滴管尖液柱 DropperFill（隐藏）、挤胶头滴落球 DropperDrop（隐藏）、屏幕读数
+  ScreenMeasuring（测量中红进度条）/ScreenGlow（完成 nD 读数，贴图发光，初始均隐藏）。
 
 用法：python scripts/gen_a1_scene.py   （运行环境：labutopia conda env 有 pxr）
 """
 import math
 import os
 import shutil
-from pxr import Usd, UsdGeom, UsdShade, UsdLux, Sdf, Gf
+from pxr import Usd, UsdGeom, UsdShade, UsdLux, Sdf, Gf, Vt
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCENE_DIR = os.path.join(REPO, "assets", "scenes", "a_instrument", "a1_refractometer")
@@ -37,6 +38,8 @@ TABLE_TOP = 0.80
 # 折光仪：asset min z=0（机身底/脚贴原点）→ tz=None 贴台面 0.80。棱镜朝顶、盖已内置 -50° 掀开态、屏幕朝 -y。
 #   机身 body  x ±0.1125 y -0.165..+0.165 z 0..0.115
 #   棱镜 prism 局部 (0,0.110,0.1165) 顶 0.1175 → 世界 (0.30,0.11,0.9175)
+#   测量键 start_button 局部 (0,0.05,0.115..0.121) → 世界 (0.30,0.05,0.915..0.921)：
+#     棱镜正前方 -y 6cm、机顶凸起 6mm 的红色测量键（2026-08-25 加，机械臂滴样后按下触发测量）
 REFRACT_X, REFRACT_Y = 0.30, 0.00
 PRISM_CY = REFRACT_Y + 0.110          # 棱镜世界 y 中心（滴样落点，距底座 0.46m）
 
@@ -112,9 +115,41 @@ DROPS_PER_GROUP = 4
 DROP_BALL_R = 0.003
 DROP_HOME = (REFRACT_X, PRISM_CY, PRISM_TOP_Z + 0.02)  # 棱镜上方，task 动画才写实际坐标
 
-# 屏幕读数发光（屏幕局部中心 (0,-0.149,0.0537)，后倾 ~19.5°；读数时显示）
+# 屏幕读数（屏幕局部中心 (0,-0.149,0.0537)，后倾 ~19.5°；按测量状态显隐）
 SCREEN_C = (REFRACT_X, REFRACT_Y - 0.156, TABLE_TOP + 0.0537)   # (0.30,-0.156,0.8537)
 SCREEN_UP = (0.0, 0.3335, 0.9427)   # 屏幕"向上"单位向量（底前 0.0081→顶后 0.0993）
+# 屏幕贴图（PIL 生成，见 make_screen_textures；labutopia env 有 PIL/numpy）：屏幕 10cm×4cm → 640×256（2.5:1）。
+#   测量中进度条按 PROGRESS_STEPS 预烘焙成多帧 screen_measuring_<i>.png（红条 0%→100% +
+#   "Measuring…"）。headless 下运行时改材质/贴图不渲染 → 每帧一个 prim，task 测量期逐帧切显
+#   （用户 2026-08-26：先显示进度条，~4s 走完最后显示结果）。
+#   screen_result_<key>.png 完成读数：绿满进度条 + 大字 nD <档位> + 小字 20.0°C。贴图经
+#   UsdUVTexture 接 emissiveColor → 屏上亮字/进度条自发光、近黑屏底不发。
+PROGRESS_STEPS = 16             # 测量进度条帧数（0%..100%，每帧 ~0.25s@240帧/4s；须与 constants.py 一致）
+SCREEN_TEX_MEASURING_TPL = "textures/screen_measuring_{step:02d}.png"
+SCREEN_TEX_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"  # 仪器数码等宽
+# 折光率读数档位（须与 catalogue/.../meta_actions/constants.py N_D_OPTIONS 及
+# config/level2_A1Refractometer.yaml experiment_result.n_d.options 一致，勿单边改）：
+# 屏幕 nD 读数由输入 cfg.n_d 决定（d3l 同款——headless 下运行时改材质不渲染，故按档位
+# 预烘焙贴图 screen_result_<key>.png + 屏幕 prim ScreenGlow_<key>，task 按档位 show 一个）。
+N_D_OPTIONS = ["1.3300", "1.3610", "1.4000", "1.4600"]   # 常见液体折射率（水/乙醇/琥珀液/高折射）
+N_D_DEFAULT = "1.4000"
+N_D_KEY = lambda v: v.replace(".", "_")                  # 1.4000 → 1_4000（贴图名/prim 名档位）
+
+# —— A1 合盖圆盘（重建，2026-08-25；2026-08-26 方板改圆形）——
+# 实测 2026-08-25：资产自带 cover 是坏件（世界 bbox y 0.277..0.310 / z 0.843..0.874，
+# 悬在机器后方空中、离棱镜 0.18m；rotateX -65→0 会甩到 z≈1.05 不会合平）。
+# 真实 Abbemat 棱镜盖 = 圆形磁吸样品盖（Anton Paar「Magnetic Sample Cover」，O 型圈
+# 密封、磁吸快速取放、可合盖测量），非方形翻板（用户 2026-08-26 视频里看着像方形）。
+# → 在 well 后沿重建真铰链圆盖：铰链 = X 轴过 (0.30, 0.127, 0.9215)（well 后沿顶、
+#   well bbox y 0.093..0.127，圆形 well 中心 (0.30,0.11) 半径 0.017）。
+#   圆盘 Ø34 覆盖 well（圆心在铰链 -y 17mm，圆盘后缘贴铰链、前缘 -y 34mm）。
+#   掀开态 rotateX=-55（立起后仰，front rim 抬到 z≈0.950）；CloseCoverPass 推 -y → task
+#   把 rotateX 平滑转到 0 = 合平盖住 well。旧坏 cover 后处理隐藏（hide_old_cover）。
+COVER_HINGE = (REFRACT_X, 0.127, TABLE_TOP + 0.1215)   # (0.30, 0.127, 0.9215)
+COVER_OPEN_ANGLE = -55.0                               # 掀开态 rotateX（后仰）
+COVER_HALF_W = 0.017        # 圆盖半径（= well 半径，Ø34：x ±0.017 / y 中心铰链 -y 0.017）
+COVER_THK = 0.002           # 盘厚 2mm
+COVER_MAT = (0.55, 0.56, 0.60)   # 与资产 cover_mat 同灰（浅仪器灰）
 
 
 def add_material(stage, prim, diffuse, opacity, roughness=0.5, ior=None, double_sided=False,
@@ -179,6 +214,123 @@ def add_dropper_drops(stage):
     print(f"[effect] DropperDrop hidden ({DROPS_PER_GROUP} drop spheres)")
 
 
+def add_cover(stage):
+    """A1 合盖圆盘（重建真铰链，真实 Abbemat 是圆形磁吸盖）：/World/Refractometer/Cover
+    铰链在 well 后沿 (0.30,0.127,0.9215)，X 轴。圆盘 Ø34（半径 COVER_HALF_W、厚 2mm）
+    圆心在铰链 -y 17mm → 圆盘后缘贴铰链、覆盖 well（x ±0.017 / y 0.093..0.127）。
+    掀开态 rotateX=-55（立起后仰）；CloseCoverPass 推 -y 后 task 把 rotateX 平滑转 0 = 合平。
+    旧资产坏 cover（/World/Refractometer/cover）由 fix_old_cover 后处理隐藏。"""
+    cov = UsdGeom.Xform.Define(stage, "/World/Refractometer/Cover")
+    cov.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.127, 0.1215))   # 铰链点（相对机原点）
+    cov.AddRotateXOp().Set(COVER_OPEN_ANGLE)                 # 掀开态
+    # 圆盘 mesh（UsdGeom.Cylinder，axis=Z 平盘；半径/高直接写 attrs，无 scale，
+    #   天然避免 Cube 版 xformOpOrder scale 先平移后缩放吃位移的坑）。
+    disc = UsdGeom.Cylinder.Define(stage, "/World/Refractometer/Cover/Disc")
+    disc.CreateRadiusAttr(COVER_HALF_W)
+    disc.CreateHeightAttr(COVER_THK)
+    disc.CreateAxisAttr("Z")
+    disc.AddTranslateOp().Set(Gf.Vec3d(0.0, -COVER_HALF_W, COVER_THK / 2.0))
+    add_material(stage, disc.GetPrim(), COVER_MAT, 1.0, roughness=0.4)
+    print(f"[cover] new hinged round cover (Ø{2*COVER_HALF_W*1000:.0f}mm) at well back "
+          f"(hinge 0.127, open {COVER_OPEN_ANGLE} deg)")
+
+
+def make_screen_textures(tex_dir):
+    """用 PIL 生成折光仪屏幕贴图（labutopia conda env 有 PIL 11.3/numpy；base python 无）。
+    真实 Abbemat 屏（2026-08-26 调研）：nD 主读数大字 + 样品温度小字 + 状态进度条
+    （测量中红色 → 完成变绿）。读数 nD 由输入档位 N_D_OPTIONS 决定，每档一张 result 贴图
+    screen_result_<key>.png（text 显示该档读数），温度固定 20.0°C。屏幕 10cm×4cm → 640×256（2.5:1）。"""
+    from PIL import Image, ImageDraw, ImageFont
+
+    def font(size):
+        return ImageFont.truetype(SCREEN_TEX_FONT, size)
+
+    W, H = 640, 256
+    BG = (10, 14, 24)          # 近黑蓝屏底（不发光，仅亮字/进度条自发光）
+    BAR_OUT = (95, 100, 115)   # 进度条边框（仪器灰）
+    GREEN = (46, 220, 90)      # 完成绿
+    RED = (238, 72, 60)        # 测量红
+    ND = (160, 250, 185)       # 主读数绿白
+    TEMP = (205, 214, 224)     # 温度灰白
+    bx0, by0, bx1, by1 = 24, 216, 616, 240   # 进度条（宽 592、高 24、留边 2px 边框）
+
+    # —— measuring：红进度条 0%..100% 多帧 + "Measuring…"（task 测量期逐帧切显）——
+    for i in range(PROGRESS_STEPS):
+        frac = i / (PROGRESS_STEPS - 1)
+        img = Image.new("RGB", (W, H), BG)
+        d = ImageDraw.Draw(img)
+        d.rectangle([bx0, by0, bx1, by1], outline=BAR_OUT, width=2)
+        d.rectangle([bx0 + 3, by0 + 3,
+                     bx0 + 3 + int((bx1 - bx0 - 6) * frac), by1 - 3], fill=RED)
+        f = font(44)
+        t = "Measuring…"
+        bb = d.textbbox((0, 0), t, font=f)
+        d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], 96), t, font=f, fill=(255, 255, 255))
+        img.save(os.path.join(tex_dir, f"screen_measuring_{i:02d}.png"))
+
+    # —— result：绿满进度条 + 大字 nD <档位读数> + 小字 20.0°C，每档一张 ——
+    for n_d in N_D_OPTIONS:
+        img = Image.new("RGB", (W, H), BG)
+        d = ImageDraw.Draw(img)
+        d.rectangle([bx0, by0, bx1, by1], outline=BAR_OUT, width=2)
+        d.rectangle([bx0 + 3, by0 + 3, bx1 - 3, by1 - 3], fill=GREEN)
+        f = font(54)
+        t = f"nD {n_d}"
+        bb = d.textbbox((0, 0), t, font=f)
+        d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], 76), t, font=f, fill=ND)
+        f = font(28)
+        t = "20.0 °C"
+        bb = d.textbbox((0, 0), t, font=f)
+        d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], 174), t, font=f, fill=TEMP)
+        img.save(os.path.join(tex_dir, f"screen_result_{N_D_KEY(n_d)}.png"))
+    print(f"[screen] textures -> {tex_dir} ({PROGRESS_STEPS} measuring frames + "
+          f"{len(N_D_OPTIONS)} result nD{'/'.join(N_D_OPTIONS)} green bars)")
+
+
+def add_screen_tex_quad(stage, name, tex_path):
+    """屏幕 mesh（倾斜矩形贴合屏幕前表面）+ st UV + 贴图发光材质，初始隐藏。
+    贴图经 UsdUVTexture 接 emissiveColor：屏上亮字/进度条自发光、近黑屏底不发。
+    task 按测量状态显隐 ScreenMeasuring（测量中）/ScreenGlow（完成 nD 读数）。"""
+    cx, cy, cz = SCREEN_C
+    upx, upy, upz = SCREEN_UP
+    hw, hh = 0.05, 0.02          # 半宽 5cm / 半高 2cm
+    pts = [
+        Gf.Vec3f(cx - hw, cy - hh * upy, cz - hh * upz),
+        Gf.Vec3f(cx + hw, cy - hh * upy, cz - hh * upz),
+        Gf.Vec3f(cx + hw, cy + hh * upy, cz + hh * upz),
+        Gf.Vec3f(cx - hw, cy + hh * upy, cz + hh * upz),
+    ]
+    gl = UsdGeom.Mesh.Define(stage, f"/World/{name}")
+    gl.CreatePointsAttr(pts)
+    gl.CreateFaceVertexCountsAttr([4])
+    gl.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
+    gl.CreateSubdivisionSchemeAttr("none")
+    # st UV（每顶点，顶点序 0..3 = 左下/右下/右上/左上 → 贴图直立不翻转）
+    pv = UsdGeom.PrimvarsAPI(gl).CreatePrimvar("st", Sdf.ValueTypeNames.Float2Array,
+                                               UsdGeom.Tokens.faceVarying)
+    pv.Set(Vt.Vec2fArray([Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]))
+    # 材质：近黑 diffuse + 贴图 emissive（UsdUVTexture 读 st → emissiveColor）
+    mat = UsdShade.Material.Define(stage, f"/World/{name}_mat")
+    sh = UsdShade.Shader.Define(stage, f"/World/{name}_mat/Shader")
+    sh.CreateIdAttr("UsdPreviewSurface")
+    sh.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.03, 0.04, 0.06))
+    sh.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.6)
+    reader = UsdShade.Shader.Define(stage, f"/World/{name}_mat/Reader")
+    reader.CreateIdAttr("UsdPrimvarReader_float2")
+    reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
+    tex = UsdShade.Shader.Define(stage, f"/World/{name}_mat/Tex")
+    tex.CreateIdAttr("UsdUVTexture")
+    tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath(tex_path))
+    tex.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(reader.ConnectableAPI(), "result")
+    tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+    sh.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(tex.ConnectableAPI(), "rgb")
+    mat.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), "surface")
+    UsdShade.MaterialBindingAPI(gl).Bind(mat)
+    UsdGeom.Gprim(gl).CreateDoubleSidedAttr().Set(True)
+    UsdGeom.Imageable(gl).MakeInvisible()
+    print(f"[screen] {name} hidden (texture {tex_path})")
+
+
 def add_a1_effects(stage):
     """内建效果 prim：瓶内液面（可见）+ 棱镜液滴（隐藏）+ 滴管尖液柱（隐藏）
     + 屏幕读数发光（隐藏）。"""
@@ -211,25 +363,15 @@ def add_a1_effects(stage):
     UsdGeom.Imageable(fill).MakeInvisible()
     print(f"[effect] DropperFill frustum hidden at tip (r {FILL_R} h {FILL_H})")
 
-    # 屏幕读数发光：倾斜矩形贴合屏幕前表面（后倾 ~19.5°），初始隐藏，读数时显示
-    cx, cy, cz = SCREEN_C
-    upx, upy, upz = SCREEN_UP
-    hw, hh = 0.05, 0.02          # 半宽 5cm / 半高 2cm
-    pts = [
-        Gf.Vec3f(cx - hw, cy - hh * upy, cz - hh * upz),
-        Gf.Vec3f(cx + hw, cy - hh * upy, cz - hh * upz),
-        Gf.Vec3f(cx + hw, cy + hh * upy, cz + hh * upz),
-        Gf.Vec3f(cx - hw, cy + hh * upy, cz + hh * upz),
-    ]
-    gl = UsdGeom.Mesh.Define(stage, "/World/ScreenGlow")
-    gl.CreatePointsAttr(pts)
-    gl.CreateFaceVertexCountsAttr([4])
-    gl.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
-    gl.CreateSubdivisionSchemeAttr("none")
-    add_material(stage, gl.GetPrim(), (0.9, 0.95, 1.0), 1.0,
-                 emissive=(0.15, 0.85, 0.45), double_sided=True)
-    UsdGeom.Imageable(gl).MakeInvisible()
-    print(f"[effect] ScreenGlow hidden at screen front {SCREEN_C}")
+    # 屏幕读数（初始隐藏，task._ButtonLifecycle 切换）：ScreenMeasuring_<i> 测量中进度条
+    # 多帧（红条 0%→100%，task 测量期逐帧切显）→ ScreenGlow_<key> 完成读数（绿满条 + 对应
+    # 档位 nD，task 按 cfg.n_d 选一个）
+    for i in range(PROGRESS_STEPS):
+        add_screen_tex_quad(stage, f"ScreenMeasuring_{i:02d}",
+                            SCREEN_TEX_MEASURING_TPL.format(step=i))
+    for n_d in N_D_OPTIONS:
+        add_screen_tex_quad(stage, f"ScreenGlow_{N_D_KEY(n_d)}",
+                            f"textures/screen_result_{N_D_KEY(n_d)}.png")
 
 
 def add_env_light(stage):
@@ -350,6 +492,17 @@ def fix_dropper_materials(st2):
         print(f"[mat] Dropper glass mesh not found for doubleSided, skip")
 
 
+def fix_old_cover(st2):
+    """隐藏资产自带坏 cover（实测悬浮在机器后方 y 0.277..0.310 / z 0.843..0.874，
+    离棱镜 0.18m，rotateX -65→0 甩到 z≈1.05 不会合平）。合盖由重建的 /Cover 承担。"""
+    c = st2.GetPrimAtPath("/World/Refractometer/cover")
+    if c.IsValid():
+        UsdGeom.Imageable(c).MakeInvisible()
+        print("[cover] hid broken asset cover /World/Refractometer/cover")
+    else:
+        print("[cover] /World/Refractometer/cover not found, skip")
+
+
 def verify(st2):
     """自检：打印各器材世界 bbox，断言布局关系：
     折光仪贴台面（棱镜顶 0.9175、盖保留 -50° 掀开态）、样品瓶贴台面（塞保留未删）、
@@ -357,7 +510,9 @@ def verify(st2):
     初始隐藏。"""
     bc = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"])
     names = ["Refractometer", "SampleBottle", "TestTubeRack", "Dropper",
-             "SampleLiquid", "PrismDrop", "DropperFill", "DropperDrop", "ScreenGlow"]
+             "SampleLiquid", "PrismDrop", "DropperFill", "DropperDrop"]
+    names += [f"ScreenMeasuring_{i:02d}" for i in range(PROGRESS_STEPS)]
+    names += [f"ScreenGlow_{N_D_KEY(v)}" for v in N_D_OPTIONS]
     boxes = {}
     for name in names:
         p = st2.GetPrimAtPath(f"/World/{name}")
@@ -374,20 +529,64 @@ def verify(st2):
     rmn, rmx = boxes["Refractometer"]
     assert abs(rmn[2] - TABLE_TOP) < 0.002, f"refractometer base z {rmn[2]} != table {TABLE_TOP}"
     assert rmx[2] > PRISM_TOP_Z, f"refractometer top {rmx[2]} below prism top {PRISM_TOP_Z}"
-    # 盖保留（资产已内置 -50° 掀开态，A1 无掀盖动作、末步合盖由 task 驱动）；棱镜 prim 存在且坐标正确
-    cover = st2.GetPrimAtPath("/World/Refractometer/cover")
-    assert cover.IsValid(), "cover prim missing (A1 keeps it for the close step)"
+    # 重建的合盖翻板：铰链在 well 后沿 (0.30,0.127,0.9215)，掀开态立起后仰
+    # （旧资产坏 cover 已隐藏，本 verify 不检查它）
     prism = st2.GetPrimAtPath("/World/Refractometer/prism")
     assert prism.IsValid(), "prism prim missing"
-    cr = bc.ComputeWorldBound(cover).ComputeAlignedRange()
+    ncv = st2.GetPrimAtPath("/World/Refractometer/Cover")
+    assert ncv.IsValid(), "new cover prim missing (A1 hinged cover for close step)"
+    nbm = st2.GetPrimAtPath("/World/Refractometer/Cover/Disc")
+    assert nbm.IsValid(), "cover disc missing"
+    ncr = bc.ComputeWorldBound(ncv).ComputeAlignedRange()
+    ncmn, ncmx = ncr.GetMin(), ncr.GetMax()
+    print(f"[verify] newCover min({ncmn[0]:+.4f},{ncmn[1]:+.4f},{ncmn[2]:+.4f}) "
+          f"max({ncmx[0]:+.4f},{ncmx[1]:+.4f},{ncmx[2]:+.4f})")
     pr = bc.ComputeWorldBound(prism).ComputeAlignedRange()
-    print(f"[verify] cover  min({cr.GetMin()[0]:+.4f},{cr.GetMin()[1]:+.4f},{cr.GetMin()[2]:+.4f}) "
-          f"max({cr.GetMax()[0]:+.4f},{cr.GetMax()[1]:+.4f},{cr.GetMax()[2]:+.4f})")
     print(f"[verify] prism  min({pr.GetMin()[0]:+.4f},{pr.GetMin()[1]:+.4f},{pr.GetMin()[2]:+.4f}) "
           f"max({pr.GetMax()[0]:+.4f},{pr.GetMax()[1]:+.4f},{pr.GetMax()[2]:+.4f})")
     assert abs(pr.GetMax()[2] - PRISM_TOP_Z) < 0.002, f"prism top {pr.GetMax()[2]} != {PRISM_TOP_Z}"
     assert abs((pr.GetMin()[0] + pr.GetMax()[0]) / 2 - REFRACT_X) < 0.003, "prism x center off"
     assert abs((pr.GetMin()[1] + pr.GetMax()[1]) / 2 - PRISM_CY) < 0.003, "prism y center off"
+    # 翻盖（open 态，rotateX=-55，板绕铰链后沿 X 轴立起）：
+    #   x 中心 0.30；板前缘（-y）随旋转抬到 z≈0.950、y≈0.1075，铰链端 y=0.127 贴 well 后沿。
+    assert abs((ncmn[0] + ncmx[0]) / 2 - REFRACT_X) < 0.005, "new cover x center off"
+    assert ncmn[1] < REFRACT_Y + 0.112, f"new cover open front {ncmn[1]} not raised (-y)"
+    assert abs(ncmx[1] - (REFRACT_Y + 0.127)) < 0.006, f"new cover hinge y {ncmx[1]} off 0.127"
+    assert ncmx[2] > TABLE_TOP + 0.148, f"new cover open top {ncmx[2]} not raised (open state)"
+    # 合平（rotateX=0）必须正好盖住 well（x 0.283..0.317 / y 0.093..0.127 / z 0.9215..0.9235）：
+    # 这才是 合盖 的目标位姿。临时拨 0 断言后恢复 -55（st2 内存副本，最后才 Save）。
+    for op in UsdGeom.Xformable(ncv).GetOrderedXformOps():
+        if "rotateX" in op.GetName():
+            op.Set(0.0)
+    bc2 = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"])
+    ccr = bc2.ComputeWorldBound(nbm).ComputeAlignedRange()
+    cmn, cmx = ccr.GetMin(), ccr.GetMax()
+    print(f"[verify] cover CLOSED min({cmn[0]:+.4f},{cmn[1]:+.4f},{cmn[2]:+.4f}) "
+          f"max({cmx[0]:+.4f},{cmx[1]:+.4f},{cmx[2]:+.4f})")
+    assert abs((cmn[0] + cmx[0]) / 2 - REFRACT_X) < 0.005, "closed cover x center off"
+    assert abs(cmn[1] - (REFRACT_Y + 0.093)) < 0.006, f"closed cover y min {cmn[1]} off well front 0.093"
+    assert abs(cmx[1] - (REFRACT_Y + 0.127)) < 0.006, f"closed cover y max {cmx[1]} off hinge 0.127"
+    assert abs(cmn[2] - (TABLE_TOP + 0.1215)) < 0.004, f"closed cover z min {cmn[2]} off hinge z 0.9215"
+    assert abs(cmx[2] - (TABLE_TOP + 0.1215 + COVER_THK)) < 0.004, \
+        f"closed cover z max {cmx[2]} off 0.9235"
+    for op in UsdGeom.Xformable(ncv).GetOrderedXformOps():
+        if "rotateX" in op.GetName():
+            op.Set(COVER_OPEN_ANGLE)
+    # 旧坏 cover 已隐藏
+    ocv = st2.GetPrimAtPath("/World/Refractometer/cover")
+    assert ocv.IsValid(), "asset cover should still exist (hidden)"
+    assert UsdGeom.Imageable(ocv).ComputeVisibility() == "invisible", \
+        "asset cover should be hidden (broken, replaced by new hinged cover)"
+
+    # 机顶测量按钮（棱镜正前方 -y 6cm、凸起 6mm，机械臂滴样后按下触发测量）
+    btn = st2.GetPrimAtPath("/World/Refractometer/start_button")
+    assert btn.IsValid(), "start_button prim missing (A1 top measure button)"
+    br = bc.ComputeWorldBound(btn).ComputeAlignedRange()
+    bmn, bmx = br.GetMin(), br.GetMax()
+    assert abs((bmn[0] + bmx[0]) / 2 - REFRACT_X) < 0.005, "start button x center off"
+    assert abs((bmn[1] + bmx[1]) / 2 - (REFRACT_Y + 0.05)) < 0.004, "start button y center off"
+    assert abs(bmn[2] - TABLE_TOP - 0.115) < 0.002, f"start button bottom {bmn[2]} not on machine top"
+    assert bmx[2] > TABLE_TOP + 0.120, f"start button top {bmx[2]} below 0.920"
 
     # 样品瓶：贴台面，塞保留（未删），瓶口 rim 0.870
     bmn, bmx = boxes["SampleBottle"]
@@ -425,11 +624,24 @@ def verify(st2):
     nd = sum(1 for c in dd.GetChildren() if c.GetTypeName() == "Sphere")
     assert nd == DROPS_PER_GROUP, f"DropperDrop spheres {nd} != {DROPS_PER_GROUP}"
     assert UsdGeom.Imageable(dd).ComputeVisibility() == "invisible", "DropperDrop should be hidden"
-    sg = st2.GetPrimAtPath("/World/ScreenGlow")
-    assert sg.IsValid(), "ScreenGlow missing"
-    assert UsdGeom.Imageable(sg).ComputeVisibility() == "invisible", "ScreenGlow should be hidden"
+    # 屏幕读数 prim：测量中 ScreenMeasuring_<i> 多帧 + 每档完成读数 ScreenGlow_<key>，
+    # 初始都隐藏、各带 st UV + 贴图（headless 运行时改材质不渲染 → 预烘焙，task 逐帧/按档位切显）
+    for sname in ([f"ScreenMeasuring_{i:02d}" for i in range(PROGRESS_STEPS)]
+                  + [f"ScreenGlow_{N_D_KEY(v)}" for v in N_D_OPTIONS]):
+        sp = st2.GetPrimAtPath(f"/World/{sname}")
+        assert sp.IsValid(), f"{sname} missing"
+        assert UsdGeom.Imageable(sp).ComputeVisibility() == "invisible", f"{sname} should be hidden"
+        sr = bc.ComputeWorldBound(sp).ComputeAlignedRange()
+        assert abs(sr.GetMax()[0] - (SCREEN_C[0] + 0.05)) < 0.002, f"{sname} width off (screen quad)"
+        st_pv = UsdGeom.PrimvarsAPI(sp).GetPrimvar("st")
+        assert st_pv.GetAttr().IsValid(), f"{sname} st UV primvar missing"
+    for tex in ([SCREEN_TEX_MEASURING_TPL.format(step=i) for i in range(PROGRESS_STEPS)]
+                + [f"textures/screen_result_{N_D_KEY(v)}.png" for v in N_D_OPTIONS]):
+        assert os.path.exists(os.path.join(SCENE_DIR, tex)), f"screen texture missing: {tex}"
     print(f"[verify] OK: 折光仪贴台(棱镜顶0.9175/盖保留-50°掀开) / 瓶贴台(塞保留) / 架贴台 / 滴管插孔(0.806) "
-          f"/ 瓶液面可见+棱镜滴隐藏+滴管液柱隐藏+滴球{nd}隐藏+读数发光隐藏")
+          f"/ 瓶液面可见+棱镜滴隐藏+滴管液柱隐藏+滴球{nd}隐藏+"
+          f"屏幕{PROGRESS_STEPS + len(N_D_OPTIONS)}张隐藏"
+          f"(进度条{PROGRESS_STEPS}帧+每档nD读数)+各带st UV+贴图存在")
 
 
 def main():
@@ -437,10 +649,12 @@ def main():
     if not os.path.exists(os.path.join(SCENE_DIR, "textures", "env_bright.png")):
         shutil.copy(ENV_TEX_SRC, os.path.join(SCENE_DIR, "textures", "env_bright.png"))
         print(f"[env] copied env_bright.png -> {os.path.join(SCENE_DIR, 'textures')}")
+    make_screen_textures(os.path.join(SCENE_DIR, "textures"))
 
     stage = Usd.Stage.Open(LAB_CLEAN)
     for name, asset, t, scale, rot180 in EQUIP:
         add_equip(stage, name, asset, t, scale, rot180)
+    add_cover(stage)             # 重建合盖翻板（铰链 well 后沿）
     add_a1_effects(stage)
     add_dropper_drops(stage)
     add_env_light(stage)
@@ -450,6 +664,7 @@ def main():
     remove_asset_env_lights(st2)
     brighten_lights(st2)
     fix_env_light(st2)
+    fix_old_cover(st2)           # 隐藏资产自带坏 cover（替换成重建翻盖）
     fix_bottle_materials(st2)    # 瓶玻璃透明化（**塞保留不透明**）
     fix_dropper_materials(st2)   # 滴管玻璃透明化（管内 DropperFill 液柱透出）
     verify(st2)

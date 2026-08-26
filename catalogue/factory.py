@@ -18,6 +18,8 @@ from catalogue.d_wetchem.d2s_water_solubility.task import D2SWaterSolubilityTask
 from catalogue.d_wetchem.d2s_water_solubility.controller import D2SWaterSolubilityTaskController
 from catalogue.d_wetchem.d3l_acid_reagent.task import D3LAcidReagentTask
 from catalogue.d_wetchem.d3l_acid_reagent.controller import D3LAcidReagentTaskController
+from catalogue.d_wetchem.d3s_acid_reagent.task import D3SAcidReagentTask
+from catalogue.d_wetchem.d3s_acid_reagent.controller import D3SAcidReagentTaskController
 from catalogue.d_wetchem.d4l_alkali_reagent.task import D4LAlkaliReagentTask
 from catalogue.d_wetchem.d4l_alkali_reagent.controller import D4LAlkaliReagentTaskController
 from catalogue.d_wetchem.d2l_water_solubility.task import D2LWaterSolubilityTask
@@ -26,6 +28,12 @@ from catalogue.b_thermal.b2_alcohol_heat_liquid.task import B2AlcoholHeatLiquidT
 from catalogue.b_thermal.b2_alcohol_heat_liquid.controller import B2AlcoholHeatLiquidTaskController
 from catalogue.e_physical.e1_ph_testpaper.task import E1PhTestpaperTask
 from catalogue.e_physical.e1_ph_testpaper.controller import E1PhTestpaperTaskController
+from catalogue.e_physical.e2_magnetic.task import E2MagneticTask
+from catalogue.e_physical.e2_magnetic.controller import E2MagneticTaskController
+from catalogue.a_instrument.a1_refractometer.task import A1RefractometerTask
+from catalogue.a_instrument.a1_refractometer.controller import A1RefractometerTaskController
+from catalogue.d_wetchem.d6_testpaper_gas.task import D6TestpaperGasTask
+from catalogue.d_wetchem.d6_testpaper_gas.controller import D6TestpaperGasTaskController
 
 
 def register_catalogue_actions() -> None:
@@ -58,6 +66,10 @@ def register_catalogue_actions() -> None:
     register_task("d3l_acid_reagent", D3LAcidReagentTask)
     register_controller("d3l_acid_reagent", D3LAcidReagentTaskController)
 
+    # D3-S 固体样品 + 酸性试剂滴加反应（D2-S 挖粉 + 酸滴管滴酸 + 试管震荡，药匙/粉/管坐标同 d2s）
+    register_task("d3s_acid_reagent", D3SAcidReagentTask)
+    register_controller("d3s_acid_reagent", D3SAcidReagentTaskController)
+
     # D4-L 碱性试剂滴加反应（碱瓶替换酸瓶 + 橡胶塞动态拔/盖倒放 + 两支滴管滴加）
     register_task("d4l_alkali_reagent", D4LAlkaliReagentTask)
     register_controller("d4l_alkali_reagent", D4LAlkaliReagentTaskController)
@@ -73,3 +85,15 @@ def register_catalogue_actions() -> None:
     # E1 pH 试纸检测（catalogue 内原生：Lula IK + 平移跟随元动作 + pH 色斑变色接口）
     register_task("e1_ph_testpaper", E1PhTestpaperTask)
     register_controller("e1_ph_testpaper", E1PhTestpaperTaskController)
+
+    # E2 磁性检测（catalogue 内原生：Lula IK + 药匙舀粉倒粉 + 磁铁检测 + 磁性颗粒吸起动画）
+    register_task("e2_magnetic", E2MagneticTask)
+    register_controller("e2_magnetic", E2MagneticTaskController)
+
+    # A1 折光率测量（catalogue 内原生：Lula IK + 取瓶塞直拔 + 滴管吸样滴样到棱镜）
+    register_task("a1_refractometer", A1RefractometerTask)
+    register_controller("a1_refractometer", A1RefractometerTaskController)
+
+    # D6 试纸气体检测（通用；catalogue 内原生：试纸夹预夹 + 滴管润湿 + 移试管观察）
+    register_task("d6_testpaper_gas", D6TestpaperGasTask)
+    register_controller("d6_testpaper_gas", D6TestpaperGasTaskController)

@@ -8,7 +8,7 @@
 - 去瓶塞（样品瓶已开瓶，瓶口 rim=0.070 → 世界 0.870）
 - 内建效果 prim：SampleLiquid（样品瓶体积，可见）/TubeDrops（管内液体）
   /LayerColumn（样品色分层柱，震荡前分层态）/Cloud（浑浊云，cloudy 档）
-  /WashDrops（洗瓶出水串滴），后四初始隐藏（task 动画驱动）
+  /WaterStream（洗瓶挤水水流），后四初始隐藏（task 动画驱动）
 
 布局（2026-08-24 对齐 D2-S：底座 [-0.15,0.05,0.71]，工作区右移 x≈0.66；洗瓶/样品瓶/试管架
 沿 y 共线（x≈0.68），样品瓶在洗瓶与架之间；滴管顶替 D2-S 药匙的架中心孔抓取位）：
@@ -16,7 +16,7 @@
   TestTube      (0.659, 0.241, 0.806)  架最近侧孔（D2-S 试管位，管口 z=0.9593）
   DropperSample (0.6993, 0.3608, 0.806)  架中心孔（D2-S 药匙位，0.904m 已验证可达）
   SampleBottle  (0.6809, -0.10)  液体样品瓶（与洗瓶/架 y 共线，两者之间）
-  WashBottle    (0.6809, -0.2241)  洗瓶（对齐 D2-S 坐标，绕 Z +90° → 瓶嘴 -Y）
+  WashBottle    (0.370, 0.525)  洗瓶（2026-08-25 对齐 D2-S：绕 Z -180° → 红嘴朝 +X）
 
 混合现象三档（2026-08-24 用户确认：震荡前先显示分层，震荡步骤才分化现象）：
   - 震荡前：管内顶部出现样品色分层柱 LayerColumn（顶贴液面、向下 LAYER_H）
@@ -53,46 +53,84 @@ EQUIP = [
     # 样品瓶：与洗瓶/试管架沿 y 共线（x≈0.68），位洗瓶与架之间；y=-0.10 低于底座 y=0.05
     # 避贴底座失效区（相对 y=-0.15，与洗瓶同侧）。
     ("SampleBottle", "sample_bottle.usd", (0.6809, -0.10, None), None, None),
-    # 洗瓶：对齐 D2-S 坐标（0.6809,-0.2241），绕 Z +90° 后瓶嘴朝 -Y（原资产瓶嘴 -X）。
-    # 嘴尖（资产局部 ≈(-0.1055,0,0.044)，Red 材质）绕 Z +90° → 世界 ≈(0.6809,-0.3296,0.844)。
-    # 瓶身中心在原点 +z 0.084（Ø64×168mm）；②注水动作（WashBottlePass）以嘴尖世界坐标为基准。
-    ("WashBottle", "wash_bottle.usd", (0.6809, -0.2241, None), None, (0, 0, 90)),
+    # 洗瓶：2026-08-25 对齐 D2-S 修改——translate (0.370,0.525,0.80)，绕 Z -180°（原资产瓶嘴
+    # -X 转 180° 翻到 +X，红嘴朝 +X）。红嘴中心 (0.476,0.525,0.844)、嘴尖相对瓶心 +X 0.106。
+    # 瓶身 Mesh_006=6.4×6.4×16.8cm 方柱，z 0.8001-0.9683。②注水动作（WashBottlePass）以
+    # 嘴尖世界坐标（抬 15cm 后 (0.649,0.231,0.994)）为挤水基准。
+    ("WashBottle", "wash_bottle.usd", (0.370, 0.525, 0.80), None, (0, 0, -180)),
 ]
 
 # 液体材质配方（复用 d3l 最逼真配方）：
-# WATER = 蒸馏水（浅蓝，透 0.50 隔玻璃可见）；CLOUD_MILK = 浑浊云（乳白不透明）
-WATER = dict(color=(0.72, 0.85, 1.0), opacity=0.50, roughness=0.05, ior=1.33)
+# WATER = 蒸馏水（近无色透明：浅白微蓝 + 低透 0.30，隔玻璃看是"清水"而非灰块；ior 1.33 折射
+#   仍隐约可见液面）。旧值 (0.72,0.85,1.0) 透 0.50 太实，被 CylinderLight 12000 洗成灰。
+# CLOUD_MILK = 浑浊云（乳白不透明）
+WATER = dict(color=(0.90, 0.95, 1.0), opacity=0.30, roughness=0.05, ior=1.33)
 CLOUD_MILK = dict(color=(0.82, 0.80, 0.74), opacity=1.0, roughness=0.85, emissive=(1.0, 0.95, 0.80))
-# 滴管内液柱 / 洗瓶出水滴 / 滴落液滴：更亮更不透（op0.9 亮蓝），透过透明玻璃清晰可见
-FILL = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
-DROP = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)
-# 液体样品色（固定淡橙；近黑 diffuse + 橙 emissive 单通道主导才出饱和色——纯 diffuse
-# 橙被 CylinderLight 12000 洗成灰粉，flametest-yellow-recipe）。opacity 0.95 近不透。
-SAMPLE_LIQ = dict(color=(0.30, 0.18, 0.06), opacity=0.95, roughness=0.05, ior=1.33,
-                  emissive=(2.0, 1.0, 0.3))
+# 样品液颜色（2026-08-25 用户：样品色改为输入决定，同 d3l liquid_color 方法）。headless 运行时
+# 改材质不渲染（记忆 headless-render-ignores-materials），故为每个候选色预烘焙一组样品色 prim
+# （SampleLiquid/LayerColumn/DropperFill/DropperDrop 各 <色>），task 按 cfg.sample_color show
+# 对应一组（其余隐藏）。clear=无色样品（淡灰白近透明，仍稍见瓶内液面）；默认 blue。
+# 2026-08-25 修「气泡」：旧值照搬 flametest-yellow-recipe（近黑 diffuse + 强 emissive ~2.2）是
+# 焰色反应用的霓虹发光配方，用在液体上让液柱自发光像霓虹灯/气泡（震荡时底部「很多动的」）。
+# 改「近真实液体」：亮一点的 diffuse（显固有色）+ 极弱单通道 emissive（~0.5 只保一点点色，
+# 不再霓虹）。纯 diffuse 会被 CylinderLight 12000 洗灰粉，故仍留弱 emissive 兜底。
+SAMPLE_COLOR_NAMES = ("clear", "red", "blue", "green", "purple")
+SAMPLE_COLORS = {
+    "clear":  dict(color=(0.85, 0.90, 0.95), opacity=0.70, roughness=0.05, ior=1.33, emissive=None),
+    "red":    dict(color=(0.40, 0.10, 0.10), opacity=0.95, roughness=0.05, ior=1.33, emissive=(0.5, 0.06, 0.06)),
+    "blue":   dict(color=(0.08, 0.18, 0.40), opacity=0.95, roughness=0.05, ior=1.33, emissive=(0.06, 0.15, 0.5)),
+    "green":  dict(color=(0.08, 0.40, 0.10), opacity=0.95, roughness=0.05, ior=1.33, emissive=(0.06, 0.5, 0.06)),
+    "purple": dict(color=(0.35, 0.08, 0.40), opacity=0.95, roughness=0.05, ior=1.33, emissive=(0.4, 0.06, 0.5)),
+}
 
-# 内建效果 prim: (name, type, radius, height, translate, 材质配方 dict, visible)
-# SampleLiquid = 样品瓶内半瓶液体（cyl 从瓶底 0.80 到液面 0.84）
-# TubeDrops   = 管内液体（0.009 贴管壁 Ø19.2 内缘；task 逐滴长高）
-# LayerColumn = 样品色分层柱（0.0086 略小于液柱防穿模；震荡前分层态，miscible 长满）
-# Cloud       = 浑浊云（0.0089 罩在液柱内不穿模；cloudy 档震荡盖满、停震褪去）
-# DropperFill = 滴管尖内吸起的**样品**液柱（skill 坑 18：尖端容器内腔是锥形，直圆柱会
-# 悬空穿模）。滴管玻璃体实测：尖嘴 Ø1.6mm(z=0) → 30mm 处 Ø8mm → 直管 Ø8mm 到胶头。
-# 用截锥 mesh：下底 Ø2mm(尖) → 上底 Ø7mm(体)，高 60mm（覆盖收窄段+直管），柱底贴尖嘴
-# （task._set_fill_follow 逐帧跟随）。颜色 = 样品色（吸的是样品液，不是水）。
+# miscible 终点「均一混液」材质（稀释后**浅色但仍清晰显色**）。旧「浅色版」= 亮 diffuse
+# (0.28,0.45,0.75) + 弱非主导 emissive + opacity 0.85，被 CylinderLight 12000 洗成无色透明
+# （用户 2026-08-25 二反馈：蓝色溶解完还是无色透明）。根因与「气泡」修复同源：高亮度 diffuse
+# 反光强被灯光洗白，emissive 又不主导压不住。改回**纯样品同款配方**（近黑 diffuse 防洗白 +
+# 单通道主导 emissive），只把 emissive 抬到 ~0.8（比纯样品 0.5 更亮=稀释更浅），opacity 提到
+# 0.95（与可见的纯样品柱一致，不再半透漏背景）。蓝色终点 = 浅天空蓝。
+MIXED_COLORS = {
+    "clear":  dict(color=(0.90, 0.93, 1.0), opacity=0.85, roughness=0.05, ior=1.33, emissive=None),
+    "red":    dict(color=(0.38, 0.10, 0.10), opacity=0.95, roughness=0.05, ior=1.33, emissive=(0.80, 0.10, 0.10)),
+    "blue":   dict(color=(0.08, 0.18, 0.40), opacity=0.95, roughness=0.05, ior=1.33, emissive=(0.12, 0.28, 0.80)),
+    "green":  dict(color=(0.08, 0.40, 0.10), opacity=0.95, roughness=0.05, ior=1.33, emissive=(0.12, 0.80, 0.12)),
+    "purple": dict(color=(0.35, 0.08, 0.40), opacity=0.95, roughness=0.05, ior=1.33, emissive=(0.64, 0.12, 0.80)),
+}
+
+# 内建效果 prim（不随样品色变化）: (name, type, radius, height, translate, 材质配方 dict, visible)
+# TubeDrops = 管内**水**柱（0.009 贴管壁 Ø19.2 内缘；task 注水后显示/液面逐滴涨）
+# Cloud     = 浑浊云（0.0089 罩在液柱内不穿模；cloudy 档震荡盖满、停震褪去）
+# 样品色 prim（SampleLiquid/LayerColumn/DropperFill/DropperDrop）随 sample_color 预烘焙
+# 多组变体，见 add_sample_color_variants()。
 EFFECTS = [
-    ("SampleLiquid", "cylinder", 0.014, 0.040, (0.6809, -0.10, 0.820), SAMPLE_LIQ, True),
     ("TubeDrops", "cylinder", 0.009, 0.030, (0.659, 0.241, 0.821), WATER, False),
-    ("LayerColumn", "cylinder", 0.0086, 0.0, (0.659, 0.241, 0.806), SAMPLE_LIQ, False),
     ("Cloud", "cylinder", 0.0089, 0.0, (0.659, 0.241, 0.806), CLOUD_MILK, False),
-    ("DropperFill", "frustum", (0.001, 0.0035), 0.060, (0.6993, 0.3608, 0.806), SAMPLE_LIQ, False),
 ]
+# 样品色 prim 几何（随 sample_color 预烘焙 <色> 变体，见 add_sample_color_variants）：
+# SampleLiquid = 样品瓶内半瓶液体（cyl r=0.014 h=0.040，瓶底 0.80→液面 0.84）
+# LayerColumn = 样品色分层柱（r=0.0086 略小于液柱防穿模；震荡前分层态，miscible 长满）
+# DropperFill = 滴管尖内吸起的样品液柱（截锥，skill 坑 18：尖端内腔锥形须锥台；下底 r0.001
+#   →上底 r0.0035 h=0.060，柱底贴尖嘴，task._set_fill_follow 逐帧跟随）
+# DropperDrop = 挤胶头滴落串（父 Xform + 4 球 r=0.003）
 LAYER_R = 0.0086   # 分层柱半径（略小于液柱 0.009 防穿模）
 CLOUD_R = 0.0089   # 浑浊云半径（同 d3l，罩在液柱内）
+SAMPLE_LIQ_R, SAMPLE_LIQ_H = 0.014, 0.040
+SAMPLE_LIQ_T = (0.6809, -0.10, 0.820)
+LAYER_T = (0.659, 0.241, 0.806)
+FILL_R, FILL_H, FILL_T = (0.001, 0.0035), 0.060, (0.6993, 0.3608, 0.806)
+DROP_R, DROP_T = 0.003, (0.659, 0.241, 0.820)
 
-# 洗瓶出水串滴：一次挤压 = WASH_DROPS_PER_GROUP 滴水连续坠落（2-3mL，成串滴）。
-# WashDrops 是父 Xform，task 动画驱动 Drop_0.._N 各球。
-WASH_DROPS_PER_GROUP = 4
+# 挤胶头滴落串（DropperDrop）：一次挤压 = DROPPER_DROPS 滴样品液连续坠落（成串滴）。
+# DropperDrop 是父 Xform，task 动画驱动 Drop_0.._N 各球。
+DROPPER_DROPS = 4
+
+# 洗瓶挤水水流（WaterStream）：父 Xform + WATER_DROPS 颗小水滴球（r=0.0015 水蓝），沿抛物线
+# 从红嘴尖 (0.649,0.231,0.994) 坠入试管口 (0.659,0.241,0.9593)。task._step_water_anim 挤水时
+# 逐颗错帧发射、松爪收尾（仿 D2-S）。整体初始隐藏。
+WATER_DROPS = 16
+WATER_DROP_R = 0.0015
+WATER_DROP_COLOR = (0.35, 0.65, 0.95)
+WATER_START = (0.649, 0.231, 0.994)
 
 
 def add_material(stage, prim, diffuse, opacity, roughness=0.5, ior=None, double_sided=False,
@@ -195,34 +233,69 @@ def add_effects(stage):
         print(f"[effect] {name} {'visible' if visible else 'hidden'} at {t}")
 
 
-def add_wash_drops(stage):
-    """洗瓶出水串滴：/World/WashDrops 父 Xform + Drop_0.._N 亮蓝小球（r=0.003）。
-    task._on_wash_squeeze 每次挤生成一串、动画逐滴错帧坠落。整体初始隐藏。"""
-    g = UsdGeom.Xform.Define(stage, "/World/WashDrops")
-    for i in range(WASH_DROPS_PER_GROUP):
-        s = UsdGeom.Sphere.Define(stage, f"/World/WashDrops/Drop_{i}")
-        s.CreateRadiusAttr(0.003)
-        s.AddTranslateOp().Set(Gf.Vec3d(0.659, 0.241, 0.820))
-        add_material(stage, s.GetPrim(), DROP["color"], DROP["opacity"],
-                     roughness=DROP["roughness"], ior=DROP["ior"], double_sided=True)
+def add_water_stream(stage):
+    """洗瓶挤水水流：/World/WaterStream 父 Xform + WATER_DROPS 颗水蓝小球（r=0.0015）。
+    task._step_water_anim 挤水时逐颗错帧发射、沿抛物线坠落，松爪收尾。整体初始隐藏；
+    home 位置 = 红嘴尖（task 动画才写实际坠落坐标）。"""
+    g = UsdGeom.Xform.Define(stage, "/World/WaterStream")
+    for i in range(WATER_DROPS):
+        s = UsdGeom.Sphere.Define(stage, f"/World/WaterStream/Drop_{i}")
+        s.CreateRadiusAttr(WATER_DROP_R)
+        s.AddTranslateOp().Set(Gf.Vec3d(*WATER_START))
+        add_material(stage, s.GetPrim(), WATER_DROP_COLOR, 0.90,
+                     roughness=0.05, ior=1.33, double_sided=True)
     UsdGeom.Imageable(g).MakeInvisible()
-    print(f"[effect] WashDrops hidden ({WASH_DROPS_PER_GROUP} drop spheres)")
+    print(f"[effect] WaterStream hidden ({WATER_DROPS} water drop spheres)")
 
 
-def add_dropper_drops(stage):
-    """挤胶头滴落串：/World/DropperDrop 父 Xform + Drop_0.._N 样品色小球（r=0.003）。
-    task._on_drop 每次挤生成一串、_step_drop_anim 逐滴错帧坠落（同 D4-L）。整体初始隐藏；
-    home 位置随意（试管口），task 动画才写实际坐标。滴的是样品液 → 样品色。"""
-    g = UsdGeom.Xform.Define(stage, "/World/DropperDrop")
-    for i in range(WASH_DROPS_PER_GROUP):
-        s = UsdGeom.Sphere.Define(stage, f"/World/DropperDrop/Drop_{i}")
-        s.CreateRadiusAttr(0.003)
-        s.AddTranslateOp().Set(Gf.Vec3d(0.659, 0.241, 0.820))
-        add_material(stage, s.GetPrim(), SAMPLE_LIQ["color"], SAMPLE_LIQ["opacity"],
-                     roughness=SAMPLE_LIQ["roughness"], ior=SAMPLE_LIQ["ior"],
-                     emissive=SAMPLE_LIQ["emissive"], double_sided=True)
-    UsdGeom.Imageable(g).MakeInvisible()
-    print(f"[effect] DropperDrop hidden ({WASH_DROPS_PER_GROUP} sample drop spheres)")
+def add_sample_color_variants(stage):
+    """样品色 prim 预烘焙（2026-08-25 用户：样品色输入决定，同 d3l 方法）。为每个候选色建
+    一组样品色 prim（SampleLiquid_<色>/LayerColumn_<色>/DropperFill_<色>/DropperDrop_<色>），
+    全隐藏；task 按 cfg.sample_color show 对应一组（其余隐藏），动画用同一组变体。headless
+    运行时改材质不渲染，故预烘焙多组 + visibility 切换（见 SAMPLE_COLORS 注释）。"""
+    for cname, m in SAMPLE_COLORS.items():
+        translucent = m.get("opacity", 1.0) < 1.0
+        # 样品瓶内液体（cyl，瓶底 0.80→液面 0.84）
+        cy = UsdGeom.Cylinder.Define(stage, f"/World/SampleLiquid_{cname}")
+        cy.CreateRadiusAttr(SAMPLE_LIQ_R); cy.CreateHeightAttr(SAMPLE_LIQ_H); cy.CreateAxisAttr("Z")
+        cy.AddTranslateOp().Set(Gf.Vec3d(*SAMPLE_LIQ_T))
+        add_material(stage, cy.GetPrim(), m["color"], m["opacity"],
+                     roughness=m.get("roughness", 0.5), ior=m.get("ior"),
+                     emissive=m.get("emissive"), double_sided=translucent)
+        # 分层柱（震荡前分层态，miscible 长满）
+        lc = UsdGeom.Cylinder.Define(stage, f"/World/LayerColumn_{cname}")
+        lc.CreateRadiusAttr(LAYER_R); lc.CreateHeightAttr(0.0); lc.CreateAxisAttr("Z")
+        lc.AddTranslateOp().Set(Gf.Vec3d(*LAYER_T))
+        add_material(stage, lc.GetPrim(), m["color"], m["opacity"],
+                     roughness=m.get("roughness", 0.5), ior=m.get("ior"),
+                     emissive=m.get("emissive"), double_sided=translucent)
+        # miscible 终点均一混液（稀释样品色；满管高度 task 运行时设）
+        mx = UsdGeom.Cylinder.Define(stage, f"/World/MixedLiquid_{cname}")
+        mx.CreateRadiusAttr(LAYER_R); mx.CreateHeightAttr(0.0); mx.CreateAxisAttr("Z")
+        mx.AddTranslateOp().Set(Gf.Vec3d(*LAYER_T))
+        mm = MIXED_COLORS[cname]
+        add_material(stage, mx.GetPrim(), mm["color"], mm["opacity"],
+                     roughness=mm.get("roughness", 0.5), ior=mm.get("ior"),
+                     emissive=mm.get("emissive"), double_sided=translucent)
+        # 滴管内液柱（截锥，柱底贴尖嘴）
+        fr = add_frustum(stage, f"DropperFill_{cname}", FILL_R[0], FILL_R[1], FILL_H)
+        fr.AddTranslateOp().Set(Gf.Vec3d(*FILL_T))
+        add_material(stage, fr.GetPrim(), m["color"], m["opacity"],
+                     roughness=m.get("roughness", 0.5), ior=m.get("ior"),
+                     emissive=m.get("emissive"), double_sided=translucent)
+        # 滴落串
+        g = UsdGeom.Xform.Define(stage, f"/World/DropperDrop_{cname}")
+        for i in range(DROPPER_DROPS):
+            s = UsdGeom.Sphere.Define(stage, f"/World/DropperDrop_{cname}/Drop_{i}")
+            s.CreateRadiusAttr(DROP_R)
+            s.AddTranslateOp().Set(Gf.Vec3d(*DROP_T))
+            add_material(stage, s.GetPrim(), m["color"], m["opacity"],
+                         roughness=m.get("roughness", 0.5), ior=m.get("ior"),
+                         emissive=m.get("emissive"), double_sided=True)
+        # 全隐藏（task 按 sample_color show 选中组）
+        for p in (cy, lc, mx, fr, g):
+            UsdGeom.Imageable(p).MakeInvisible()
+        print(f"[effect] sample '{cname}': SampleLiquid/LayerColumn/MixedLiquid/DropperFill/DropperDrop hidden")
 
 
 def add_env_light(stage):
@@ -338,8 +411,7 @@ def verify(st2):
     """自检：打印各器材/效果世界 bbox，断言效果 prim 存在、初始可见性正确。"""
     bc = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"])
     names = ["TestTubeRack", "TestTube", "DropperSample", "SampleBottle", "WashBottle",
-             "SampleLiquid", "TubeDrops", "LayerColumn", "Cloud", "WashDrops",
-             "DropperFill", "DropperDrop"]
+             "TubeDrops", "Cloud", "WaterStream"]
     for name in names:
         p = st2.GetPrimAtPath(f"/World/{name}")
         if not p.IsValid():
@@ -349,32 +421,47 @@ def verify(st2):
         mn, mx = r.GetMin(), r.GetMax()
         print(f"[verify] {name:15s} min({mn[0]:+.4f},{mn[1]:+.4f},{mn[2]:+.4f}) "
               f"max({mx[0]:+.4f},{mx[1]:+.4f},{mx[2]:+.4f})")
-    # 效果 prim 不变量：SampleLiquid 可见；其余效果 prim 初始隐藏
-    assert UsdGeom.Imageable(st2.GetPrimAtPath("/World/SampleLiquid")).ComputeVisibility() != "invisible", \
-        "SampleLiquid should be visible"
-    for name in ("TubeDrops", "LayerColumn", "Cloud", "WashDrops", "DropperFill", "DropperDrop"):
+    # 默认样品色（blue）瓶内液体 bbox（代表）
+    p_sl = st2.GetPrimAtPath("/World/SampleLiquid_blue")
+    if p_sl.IsValid():
+        r = bc.ComputeWorldBound(p_sl).ComputeAlignedRange()
+        mn, mx = r.GetMin(), r.GetMax()
+        print(f"[verify] SampleLiquid_blue min({mn[0]:+.4f},{mn[1]:+.4f},{mn[2]:+.4f}) "
+              f"max({mx[0]:+.4f},{mx[1]:+.4f},{mx[2]:+.4f})")
+    # 不随样品色变化的效果 prim 初始隐藏
+    for name in ("TubeDrops", "Cloud", "WaterStream"):
         p = st2.GetPrimAtPath(f"/World/{name}")
         assert p.IsValid(), f"{name} missing"
         assert UsdGeom.Imageable(p).ComputeVisibility() == "invisible", \
             f"{name} should be hidden initially"
-    # 分层柱/浑浊云半径不变量
-    assert abs(UsdGeom.Cylinder(st2.GetPrimAtPath("/World/LayerColumn")).GetRadiusAttr().Get()
-               - LAYER_R) < 1e-9, "LayerColumn r != LAYER_R"
+    # 样品色变体：每组（SampleLiquid/LayerColumn/MixedLiquid/DropperFill/DropperDrop）都存在且全隐藏
+    for cname in SAMPLE_COLOR_NAMES:
+        for base in ("SampleLiquid", "LayerColumn", "MixedLiquid", "DropperFill", "DropperDrop"):
+            p = st2.GetPrimAtPath(f"/World/{base}_{cname}")
+            assert p.IsValid(), f"{base}_{cname} missing"
+            assert UsdGeom.Imageable(p).ComputeVisibility() == "invisible", \
+                f"{base}_{cname} should be hidden initially"
+        # 分层柱半径不变量
+        assert abs(UsdGeom.Cylinder(st2.GetPrimAtPath(f"/World/LayerColumn_{cname}")).GetRadiusAttr().Get()
+                   - LAYER_R) < 1e-9, f"LayerColumn_{cname} r != LAYER_R"
+        # 滴落串球数量
+        n_drop = len([c for c in st2.GetPrimAtPath(f"/World/DropperDrop_{cname}").GetChildren()
+                      if c.GetTypeName() == "Sphere"])
+        assert n_drop == DROPPER_DROPS, f"DropperDrop_{cname} children {n_drop} != {DROPPER_DROPS}"
+    # 浑浊云半径不变量
     assert abs(UsdGeom.Cylinder(st2.GetPrimAtPath("/World/Cloud")).GetRadiusAttr().Get()
                - CLOUD_R) < 1e-9, "Cloud r != CLOUD_R"
-    # 洗瓶出水/滴管滴落球数量
-    for gname in ("WashDrops", "DropperDrop"):
-        g = st2.GetPrimAtPath(f"/World/{gname}")
-        n = len([c for c in g.GetChildren() if c.GetTypeName() == "Sphere"])
-        assert n == WASH_DROPS_PER_GROUP, \
-            f"{gname} children {n} != WASH_DROPS_PER_GROUP={WASH_DROPS_PER_GROUP}"
+    # 洗瓶水流球数量
+    n_stream = len([c for c in st2.GetPrimAtPath("/World/WaterStream").GetChildren()
+                    if c.GetTypeName() == "Sphere"])
+    assert n_stream == WATER_DROPS, f"WaterStream children {n_stream} != WATER_DROPS={WATER_DROPS}"
     # 残留 DomeLight 必须清干净（纯黑环境贴图会污染整场景光照，2026-08-24 用户反馈场景偏暗）
     stray = [p.GetPath().pathString for p in Usd.PrimRange(st2.GetPrimAtPath("/World"))
              if p.GetTypeName() == "DomeLight" and p.GetPath().pathString != "/World/env_light"]
     assert not stray, f"stray DomeLight remains: {stray}"
-    print(f"[verify] effects OK: SampleLiquid visible, others hidden, "
-          f"Layer r={LAYER_R} Cloud r={CLOUD_R}, {n} spheres each (WashDrops/DropperDrop), "
-          f"no stray DomeLight")
+    print(f"[verify] effects OK: sample colors {len(SAMPLE_COLOR_NAMES)}x5 variants hidden, "
+          f"Layer r={LAYER_R} Cloud r={CLOUD_R}, WaterStream x{WATER_DROPS} / "
+          f"DropperDrop x{DROPPER_DROPS}, no stray DomeLight")
 
 
 GLASS = dict(diffuseColor=(0.85, 0.90, 0.95), opacity=0.25, roughness=0.10, ior=1.5)
@@ -472,8 +559,8 @@ def main():
     for name, asset, t, scale, rotate in EQUIP:
         add_equip(stage, name, asset, t, scale, rotate)
     add_effects(stage)
-    add_wash_drops(stage)
-    add_dropper_drops(stage)
+    add_sample_color_variants(stage)
+    add_water_stream(stage)
     add_env_light(stage)
     stage.Export(OUT)  # 烘平：单层自包含，带 lab_clean 的 defaultPrim=/World
 

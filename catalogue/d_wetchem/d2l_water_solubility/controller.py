@@ -23,7 +23,8 @@ from isaacsim.core.utils.extensions import get_extension_path_from_name
 
 from controllers.base_controller import BaseController as TaskBaseController
 from controllers.atomic_actions.flametest import IkMotionEngine
-from .meta_actions import SamplePass
+from .meta_actions import (SamplePass, PickWashBottle, SqueezeWater,
+                           ReturnWashBottle, TubeShakePass)
 from .meta_actions.constants import GRIP_OPEN
 
 
@@ -50,15 +51,30 @@ class D2LWaterSolubilityTaskController(TaskBaseController):
         ik_home = np.array([0.012, -0.57, 0.0, -2.81, 0.0, 3.037, 0.741])
         self.engine = IkMotionEngine(solver, self.orient, ik_home)
 
-        # 元动作（第一步）：①SAMPLE_PASS 取样滴管吸样品→滴入试管。一次持握内循环
-        # 「吸液-滴液」cfg.sample_cycles 遍（抓一次→多遍滴→放回一次，中途不松开）。
+        # 元动作（整个 D2-L 实验，顺序执行）：
+        #   ① SAMPLE_PASS      取样滴管吸样品→滴入试管（一次持握内循环「吸液-滴液」
+        #                       cfg.sample_cycles 遍，中途不松开）
+        #   ② PICK_WASH_BOTTLE 抓洗瓶（手指朝前 ORIENT_FWD 横夹肚子，红嘴朝 +X）
+        #      SQUEEZE_WATER    挤水（夹爪进一步合拢挤瓶身，水流从红嘴入试管）
+        #      RETURN_WASH_BOTTLE 放回洗瓶（逆抓取轨迹归位松爪）
+        #   ③ TUBE_SHAKE_PASS  拿起试管震荡来回 cfg.shake_cycles 下→放回（现象三档分化）
         sample_cycles = max(1, int(getattr(cfg, "sample_cycles", 1)))
-        self.meta_classes = [SamplePass]
+        shake_cycles = max(1, int(getattr(cfg, "shake_cycles", 5)))
+        self.meta_classes = [SamplePass, PickWashBottle, SqueezeWater,
+                             ReturnWashBottle, TubeShakePass]
         self.meta_names = [
             f"S sample aspirate+drip into tube x{sample_cycles}",
+            "W pick wash bottle",
+            "W squeeze water into tube",
+            "W return wash bottle",
+            f"T shake tube x{shake_cycles}",
         ]
         self.meta_actions = [
             SamplePass(self.engine, cycles=sample_cycles),
+            PickWashBottle(self.engine),
+            SqueezeWater(self.engine),
+            ReturnWashBottle(self.engine),
+            TubeShakePass(self.engine, cycles=shake_cycles),
         ]
         self._meta_idx = 0
         self._h5_sample = 0
@@ -132,5 +148,6 @@ class D2LWaterSolubilityTaskController(TaskBaseController):
         return self._meta_idx >= len(self.meta_actions)
 
     def get_language_instruction(self):
-        return ("Aspirate the liquid sample with the sample dropper and drip it into "
-                "the test tube in the rack")
+        return ("Aspirate the liquid sample with the sample dropper, drip it into the "
+                "test tube in the rack, squeeze distilled water from the wash bottle "
+                "into the tube, then pick up and shake the tube")
