@@ -34,9 +34,11 @@ from .constants import H, SPAT_XY, SPAT_GRASP_Z, GRIP_OPEN, GRIP_SPATULA, ORIENT
 class ReturnSpatula:
     """⑬ 后把药匙平移回试管架孔（水平段同时调竖直）并竖直放下、松爪放回。"""
 
-    def __init__(self, engine, dwell=20):
+    def __init__(self, engine, dwell=20, home=None, lift_first=False):
         self.engine = engine
         self.dwell = int(dwell)
+        self.spatula_home = SPAT_XY if home is None else tuple(float(v) for v in home)
+        self.lift_first = bool(lift_first)  # D3-S 专用：先提高位再移再降（回程距倒粉位太短调不直）
         self.grip_target = GRIP_SPATULA   # 进入时仍夹着药匙（controller 会从上一动作传播）
         self.reset()
 
@@ -51,9 +53,28 @@ class ReturnSpatula:
         # 采样=保持倾斜，用户 2026-08-25「需要药匙调整竖直」）。水平段由 IK 边平移边调直。
         orient_q = np.asarray(ORIENT_FWD, dtype=float)
         gp = np.asarray(gripper_pos, dtype=float)
-        above = (SPAT_XY[0], SPAT_XY[1], gp[2])          # ① 架孔正上方（锁当前 z）
-        home = (SPAT_XY[0], SPAT_XY[1], SPAT_GRASP_Z)    # ② 抓点高度（= pick ② SPAT_GRASP）
-        top = (SPAT_XY[0], SPAT_XY[1], H)                # ④ 撤离到安全高位
+        sh = self.spatula_home
+        above = (sh[0], sh[1], gp[2])          # 架孔正上方（锁当前 z）
+        home = (sh[0], sh[1], SPAT_GRASP_Z)    # 抓点高度（= pick ② SPAT_GRASP）
+        top = (sh[0], sh[1], H)                # 撤离到安全高位
+        if self.lift_first:
+            # D3-S 专用（2026-08-26 用户「放回药匙不利索、不是竖直放进去」）：家用 (0.659,0.3209)
+            # 离⑬倒粉位 (0.647,0.3008) 只有 2.3cm，d2s 式「水平段边移边调直」的行程太短调不直，
+            # 残余倾斜被带进下探 + 回程横移扫过试管口 (0.659,0.241,0.9593) → 穿模。
+            # 改 5 段：先原位竖直提到 H（长垂直段 + ORIENT_FWD 彻底调直，勺头 ≥1.016 高过
+            # 架顶 0.917/试管口 0.9593/滴管顶 0.956），再高位水平移到架孔正上方（全程勺头离地高、
+            # 不碰试管/滴管），最后竖直下探入孔——保证竖直插入。
+            lift = (gp[0], gp[1], H)           # ① 原位竖直提到安全高位（调直）
+            above_h = (sh[0], sh[1], H)        # ② 高位水平移到架孔正上方
+            print(f"[return] lift_first: lift=({lift[0]:.3f},{lift[1]:.3f},{lift[2]:.3f}) "
+                  f"above_h=({above_h[0]:.3f},{above_h[1]:.3f},{above_h[2]:.3f}) home_z={home[2]:.3f}")
+            return [
+                MoveAction(self.engine, lift, dwell=self.dwell, orient=orient_q),
+                MoveAction(self.engine, above_h, dwell=self.dwell, orient=orient_q),
+                MoveAction(self.engine, home, dwell=self.dwell, orient=orient_q),
+                GripAction(self.engine, GRIP_OPEN, 25),
+                MoveAction(self.engine, top, dwell=self.dwell, orient=orient_q),
+            ]
         print(f"[return] orient=ORIENT_FWD [{orient_q[0]:.4f},{orient_q[1]:.4f},"
               f"{orient_q[2]:.4f},{orient_q[3]:.4f}] "
               f"above=({above[0]:.3f},{above[1]:.3f},{above[2]:.3f}) home_z={home[2]:.3f}")

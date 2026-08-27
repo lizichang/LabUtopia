@@ -7,15 +7,17 @@
 x方向的偏移。这是第一步就像我之前说的倾斜加液体的那样子，你先完成这一步，其他的先不要，
 你之前的先删除」
 
-段 1（本元动作）= 抓温度计 + 倾斜 20° 带到试管口（泡尖落管口上方 5mm），不插入、不挂环：
-  1. 水平横夹杆身（d2s 夹药匙式，手指朝前 ORIENT_FWD 横夹竖直杆身）。抓点比旧版低
+本元动作 = 抓温度计 + 倾斜 20° 带到试管口（泡尖落管口上方 5mm）+ 同步下探转垂直挂上钩：
+  段 1  - 水平横夹杆身（d2s 夹药匙式，手指朝前 ORIENT_FWD 横夹竖直杆身）。抓点比旧版低
      （THERMO_GRASP_OFFSET 0.254→0.20，用户「夹的位置太高了」——旧抓点贴挂环下方）。
-  2. 高位竖直运到试管口 -X 侧（夹爪 x=0.4602 偏管口 0.0684、y=0.0029 与管口对齐）。
-  3. 原地倾斜 20°（泡尖摆到试管口正上方，仍高于管口）→ 竖直下探：泡尖落到管口正上方
-     5mm (0.5286,0.0029,1.0789)，整体倾斜保持 X 偏移（像加液体先偏 -X 再靠近的样子）。
-     2026-08-26 用户：25°→10°→15°→20°（逐级）、玻璃球抬高 0.5cm、x 前移试过 0.5/0.1cm
-     （泡尖会偏 +X）→ 回退泡尖锁管口 x、夹爪往 -X 偏 6.8cm。
-段 2（后续再实现，已删除）：倾斜深入 → 竖直起来挂环套铁架台钩 → 松爪自然下垂。
+     - 高位竖直运到试管口 -X 侧（夹爪 x=0.4602 偏管口 0.0684、y=0.0029 与管口对齐）。
+     - 原地倾斜 20°（泡尖摆到试管口正上方，仍高于管口）→ 竖直下探：泡尖落到管口正上方
+       5mm (0.5286,0.0029,1.0789)，整体倾斜保持 X 偏移（像加液体先偏 -X 再靠近的样子）。
+       2026-08-26 用户：25°→10°→15°→20°（逐级）、玻璃球抬高 0.5cm、x 前移试过 0.5/0.1cm
+       （泡尖会偏 +X）→ 回退泡尖锁管口 x、夹爪往 -X 偏 6.8cm。
+段 2（2026-08-26 已实现）：⑧ 从 APPROACH 位置+朝向**同步插值**（ThermoInsertRotate：
+  竖直下探 + 旋转垂直同 t 推进、同时开始同时结束）→ 挂环套铁架台钩、泡尖伸进试管浸液；
+  ⑨ 松爪，task 检测 hung，温度计自然下垂挂在钩上（泡尖在管内浸液面）。
 
 避穿模关键：
   - 先在高位（APPROACH_HIGH z=1.35，泡尖 1.15 在口 1.0739 上）原地倾斜——泡尖摆到管口
@@ -33,16 +35,21 @@ x方向的偏移。这是第一步就像我之前说的倾斜加液体的那样�
   ⑥ 原地倾斜 20°  mv(THERMO_APPROACH_HIGH, orient=ORIENT_TILT_20, linewalk=False)
                                                                       # 泡尖摆管口正上方（不穿管壁）
   ⑦ 竖直下探  mv(THERMO_APPROACH, orient=ORIENT_TILT_20)             # 泡尖 1.0789 正对管口上方 5mm（段 1 终点）
+  ⑧ 同步下探+转垂直  ThermoInsertRotate(APPROACH→HANG, TILT_20→FWD, 180帧)
+                                                                      # 位置 lerp+朝向 Slerp 同 t：泡尖入管、挂环套钩
+  ⑨ 松爪  grip(GRIP_OPEN, 60)                                        # task: attached→hung，温度计自然下垂
 """
 from ._base import BaseMetaAction, mv, grip
-from .constants import (H, GRIP_THERMO, ORIENT_FWD,
+from .constants import (H, GRIP_OPEN, GRIP_THERMO, ORIENT_FWD,
                         ORIENT_TILT_20,
                         THERMO_XY, THERMO_GRASP,
-                        THERMO_APPROACH_HIGH, THERMO_APPROACH)
+                        THERMO_APPROACH_HIGH, THERMO_APPROACH,
+                        THERMO_HANG, THERMO_HANG_FRAMES)
+from .thermo_insert import ThermoInsertRotate
 
 
 class HangThermometer(BaseMetaAction):
-    """抓温度计 → 倾斜 20° 带到试管口（泡尖落管口上方 5mm）。段 2（插入+挂环）未实现。"""
+    """抓温度计 → 倾斜 20° 带到试管口 → 同步下探+转垂直挂上铁架台钩 → 松爪自然下垂。"""
 
     def _build_actions(self):
         e = self.engine
@@ -57,5 +64,13 @@ class HangThermometer(BaseMetaAction):
             mv(e, THERMO_APPROACH_HIGH, orient=ORIENT_FWD),  # ⑤ 高位运到试管口 -X 侧（y 对齐，竖直）
             mv(e, THERMO_APPROACH_HIGH, orient=ORIENT_TILT_20, linewalk=False),  # ⑥ 原地倾斜 20°（泡尖摆管口正上方）
             mv(e, THERMO_APPROACH, orient=ORIENT_TILT_20),  # ⑦ 竖直下探：泡尖 1.0789 正对管口上方 5mm（段 1 终点）
+            # —— 段 2：同步下探+转垂直（ThermoInsertRotate 位置 lerp + 朝向 Slerp 同 t）——
+            # 位置从 APPROACH（倾斜 20° 泡尖对管口上 5mm）→ THERMO_HANG（竖直挂位），
+            # 朝向 TILT_20 → FWD 同步；终点挂环中心 (0.5286,0.0029,1.2217)=铁架台钩中心、
+            # 泡尖 (0.5286,0.0029,0.9522) 伸进试管浸液面。同时开始同时结束（用户逐字）。
+            ThermoInsertRotate(e, THERMO_APPROACH, THERMO_HANG,
+                               ORIENT_TILT_20, ORIENT_FWD,
+                               total=THERMO_HANG_FRAMES),   # ⑧ 边竖直下探边转垂直（泡尖入管、挂环套钩）
+            grip(e, GRIP_OPEN, 60),                          # ⑨ 松爪：task 检测 hung → 温度计自然下垂挂钩上
         ]
         return actions

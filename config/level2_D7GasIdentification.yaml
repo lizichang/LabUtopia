@@ -1,0 +1,94 @@
+name: Level2_D7GasIdentification
+
+task_type: "d7_gas_identification"
+controller_type: "d7_gas_identification"
+
+mode: "collect"
+
+# 场景：d7_gas_identification（D7 气体鉴定，桌面 z=0.80）
+# 台面（2026-08-27 pxr 实测世界 bbox，gen_d7_scene.py verify；操作区沿用 D6 远离底座 y=0.57）：
+#   试管架 (0.28,0.16) 顶板 0.917、检验试管右列第 3 排 (0.300,0.160) 口 z 0.9593
+#   产气试管移出架外并抬高：铁架台 (0.30,-0.08) + 试管夹 (0.3505,-0.1009,0.98) 固定产气试管
+#   (0.40,-0.08) 底 0.90 口 z 1.053；带导气管橡皮塞预装 (0.40,-0.08) 塞底 1.044，末端悬下浸点
+#   (0.44,0.079,1.024；下探段加长后末端低于塞底)
+usd_path: "assets/scenes/d_wetchem/d7_gas_identification/d7_gas_identification.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s/d3l/d6 一致）
+grasp_xy_threshold: 0.03        # 夹爪距抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+
+# 实验结果输入接口（运行前 --result liquid_color=blue 等；task 读 cfg.liquid_color）
+# 气体鉴定接口（用户要求「颜色反应根据输入显示不同颜色」+「检测试剂统一表现为液体，根据输入
+# 不同的液体选择有不同的初始颜色」）：检测试剂统一为液体，无浑浊/变色变体，仅初始颜色由
+# liquid_color 决定（6 色变体，默认 colorless）。
+experiment_result:
+  liquid_color:
+    label: "检验试管内检测液初始颜色"
+    type: enum
+    options: [colorless, blue, red, green, yellow, purple]
+    default: colorless
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.liquid_color。
+liquid_color: colorless
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 前侧拉远俯拍整个工作区（工作区中心 ≈(0.38,0.25,0.85)，复用 D6/E1/E2 相机位）。
+    translation: [0.35, 1.00, 1.45]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.0, 0.0, 0.46726, 0.88412]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 顶部俯视，略抬高并对中工作区中心，up=+Y（复用 D6/E1/E2）。
+    translation: [0.35, -0.05, 1.30]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.98374, 0.17962, 0.0, 0.0]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [1024, 1024]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 (0.25, 0.57)：D7 操作区沿用 D6（试管架 0.28,0.16、铁架台 0.30,-0.08），
+  # 全部器材在 Franka 0.855m 臂展内（检验试管 0.300,0.160 → 距底座 0.41m、下浸点 0.44,0.079 →
+  # 0.53m；下浸抓点 z1.078 仍 0.66m 内）。
+  position: [0.25, 0.57, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

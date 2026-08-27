@@ -29,11 +29,17 @@ def _R_to_quat_wxyz(R):
 
 
 class AlignPowderX:
-    """保持当前世界朝向，水平移到粉堆中心 x，y/z 锁当前值。"""
+    """保持当前世界朝向，水平移到粉堆中心 x，y/z 锁当前值。
 
-    def __init__(self, engine, x=POWDER_X, dwell=20):
+    anchor_y（可选）：非 None 时把 y 显式锚定到该值（挖粉轨迹 y 基准），用于跨列药匙
+    家用——D3-S 药匙移到第一列第3排后，y 基准仍是 d2s 原家用 y（0.3608），否则 ⑧
+    ShiftYNeg 从 0.3209 起勺尖 0.0659 会错过粉丘。默认 None = 锁当前 y（d2s 原行为）。
+    """
+
+    def __init__(self, engine, x=POWDER_X, anchor_y=None, dwell=20):
         self.engine = engine
         self.x = float(x)
+        self.anchor_y = None if anchor_y is None else float(anchor_y)
         self.dwell = int(dwell)
         self.reset()
 
@@ -48,7 +54,10 @@ class AlignPowderX:
             _, R = self.engine.fk_pose(cur)
             orient_q = _R_to_quat_wxyz(R)
             gp = np.asarray(gripper_pos, dtype=float)
-            pos = np.array([self.x, gp[1], gp[2]])   # y/z 锁当前值
+            if self.anchor_y is not None:
+                pos = np.array([self.x, self.anchor_y, gp[2]])   # y 锚定挖粉基准（跨列家用）
+            else:
+                pos = np.array([self.x, gp[1], gp[2]])   # y/z 锁当前值
             print(f"[alignx] sampled orient=[{orient_q[0]:.4f},{orient_q[1]:.4f},"
                   f"{orient_q[2]:.4f},{orient_q[3]:.4f}] "
                   f"target=({pos[0]:.4f},{pos[1]:.4f},{pos[2]:.4f})")

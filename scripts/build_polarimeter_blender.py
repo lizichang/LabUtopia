@@ -7,8 +7,8 @@ flip lid hinged at chamber rear (open 120deg, task closes lid via rotateX->0),
 right-side lamp switch, back power/USB/RS232. LED source 589.3nm behind rear
 window (warm glow). Reading "+12.526" as 7-seg green digits.
 
-A2 task: tube drops VERTICALLY into chamber center (y -110..110) — lid at
-120deg folds fully BEHIND chamber (all lid points y<=-133), zero blockage.
+A2 task: tube drops VERTICALLY into chamber (opening y -155..95, 槽后移 30mm) —
+lid at 120deg folds fully BEHIND chamber (all lid points y<=-163), zero blockage.
 """
 import bpy, bmesh, math, os
 import mathutils
@@ -147,11 +147,11 @@ SCREEN = dict(base_color=(0.02, 0.025, 0.03, 1.0), roughness=0.08)
 shell_specs = [
     # side shells (light) z 58..240
     (133, 604, 182, -118.5, 0, 149, 0), (133, 604, 182, 118.5, 0, 149, 0),
-    # front/rear between chamber sides
-    (104, 177, 182, 0, 213.5, 149, 0), (104, 177, 182, 0, -213.5, 149, 0),
+    # front/rear between chamber sides（槽后移 30mm：前壁加宽 207 / 后壁变窄 147）
+    (104, 207, 182, 0, 198.5, 149, 0), (104, 147, 182, 0, -228.5, 149, 0),
     # top plate frame z 240..250
     (133, 604, 10, -118.5, 0, 245, 0), (133, 604, 10, 118.5, 0, 245, 0),
-    (104, 177, 10, 0, 213.5, 245, 0), (104, 177, 10, 0, -213.5, 245, 0),
+    (104, 207, 10, 0, 198.5, 245, 0), (104, 147, 10, 0, -228.5, 245, 0),
 ]
 shell = boxes("shell", shell_specs)
 set_mat(shell, "shell", **SHELL)
@@ -165,36 +165,36 @@ set_mat(feet, "rubber", **RUBBER)
 
 # ==================== chamber (dark liner, floor, rails, windows) ====================
 liner = boxes("chamber", [
-    (96, 242, 4, 0, 0, 68, 0),                 # floor z 66..70
-    (4, 250, 184, -50, 0, 158, 0), (4, 250, 184, 50, 0, 158, 0),   # side liners z 66..250
-    (96, 4, 8, 0, 123, 74, 0), (96, 4, 8, 0, -123, 74, 0),         # end bottom strips z 70..78
-    (96, 4, 88, 0, 123, 206, 0), (96, 4, 88, 0, -123, 206, 0),     # end top strips z 162..250
+    (96, 242, 4, 0, -30, 68, 0),                 # floor z 66..70（槽后移 30mm）
+    (4, 250, 184, -50, -30, 158, 0), (4, 250, 184, 50, -30, 158, 0),   # side liners z 66..250
+    (96, 4, 8, 0, 93, 74, 0), (96, 4, 8, 0, -153, 74, 0),         # end bottom strips z 70..78
+    (96, 4, 88, 0, 93, 206, 0), (96, 4, 88, 0, -153, 206, 0),     # end top strips z 162..250
 ])
 set_mat(liner, "matte_black", **BLACK)
 
 rails = boxes("tube_rails", [
-    (6, 250, 6, -16.5, 0, 112, 25), (6, 250, 6, 16.5, 0, 112, -25),
+    (6, 250, 6, -16.5, -30, 197, 25), (6, 250, 6, 16.5, -30, 197, -25),
 ])
 set_mat(rails, "chrome", **CHROME)
 
 windows = boxes("windows", [
-    (80, 3, 84, 0, 121.5, 120, 0), (80, 3, 84, 0, -121.5, 120, 0),
+    (80, 3, 84, 0, 91.5, 205, 0), (80, 3, 84, 0, -151.5, 205, 0),
 ])
 set_mat(windows, "glass", **GLASS)
 
-glow = boxes("lamp_glow", [(56, 1.5, 56, 0, -122.5, 120, 0)])
+glow = boxes("lamp_glow", [(56, 1.5, 56, 0, -152.5, 205, 0)])
 set_mat(glow, "glow_warm", emission=(1.0, 0.80, 0.45, 1.0), emission_strength=3.5)
 
 # ==================== flip lid (hinged at rear rim, open 120deg) ====================
 # local origin = hinge point (0,-133,250.5); closed lid spans local y 0..260, z 0..9
 lid = boxes("lid", [(112, 260, 9, 0, 130, 4.5, 0)])
-lid.location = (0.0, -133 * mm, 250.5 * mm)
+lid.location = (0.0, -163 * mm, 250.5 * mm)
 lid.rotation_euler = (math.radians(120.0), 0.0, 0.0)
 set_mat(lid, "paint_dark", **DARK)
 
 hinge = join("hinge",
-             cyl_x("hinge_bar", 2.5, -60, 60, -133, 250.5),
-             boxes("hinge_posts", [(7, 16, 16, -54, -133, 244, 0), (7, 16, 16, 54, -133, 244, 0)]))
+             cyl_x("hinge_bar", 2.5, -60, 60, -163, 250.5),
+             boxes("hinge_posts", [(7, 16, 16, -54, -163, 244, 0), (7, 16, 16, 54, -163, 244, 0)]))
 set_mat(hinge, "chrome", **CHROME)
 
 # ==================== display console (raised module on front top; screen only) ====================
@@ -216,6 +216,8 @@ set_mat(glass, "screen_dark", **SCREEN)
 # ==================== switches / ports / brand ====================
 sw = boxes("side_switch", [(6, 10, 18, 186.5, -100, 150, 0)])
 set_mat(sw, "matte_black", **BLACK)
+start_btn = cyl_z("start_button", 32, 250, 256, 0, 180)  # 机顶前部红色启动键 Ø64×6mm（参考折光仪）
+set_mat(start_btn, "start_red", base_color=(0.85, 0.12, 0.1, 1.0), roughness=0.5)
 back = boxes("back_panel", [
     (30, 6, 16, 0, -305, 130, 0), (22, 4, 12, -60, -303.5, 130, 0), (22, 4, 12, 60, -303.5, 130, 0),
     (120, 2, 4, 0, -302.5, 72, 0), (120, 2, 4, 0, -302.5, 84, 0),

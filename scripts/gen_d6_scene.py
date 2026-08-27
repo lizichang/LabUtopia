@@ -14,7 +14,7 @@
   TestTubeRack   (0.28,0.16)  试管架（含反应试管 + 蒸馏水滴管）
   TestTube       (0.260,0.276) 反应试管（前排左孔，口 0.959）
   Dropper        (0.300,0.041) 蒸馏水滴管（后排右孔，已吸好蒸馏水）
-  TestPaperHolder(0.48,0.20)  试纸夹（立杆顶 0.99，夹试纸水平伸出，湿润端悬挑）
+  TestPaperHolder(0.55,0.20)  试纸夹（rotZ180°，立杆顶 0.99，夹试纸水平伸出 -X 朝试管架）
 
 用法：python scripts/gen_d6_scene.py   （运行环境：labutopia conda env 有 pxr）
 """
@@ -35,7 +35,7 @@ TABLE_TOP = 0.80
 # —— 布局坐标（世界坐标，米，Z-up）——
 # 2026-08-26：试管架离底座太近（试管 0.154m）碰撞卡住 → 操作区整体前移 -Y 远离底座
 # (0.25,0.57)：试管架 0.30→0.16（试管 0.416→0.276 距底座 0.294m、滴管 0.181→0.041 距 0.529m）。
-# 试纸夹 (0.48,0.20) 已 0.44m（同 E1/E2 安全距离），不动。
+# 2026-08-27 用户：试纸夹 rot180°（试纸 -X 朝试管架，湿润端靠架便于侧入）+ 移远 (0.55,0.20) 拉开与架距。
 RACK_XY = (0.28, 0.16)                       # 试管架（rack translate z=0.8965，底 0.80 顶板 0.917）
 HOLE_X_L, HOLE_X_R = -0.020, 0.020           # 2 列孔 x 偏移（左/右）
 HOLE_Y_FRONT, HOLE_Y_BACK = 0.116, -0.119    # 7 行孔 y 偏移（前排/后排）
@@ -43,19 +43,19 @@ TUBE_BOTTOM_Z = 0.806                        # 试管/滴管在架孔内底面�
 
 TUBE_XY = (RACK_XY[0] + HOLE_X_L, RACK_XY[1] + HOLE_Y_FRONT)    # (0.260,0.276) 反应试管
 DROPPER_XY = (RACK_XY[0] + HOLE_X_R, RACK_XY[1] + HOLE_Y_BACK)  # (0.300,0.041) 蒸馏水滴管
-HOLDER_XY = (0.48, 0.20)                     # 试纸夹（立杆顶 0.99，夹试纸水平伸出 +X）
+HOLDER_XY = (0.55, 0.20)                     # 试纸夹（rot180°，立杆顶 0.99，夹试纸水平伸出 -X 朝试管架）
 
 # —— 试纸（夹缝 z≈0.99；70×12×1mm，后端 15mm 夹在夹缝、前端悬挑，湿润端=最后 15mm）——
 # 2026-08-26 用户「看不出试纸变色」：宽 7→12mm（仍容于 14mm 夹持片），湿润端变色块更大更可见。
 PAPER_Z = 0.99
-PAPER_NEAR_X = HOLDER_XY[0] - 0.005          # 0.475 夹持端（夹缝起点）
+PAPER_NEAR_X = HOLDER_XY[0] + 0.005          # 0.555 夹持端（rot180° 后夹缝在立杆 +X 侧）
 PAPER_LEN = 0.070                            # 试纸总长 70mm
 PAPER_W = 0.012                              # 宽 12mm（原 7mm，太窄变色块在 1024px 下看不清）
 PAPER_T = 0.001                              # 厚 1mm
 WET_LEN = 0.015                              # 湿润端长 15mm
 BODY_LEN = PAPER_LEN - WET_LEN               # 非湿润端 55mm
-BODY_CX = PAPER_NEAR_X + BODY_LEN / 2        # 0.5025
-WET_CX = PAPER_NEAR_X + BODY_LEN + WET_LEN / 2  # 0.5375 湿润端中心
+BODY_CX = PAPER_NEAR_X - BODY_LEN / 2        # 0.5275（试纸沿 -X 悬挑）
+WET_CX = PAPER_NEAR_X - BODY_LEN - WET_LEN / 2  # 0.4925 湿润端中心（朝向试管架）
 
 # —— 试纸颜色（4 变体 = 试纸类型 × 是否变色）——
 PAPER_WHITE = (0.92, 0.91, 0.86)   # 淀粉碘化钾试纸（米白，氧化性气体检测）
@@ -126,6 +126,21 @@ def add_equip(stage, name, asset, t, scale, rot=None):
         prim.AddScaleOp().Set(Gf.Vec3f(scale, scale, scale))
     print(f"[equip] {name} <- {asset} at ({tx},{ty},{tz})"
           + (f" rot{rot}" if rot else "") + (f" scale {scale}" if scale else ""))
+
+
+def override_tube_glass(stage):
+    """D6 反应试管要看清管内液体颜色：试管资产 test_tube.usd 玻璃 opacity 0.35 偏雾，
+    前壁把管内液体压暗看不清（2026-08-27 用户「材质看不清液体颜色」）。场景层覆盖为更透明
+    的真玻璃（opacity 0.12 近透明 + 近白 diffuse + 更低粗糙度），液体颜色清晰透出。
+    只覆盖 D6 场景（引用层之上 over），不动共享资产（其余场景仍用 0.35）。"""
+    shader = UsdShade.Shader(stage.GetPrimAtPath("/World/TestTube/tube_mat/Shader"))
+    if not shader.GetPrim().IsValid():
+        print("[tube] /World/TestTube/tube_mat/Shader not found, skip")
+        return
+    shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(0.12)
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.92, 0.95, 1.0))
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.03)
+    print("[tube] override glass -> opacity 0.12, diffuse (0.92,0.95,1.0), roughness 0.03")
 
 
 def _add_box(stage, path, size, center, recipe):
@@ -276,8 +291,12 @@ def verify(st2):
     stray = [p.GetPath().pathString for p in Usd.PrimRange(st2.GetPrimAtPath("/World"))
              if p.GetTypeName() == "DomeLight" and p.GetPath().pathString != "/World/env_light"]
     assert not stray, f"stray DomeLight remains: {stray}"
+    # 试管玻璃覆盖为透明（看清管内液体颜色）
+    tube_sh = UsdShade.Shader(st2.GetPrimAtPath("/World/TestTube/tube_mat/Shader"))
+    assert tube_sh.GetInput("opacity").Get() < 0.2, \
+        "TestTube glass opacity should be overridden transparent"
     print("[verify] tube bottom 0.806 / holder bottom 0.80 / paper z 0.99 / "
-          "default visibility ok / no stray DomeLight")
+          "default visibility ok / no stray DomeLight / tube glass transparent")
 
 
 def main():
@@ -287,9 +306,11 @@ def main():
         print("[env] copied env_bright.png")
 
     stage = Usd.Stage.Open(LAB_CLEAN)
-    add_equip(stage, "TestPaperHolder", "test_paper_holder.usd", (HOLDER_XY[0], HOLDER_XY[1], None), None)
+    add_equip(stage, "TestPaperHolder", "test_paper_holder.usd", (HOLDER_XY[0], HOLDER_XY[1], None), None,
+              rot=(0, 0, 180))
     add_equip(stage, "TestTubeRack", "test_tube_rack.usd", (RACK_XY[0], RACK_XY[1], None), None)
     add_equip(stage, "TestTube", "test_tube.usd", (TUBE_XY[0], TUBE_XY[1], TUBE_BOTTOM_Z), None)
+    override_tube_glass(stage)
     add_equip(stage, "Dropper", "dropper.usd", (DROPPER_XY[0], DROPPER_XY[1], TUBE_BOTTOM_Z), None)
     add_paper(stage)
     add_liquid(stage)

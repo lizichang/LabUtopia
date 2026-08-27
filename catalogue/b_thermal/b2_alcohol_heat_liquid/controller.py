@@ -23,7 +23,7 @@ from isaacsim.core.utils.extensions import get_extension_path_from_name
 
 from controllers.base_controller import BaseController as TaskBaseController
 from controllers.atomic_actions.flametest import IkMotionEngine
-from .meta_actions import DropperDripPass, HangThermometer
+from .meta_actions import DropperDripPass, AddZeolitePass, HangThermometer, LightFlamePass
 from .meta_actions.constants import GRIP_OPEN
 
 
@@ -36,7 +36,7 @@ class B2AlcoholHeatLiquidTaskController(TaskBaseController):
     # ------------------------------------------------------------------
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
-        print("[b2] controller VERSION v3.1 (DropperDripPass + HangThermometer step1 IK-driven + v1 phase watch)")
+        print("[b2] controller VERSION v3.4 (DropperDripPass + AddZeolitePass x2 + HangThermometer + LightFlamePass + v1 phase watch)")
         self.orient = euler_angles_to_quat(np.array([0, np.pi, 0]))
         # Lula IK 求解器（同 flametest/d2s/d3l）：精确关节控制替代 RMP
         mg_path = get_extension_path_from_name("isaacsim.robot_motion.motion_generation")
@@ -49,13 +49,17 @@ class B2AlcoholHeatLiquidTaskController(TaskBaseController):
         ik_home = np.array([0.012, -0.57, 0.0, -2.81, 0.0, 3.037, 0.741])
         self.engine = IkMotionEngine(solver, self.orient, ik_home)
 
-        # 段 1：滴加元动作（一次持握内循环吸液-滴液 cfg.sample_cycles 遍）→ 挂温度计
+        # 段 1：滴加元动作（一次持握内循环吸液-滴液 cfg.sample_cycles 遍）→ 放两颗沸石 → 挂温度计 → 点燃酒精灯
         sample_cycles = max(1, int(getattr(cfg, "sample_cycles", 3)))
-        self.meta_classes = [DropperDripPass, HangThermometer]
+        self.meta_classes = [DropperDripPass, AddZeolitePass, HangThermometer, LightFlamePass]
         self.meta_names = [f"dropper aspirate+drip into tube x{sample_cycles}",
-                           "grab thermometer + tilt to tube mouth (step 1 of 2)"]
+                           "grab 2 zeolites + rotate + drop into tube",
+                           "grab thermometer + insert into tube + hang on hook (step 3 of 4)",
+                           "grab match + ignite alcohol lamp + return match (step 4 of 4)"]
         self.meta_actions = [DropperDripPass(self.engine, cycles=sample_cycles),
-                             HangThermometer(self.engine)]
+                             AddZeolitePass(self.engine),
+                             HangThermometer(self.engine),
+                             LightFlamePass(self.engine)]
         self._meta_idx = 0
         self._h5_sample = 0
         self._start = True
@@ -146,6 +150,7 @@ class B2AlcoholHeatLiquidTaskController(TaskBaseController):
 
     def get_language_instruction(self):
         return ("Use the dropper to aspirate liquid from the sample bottle and drip "
-                "it into the test tube on the stand, then heat the tube over the "
-                "alcohol lamp until it boils; the thermometer reads the temperature "
-                "and the boiling point is recorded when boiling starts")
+                "it into the test tube on the stand, then drop two boiling chips into the "
+                "tube, hang the thermometer, and light the alcohol lamp with a match; "
+                "heat the tube over the lamp until it boils, and the boiling point is "
+                "recorded when boiling starts")

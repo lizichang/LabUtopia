@@ -61,7 +61,7 @@ DipToPowder；随后给出新步骤「法兰旋转后机械臂移动到粉堆的
 from ._base import BaseMetaAction, mv, grip
 from .align_powder_x import AlignPowderX
 from .constants import (H, GRIP_SPATULA, ORIENT_FWD,
-                        SPAT_LIFT_Z, SPAT_XY, SPAT_GRASP)
+                        SPAT_LIFT_Z, SPAT_XY, SPAT_GRASP_Z)
 from .flange_roll import FlangeRollAction
 from .flange_roll_shift_y_neg import FlangeRollShiftYNeg
 from .lift_to_tube import LiftToTube
@@ -73,16 +73,28 @@ from .shift_y_pos import ShiftYPos
 
 
 class PickSpatula(BaseMetaAction):
+    """夹取药匙 → 竖直提起 → 法兰转平 → 挖粉 → 平移倒粉入管。
+
+    home（可选）：药匙家用 (x,y)。None 用 d2s SPAT_XY；跨列家用（D3-S 第一列第3排）显式传入。
+    scoop_anchor_y（可选）：挖粉轨迹 y 基准，透传给 AlignPowderX（None = 锁当前 y，d2s 原行为）。
+    """
+
+    def __init__(self, engine, home=None, scoop_anchor_y=None):
+        self.spatula_home = SPAT_XY if home is None else tuple(float(v) for v in home)
+        self.scoop_anchor_y = scoop_anchor_y
+        super().__init__(engine)
+
     def _build_actions(self):
         e = self.engine
-        sx, sy = SPAT_XY
+        sx, sy = self.spatula_home
+        grasp = (sx, sy, SPAT_GRASP_Z)
         return [
             mv(e, (sx, sy, H), orient=ORIENT_FWD),            # ① 高位：手指朝前（+X）朝向 camera1
-            mv(e, SPAT_GRASP, orient=ORIENT_FWD),             # ② 垂直下探：竖柄杆进指缝
+            mv(e, grasp, orient=ORIENT_FWD),                  # ② 垂直下探：竖柄杆进指缝
             grip(e, GRIP_SPATULA, 60),                       # ③ 夹起（level4 模式：爪子朝前夹起）
             mv(e, (sx, sy, SPAT_LIFT_Z), orient=ORIENT_FWD),  # ④ 竖直提起
             FlangeRollAction(),                               # ⑤ 只动最后一个关节转-45°：药匙竖直→45° 倾斜
-            AlignPowderX(e),                                  # ⑥ 保持世界朝向、y/z 锁当前，水平移到粉堆 x=0.537
+            AlignPowderX(e, anchor_y=self.scoop_anchor_y),    # ⑥ 保持世界朝向、y 锁当前（或锚定挖粉基准），水平移到粉堆 x=0.537
             LowerPowder(e),                                   # ⑦ 保持世界朝向、x/y 锁当前，竖直下降 24.5cm
             ShiftYNeg(e),                                     # ⑧ 保持世界朝向、x/z 锁当前，往 -y 平移 16cm
             ScoopUpAction(),                                  # ⑨ 法兰 -45°→-90°（只动 joint7 再转 -45°）：勺尖从粉丘挖起、凹槽朝上蓄粉

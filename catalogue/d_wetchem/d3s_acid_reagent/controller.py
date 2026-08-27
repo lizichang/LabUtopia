@@ -26,7 +26,7 @@ from isaacsim.core.utils.extensions import get_extension_path_from_name
 from controllers.base_controller import BaseController as TaskBaseController
 from controllers.atomic_actions.flametest import IkMotionEngine
 from .meta_actions import PickSpatula, ReturnSpatula, AcidPass, TubeShakePass
-from .meta_actions.constants import GRIP_OPEN, SHAKE_CENTER_TCP
+from .meta_actions.constants import GRIP_OPEN, SHAKE_CENTER_TCP, SPAT_XY, SCOOP_ANCHOR_Y
 
 
 class D3SAcidReagentTaskController(TaskBaseController):
@@ -66,8 +66,12 @@ class D3SAcidReagentTaskController(TaskBaseController):
         ]
         # AcidPass/TubeShakePass 带 cycles 参数，不能再用 [C(self.engine) for C in ...] 统一构造
         self.meta_actions = [
-            PickSpatula(self.engine),
-            ReturnSpatula(self.engine),
+            # 药匙家用移到第一列第3排 (0.659,0.3209)；挖粉 y 基准仍锚定 d2s 原家用 0.3608
+            # （否则 ⑧ ShiftYNeg 从 0.3209 起勺尖错过粉丘）。滴管第一列第5排、第二列清空。
+            PickSpatula(self.engine, home=SPAT_XY, scoop_anchor_y=SCOOP_ANCHOR_Y),
+            # lift_first=True：D3-S 家用离⑬倒粉位仅 2.3cm，回程水平段太短调不直（残留倾斜带进
+            # 下探+扫过试管口穿模）→ 先原位提到安全高位调直、再高位横移、最后竖直下探（2026-08-26）。
+            ReturnSpatula(self.engine, home=SPAT_XY, lift_first=True),
             AcidPass(self.engine, cycles=acid_cycles),
             # 震荡抬高到 1.18（d3s 自用，用户"震荡抬高一点再震荡"）：管底清架顶 12cm、
             # X 扫掠不碰试管旁的滴管（滴管已在远端孔）。

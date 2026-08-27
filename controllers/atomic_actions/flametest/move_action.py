@@ -36,6 +36,11 @@ AXIS_EPS = 0.015
 # 4:1 比例，垂直段关节量仍在钳制内；药匙勺头宽面正对 camera1 后臂末端微振荡被
 # 放大，降速减小每步起停冲击（见 ik_engine.MAX_JOINT_DELTA 注释）。
 VZ_STEP = 0.0015
+# 超时预算（帧）：到达冻结失败后的 force-done 上限。原 600 帧（10s）对长横移/大摆臂
+# 不足——A2 倒液走廊单轴横移 0.75m、试管大摆臂按 0.0015/帧推进需 500+ 帧，再加追踪滞后即
+# 超时被 force-done（用户报「poured=False、放管 IK FAIL 后乱动」）。提到 1500 帧（25s）：
+# 只让慢但收敛的移动走完，不改路径/速度；真正卡住的段多等 15s 后照旧 force-done，无害。
+FORCE_DONE_BUDGET = 1500
 
 
 class MoveAction:
@@ -150,7 +155,7 @@ class MoveAction:
                 print(f"[flametest] freeze at tgt={np.round(self.pos, 3)} "
                       f"gripper={np.round(gripper_pos, 3)} dist3d={dist3d:.4f}")
                 self._hold = 0
-        if not self._done and self._frame >= self.dwell + 600:
+        if not self._done and self._frame >= self.dwell + FORCE_DONE_BUDGET:
             print(f"[flametest] move force-done t={self._frame} (dwell={self.dwell}) "
                   f"target={np.round(self.pos, 3)}")
             self._done = True

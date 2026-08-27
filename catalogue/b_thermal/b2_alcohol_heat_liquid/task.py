@@ -38,9 +38,9 @@ op 表 + 单 transform op 写矩阵）——滴管沿 tool+X 伸出、随夹爪�
     底锚 z=0.005 不动、柱顶 = z_of(T) 随温度爬升（行向量约定：pxr 中 A·B 表示 A 先作用）。
 
 驱动 prim（b2_alcohol_heat_liquid.usd，由 scripts/gen_b2_scene.py 生成）：
-    /World/AlcoholLamp/flame_outer|flame_inner   火焰（Cone，初始隐藏）
+    /World/flame_outer|flame_inner   火焰（Cone，迁到 /World 顶层——灯下引用子 prim RTX 不渲染）
     /World/Thermometer/Thermometer/capillary_liquid  温度计毛细红液柱（锚定缩放）
-    /World/TestTubeBubbles/bubble_{0..5}         沸腾气泡（球组，初始隐藏，上升动画）
+    /World/TestTubeBubbles/bubble_{0..7}         沸腾气泡（球组 r2.5mm 亮白，初始隐藏，上升动画）
     /World/Dropper / DropperDrop / TestTubeLiquid  滴加效果（阶段B；DropperFill 固定液柱
     已删，2026-08-25 用户「滴管里面固定竖直的液柱很奇怪+移动时浅色轨迹」→ 参考 d2l 无液柱）
 """
@@ -52,8 +52,11 @@ from tasks.base_task import BaseTask
 from .meta_actions.constants import (
     TIP_OFFSET,
     DROP_REST, DROP_GRASP,
-    SAMPLE_BOTTLE_XY, TUBE_XY,
+    SAMPLE_BOTTLE_XY, TUBE_XY, TUBE_MOUTH_Z,
     THERMO_XY, THERMO_REST_Z, THERMO_GRASP, THERMO_GRASP_OFFSET,
+    THERMO_HANG,
+    ZEO_GRASP, ZEO2_GRASP, ZEO_CENTER_OFFSET, ZEO_DROP_Z, ZEO_STACK_DZ,
+    MATCH_XY, MATCH_REST_Z, MATCH_GRASP, MATCH_HELD_OFFSET, MATCH_TIP_OFFSET, WICK,
     EFFECT_TUBE_DROPS, EFFECT_DROPPER_DROP,
 )
 
@@ -88,6 +91,17 @@ _THERMO_HELD = Gf.Matrix4d(0.0, 0.0, -1.0, 0.0,
                            0.0, -1.0, 0.0, 0.0,
                            -1.0, 0.0, 0.0, 0.0,
                            THERMO_GRASP_OFFSET, 0.0, 0.0, 1.0)
+
+# 沸石相对夹爪的持握矩阵 _ZEO_HELD（阶段 C 放沸石，2026-08-27 用户新增）。旋转与
+# _T_HELD/_THERMO_HELD 完全一致（沸石 Z 朝上→tool -X、X→tool -Z、Y→tool -Y），仅平移改
+# ZEO_CENTER_OFFSET=0.0037（沸石半高）。沸石局部原点=底 z=0、+Z 朝上（新资产 2026-08-27
+# 重建）。竖直夹（默认朝向手指朝下，tool+X 朝世界 -Z）→ 沸石底在夹爪下方 0.0037、
+# 沸石中心落在夹爪处（夹爪两指夹住颗粒最宽处）；旋转 ORIENT_FWD 后沸石随夹爪、位置不变
+# （颗粒旋转对称，朝向差异无视觉影响）。沸石中心 = 夹爪（tool 原点），抓点 = 沸石中心。
+_ZEO_HELD = Gf.Matrix4d(0.0, 0.0, -1.0, 0.0,
+                        0.0, -1.0, 0.0, 0.0,
+                        -1.0, 0.0, 0.0, 0.0,
+                        ZEO_CENTER_OFFSET, 0.0, 0.0, 1.0)
 
 
 class _DropperLifecycle:
@@ -183,15 +197,17 @@ class _DropperLifecycle:
 
 
 class _ThermometerLifecycle:
-    """单支温度计状态机（rest → attached，阶段 D 段 1：抓 + 倾斜带到试管口）。
+    """单支温度计状态机（rest → attached → hung，阶段 D 挂温度计）。
 
     持握 = 矩阵 _THERMO_HELD · tool_world（d2s 夹药匙同款横夹竖直杆身，手指朝前），
-    温度计随夹爪旋转：竖直提出 → 高位运到管口 -X 侧 → 原地倾斜 25° → 竖直下探泡尖
-    落管口。段 2（倾斜深入 → 挂环套臂 → 松爪自然下垂）未实现，attached 后一直跟随
-    夹爪（段 1 终点位保持），直到 reset 回架。
+    温度计随夹爪旋转：竖直提出 → 高位运到管口 -X 侧 → 原地倾斜 20° → 竖直下探泡尖
+    落管口上方 5mm（段 1）→ 位置+朝向同步插值（ThermoInsertRotate ⑧，边下探边转垂直）
+    → 挂环套铁架台钩、泡尖伸进试管（段 2）→ 松爪（grip 打开，⑨）→ hung：温度计
+    自然下垂挂在钩上（泡尖在管内浸液面），锁挂位矩阵不再跟随夹爪。
     参考点（均为 gripper/TCP 世界坐标）：
       grasp   架右后排孔抓点（夹爪 z = THERMO_GRASP）
       rest    架内立放静止位（泡尖=原点，THERMO_XY + THERMO_REST_Z）
+      hang    挂位夹爪（THERMO_HANG，松爪判定；挂环套钩后温度计锁 THERMO_HANG 挂位）
     """
 
     def __init__(self, task, name, path, rest, grasp):
@@ -203,11 +219,13 @@ class _ThermometerLifecycle:
         self.state = "rest"
         self._near_frames = 0
         self.attached = False
+        self.hung = False
 
     def reset(self):
         self.state = "rest"
         self._near_frames = 0
         self.attached = False
+        self.hung = False
         self.task._set_thermo_world(self.task._thermo_rest_matrix())
 
     def step(self, gripper_pos, opening):
@@ -227,9 +245,167 @@ class _ThermometerLifecycle:
                 print(f"[b2] thermometer attached (grip={opening:.4f})")
             return
 
-        # 吸附期：逐帧跟随夹爪（矩阵持握，随夹爪旋转/倾斜：高位运到管口 → 倾斜 → 落泡尖）
-        self.task._set_thermo_world(self.task._thermo_held_matrix())
-        # 段 1 无松爪/挂环分支：attached 后保持跟随夹爪（含段 1 终点位），reset 才回架
+        if self.state == "attached":
+            # 段 2 松爪判定：夹爪已到挂位（ThermoInsertRotate ⑧ 终点）且 grip 打开（⑨）
+            # → 挂环套钩完成，转 hung 锁挂位矩阵（温度计不再跟随夹爪，自然下垂）
+            if (opening > self.task.gripper_open_threshold
+                    and self.task._near(self.task._thermo_hang_grasp(), gripper_pos)):
+                self.state = "hung"
+                self.hung = True
+                self.task._set_thermo_world(self.task._thermo_hang_matrix())
+                print(f"[b2] thermometer hung on hook (grip={opening:.4f})")
+            else:
+                # 吸附期：逐帧跟随夹爪（矩阵持握，随夹爪旋转/倾斜：高位运到管口 → 倾斜 → 下探转垂直）
+                self.task._set_thermo_world(self.task._thermo_held_matrix())
+            return
+
+        # hung：温度计挂在铁架台钩上自然下垂（泡尖在管内浸液面），锁挂位矩阵
+        self.task._set_thermo_world(self.task._thermo_hang_matrix())
+
+
+class _ZeoliteLifecycle:
+    """单块沸石状态机（rest → attached → released → settled，阶段 C 放沸石）。
+
+    持握 = 矩阵 _ZEO_HELD · tool_world（沸石中心落在夹爪处，颗粒随夹爪平移/旋转）。
+    竖直夹（默认朝向手指朝下）→ 旋转手指朝前 → 水平伸到试管上方 → 松爪 → 沸石从
+    夹爪坠落进试管沉底（settled，锁管底位姿，不再跟随夹爪）。两颗沸石各一实例：
+    第一颗沉底、第二颗叠第一颗顶（settle_dz=ZEO_STACK_DZ，管底内 Ø11.5mm 只容一颗
+    并排）。两颗抓点仅距 2cm（< 近窗 3cm），rest 态用「离夹爪最近那颗」门禁防同时误抓。
+    参考点（gripper/TCP 世界坐标）：
+      grasp   皿上沸石中心抓点（ZEO_GRASP / ZEO2_GRASP）
+      drop    管口正上方放下位（夹爪 x/y = 管口、z = ZEO_DROP_Z，松爪判定）
+      settle  沸石中心沉底位（管口 xy、z = 管底 + 半高 + settle_dz）
+    """
+
+    def __init__(self, task, name, path, grasp, drop, settle_dz=0.0):
+        self.task = task
+        self.name = name
+        self.path = path
+        self.grasp = np.array(grasp)
+        self.drop = np.array(drop)
+        self.settle_dz = settle_dz
+        self.state = "rest"
+        self._near_frames = 0
+        self.attached = False
+        self.released = False
+        self.settled = False
+        self._fall_t = 0
+        self._fall_start = None
+
+    def reset(self):
+        self.state = "rest"
+        self._near_frames = 0
+        self.attached = self.released = self.settled = False
+        self._fall_t = 0
+        self._fall_start = None
+        self.task._set_zeolite_world(self.path, self.task._zeolite_rest_matrix(self.grasp))
+
+    def step(self, gripper_pos, opening):
+        """每帧推进。gripper_pos = TCP，opening = joint[7]（m）。"""
+        if self.state == "rest":
+            # 两颗沸石抓点仅 2cm 在近窗内：只允许「离夹爪最近」的 rest 沸石附着（防同时误抓两颗）
+            if not self.task._is_closest_zeolite(self):
+                self._near_frames = 0
+                return
+            near = self.task._near(self.grasp, gripper_pos)
+            self._near_frames = self._near_frames + 1 if near else 0
+            held = self.task._zeolite_held_matrix()
+            if near and opening < self.task.gripper_open_threshold:
+                self.task._ease_zeolite_world(self.path, held)
+            if (near and self._near_frames >= self.task.GRASP_NEAR_FRAMES
+                    and opening < self.task.gripper_closed_threshold):
+                self.state = "attached"
+                self.attached = True
+                self.task._set_zeolite_world(self.path, held)
+                print(f"[b2] zeolite attached {self.name} (grip={opening:.4f})")
+            return
+
+        if self.state == "attached":
+            # 松爪判定：夹爪到管口正上方放下位且 grip 打开（⑨）→ released，沸石坠落
+            if (opening > self.task.gripper_open_threshold
+                    and self.task._near(self.drop, gripper_pos)):
+                self.state = "released"
+                self.released = True
+                self._fall_start = np.asarray(gripper_pos, dtype=float)  # 夹爪=沸石中心
+                self._fall_t = 0
+                print(f"[b2] zeolite released over tube {self.name} (grip={opening:.4f})")
+            else:
+                self.task._set_zeolite_world(self.path, self.task._zeolite_held_matrix())
+            return
+
+        if self.state == "released":
+            # 坠落动画：沸石中心从放下位加速坠落到管底，落定转 settled 锁管底位姿
+            self._fall_t += 1
+            start = np.asarray(self._fall_start, dtype=float)
+            target = self.task._zeolite_settle_center(self.settle_dz)
+            if self._fall_t >= self.task.ZEO_FALL_FRAMES:
+                self.state = "settled"
+                self.settled = True
+                self.task._set_zeolite_world(self.path, self.task._zeolite_settle_matrix(self.settle_dz))
+                print(f"[b2] zeolite settled {self.name} at tube bottom")
+            else:
+                frac = self._fall_t / self.task.ZEO_FALL_FRAMES
+                center = start + (target - start) * (frac * frac)   # 加速坠落（t²）
+                self.task._set_zeolite_world(self.path, self.task._zeolite_translate_matrix(center))
+            return
+
+        # settled：沸石沉在管底（穿过液面），锁管底位姿
+        self.task._set_zeolite_world(self.path, self.task._zeolite_settle_matrix(self.settle_dz))
+
+
+class _MatchLifecycle:
+    """单根火柴状态机（rest → attached → released → rest，阶段 E 点燃酒精灯）。
+
+    持握 = 纯平移 offset（MATCH_HELD_OFFSET）：火柴全程水平头朝 +X，不随夹爪旋转
+    （与滴管/温度计/沸石的矩阵持握不同——火柴杆横躺，夹爪手指朝下竖直夹其杆身）。
+    释放时写回台面静止位（flametest 同款：高位松爪后火柴写回 rest）。
+    参考点（gripper/TCP 世界坐标）：
+      grasp   杆身中部抓点（MATCH_GRASP）
+      rest    火柴原点台面静止位（MATCH_XY + MATCH_REST_Z）
+    """
+
+    def __init__(self, task, name, path, rest, grasp):
+        self.task = task
+        self.name = name
+        self.path = path
+        self.rest = np.array(rest)
+        self.grasp = np.array(grasp)
+        self.state = "rest"
+        self._near_frames = 0
+        self.attached = False
+        self.released = False
+
+    def reset(self):
+        self.state = "rest"
+        self._near_frames = 0
+        self.attached = False
+        self.released = False
+        self.task._set_match_world(self.task._match_rest_pos())
+
+    def step(self, gripper_pos, opening):
+        """每帧推进。gripper_pos = TCP，opening = joint[7]（m）。"""
+        if self.state == "rest":
+            near = self.task._near(self.grasp, gripper_pos)
+            self._near_frames = self._near_frames + 1 if near else 0
+            held = np.asarray(gripper_pos) + np.array(MATCH_HELD_OFFSET)
+            if near and opening < self.task.gripper_open_threshold:
+                self.task._ease_match_world(held)
+            if (near and self._near_frames >= self.task.GRASP_NEAR_FRAMES
+                    and opening < self.task.gripper_closed_threshold):
+                self.state = "attached"
+                self.attached = True
+                self.task._set_match_world(held)
+                print(f"[b2] match attached (grip={opening:.4f})")
+            return
+
+        # 吸附期：火柴跟随夹爪（纯平移），头 = 夹爪 + MATCH_TIP_OFFSET
+        self.task._set_match_world(np.asarray(gripper_pos) + np.array(MATCH_HELD_OFFSET))
+        # 松爪（高位 MATCH_LIFT_Z）：写回台面静止位，复位 rest
+        if opening > self.task.gripper_open_threshold:
+            self.released = True
+            self.task._set_match_world(self.task._match_rest_pos())
+            self.state = "rest"
+            print(f"[b2] match released to rest")
 
 
 class B2AlcoholHeatLiquidTask(BaseTask):
@@ -262,12 +438,32 @@ class B2AlcoholHeatLiquidTask(BaseTask):
     # 气泡上升速度（m/帧）
     BUBBLE_SPEED = 0.004
 
+    # 水蒸气两段式（2026-08-27 用户「雾气太假：整个柱体超过试管；真实沸腾雾先只在试管
+    # 范围内」→ 改两段）：steam_inner 管内雾（Cylinder r0.007 < 管内径，底锚液面，长到
+    # 管口，只填试管内部）+ steam_plume 管口羽流（尖端朝下 Cone，apex 钉管口 1.0739，
+    # 升出管口后扩散消散）。时序：管内雾先长满（雾先只在试管里），羽流才从管口升起。
+    STEAM = "/World/TestTubeSteam"
+    STEAM_MOUTH_Z = TUBE_MOUTH_Z      # 管口 1.0739（管内雾上限 / 羽流 apex）
+    STEAM_INNER_R = 0.007             # 管内雾半径（< 管内径 Ø17/2=0.0085，被管壁约束）
+    STEAM_PLUME_R = 0.016             # 管口上羽流顶半径（上升扩散）
+    STEAM_PLUME_H = 0.12              # 羽流高（管口 → 1.1939，挂钩底 1.216 之下）
+    STEAM_GROW_FRAMES = 90            # 两段总帧数（~1.5s @60fps）
+    STEAM_INNER_SHARE = 0.6           # 前 60% 帧：管内雾先长满（雾先在试管范围内）
+
     # 滴加效果 prim 路径
     DROPPER = "/World/Dropper"
     TUBE_DROPS = EFFECT_TUBE_DROPS
     DROPPER_DROP = EFFECT_DROPPER_DROP
     # 温度计（阶段 D 挂温度计）：/World/Thermometer（外 translate (0.521,0.468,0.808)）
     THERMOMETER = "/World/Thermometer"
+    # 沸石（阶段 C 放沸石）：/World/Zeolite、/World/Zeolite2（并排 ±1cm 沿 x，2026-08-27 两颗）
+    ZEOLITE = "/World/Zeolite"
+    ZEOLITE2 = "/World/Zeolite2"
+    ZEO_FALL_FRAMES = 18   # 沸石坠落帧数（~18cm 加速坠落，仿液滴 t²）
+    # 火柴（阶段 E 点燃酒精灯）：/World/Match（抬高 12mm，头朝灯芯）
+    MATCH = "/World/Match"
+    MATCH_IGNITE_NEAR_FRAMES = 15   # 火柴头近灯芯连续帧数阈值（仿 flametest）
+    MATCH_IGNITE_DIST = 0.035       # 火柴头距灯芯 < 3.5cm 判定点火接近
 
     def __init__(self, cfg, world, stage, robot):
         super().__init__(cfg, world, stage, robot)
@@ -282,6 +478,9 @@ class B2AlcoholHeatLiquidTask(BaseTask):
         # 气泡球组（骨架 Sphere，排除 bubble_mat 材质 prim）
         self.bubble_prims = self._children("/World/TestTubeBubbles")
         self.bubble_base = [self._read_translate(p) for p in self.bubble_prims]
+        # 水蒸气雾柱（同心双层 Cylinder，_children 已滤到几何）：初始隐藏高 0，沸腾相长高
+        self.steam_prims = self._children(self.STEAM)
+        self._steam_grow = 0
 
         self.phase = "idle"
         self.temperature = self.room_temp
@@ -305,6 +504,21 @@ class B2AlcoholHeatLiquidTask(BaseTask):
         self.thermometer = _ThermometerLifecycle(
             self, "thermometer", self.THERMOMETER,
             thermo_rest, THERMO_GRASP)
+        # 沸石（阶段 C 放沸石）：静态碰撞体，吸附期关碰撞；grasp/drop 两点位姿
+        self._disable_collision(self.ZEOLITE)
+        self._disable_collision(self.ZEOLITE2)
+        zeo_drop = (TUBE_XY[0], TUBE_XY[1], ZEO_DROP_Z)
+        self.zeolites = [
+            _ZeoliteLifecycle(self, "zeolite1", self.ZEOLITE, ZEO_GRASP, zeo_drop, 0.0),
+            _ZeoliteLifecycle(self, "zeolite2", self.ZEOLITE2, ZEO2_GRASP, zeo_drop, ZEO_STACK_DZ),
+        ]
+        self.zeolite_added = False     # 两颗沸石都沉底（idle 门控）
+        # 火柴（阶段 E 点燃酒精灯）：静态碰撞体，吸附期关碰撞；rest/grasp 两点位姿
+        self._disable_collision(self.MATCH)
+        match_rest = (MATCH_XY[0], MATCH_XY[1], MATCH_REST_Z)
+        self.match = _MatchLifecycle(self, "match", self.MATCH, match_rest, MATCH_GRASP)
+        self.flame_lit = False         # 火柴触灯芯点燃（idle 门控：火焰 reveal）
+        self.match_ignite_counter = 0  # 火柴头近灯芯连续帧计数
         self._drop_count = 0           # 已生成的液滴总数（每 +DROPS_PER_SQUEEZE）
         self._drop_queue = []          # 滴落动画队列（当前在飞的滴，含 delay/t/hang/fall）
         self._liquid_added = False     # 滴加完成（idle 门控：全 cycles 滴完才允许点火）
@@ -319,16 +533,38 @@ class B2AlcoholHeatLiquidTask(BaseTask):
         self._drop_count = 0
         self._drop_queue = []
         self._liquid_added = False
+        self.zeolite_added = False
+        self.flame_lit = False
+        self.match_ignite_counter = 0
         self._liquid_level = 0.0
         self._set_visible(self._flame_paths(), False)
         self._set_visible(self.bubble_prims, False)
         for p, base in zip(self.bubble_prims, self.bubble_base):
             self._set_translate(p, base)
+        self._steam_grow = 0
+        # 可见性父门控（同 DropperDrop 良方）：scene 中 steam_inner/plume 是默认可见、
+        # 由父 Xform 隐藏；reset/沸腾 只 toggle 父即可（子继承），不可只藏子（父 invisible
+        # 会阻挡所有后代渲染）。
+        self._set_visible(self.STEAM, False)
+        for p in self.steam_prims:
+            prim = self.stage.GetPrimAtPath(p)
+            if not prim.IsValid():
+                continue
+            if prim.GetName() == "steam_inner":
+                UsdGeom.Cylinder(prim).GetHeightAttr().Set(0.0)
+            elif prim.GetName() == "steam_plume":
+                UsdGeom.Cone(prim).GetHeightAttr().Set(0.0)
+                UsdGeom.Cone(prim).GetRadiusAttr().Set(self.STEAM_PLUME_R)
         self._set_capillary(self.room_temp)
         # 滴加复位：滴管回架、液滴/管柱效果隐藏、管柱高度归零
         self.dropper.reset()
         # 温度计复位：回架右后排孔立放位（挂环脱臂、泡尖回孔底）
         self.thermometer.reset()
+        # 沸石复位：回玻璃皿静止位（底贴皿顶）
+        for z in self.zeolites:
+            z.reset()
+        # 火柴复位：回台面静止位
+        self.match.reset()
         for p in (self.TUBE_DROPS, self.DROPPER_DROP):
             self._set_visible(p, False)
         lq = self.stage.GetPrimAtPath(self.TUBE_DROPS)
@@ -346,19 +582,28 @@ class B2AlcoholHeatLiquidTask(BaseTask):
         opening = joints[7]
         self._step_drop_anim()              # 滴落动画独立推进（与抓取/滴加并行）
         self.dropper.step(gripper_pos, opening)
+        for z in self.zeolites:
+            z.step(gripper_pos, opening)
         self.thermometer.step(gripper_pos, opening)
+        self.match.step(gripper_pos, opening)
+        self._step_match_ignite(gripper_pos)   # 点火检测（火柴头触灯芯 → flame_lit）
         self._liquid_added = (self._drop_count
                               >= self.sample_cycles * self.DROPS_PER_SQUEEZE)
+        self.zeolite_added = all(z.settled for z in self.zeolites)
         self._update_experiment()
         return self.get_basic_state_info(additional_info={
             "phase": self.phase,
             "temperature": round(self.temperature, 1),
             "boiling_point": self.boiling_point,
             "flame_on": self.phase != "idle",
+            "flame_lit": self.flame_lit,
             "dropper_attached": self.dropper.attached,
             "dropper_filled": self.dropper.filled,
             "dropper_dropped": self.dropper.dropped,
             "thermometer_attached": self.thermometer.attached,
+            "thermometer_hung": self.thermometer.hung,
+            "zeolite_added": self.zeolite_added,
+            "match_attached": self.match.attached,
         })
 
     # ------------------------------------------------------------------
@@ -366,11 +611,11 @@ class B2AlcoholHeatLiquidTask(BaseTask):
     # ------------------------------------------------------------------
     def _update_experiment(self):
         if self.phase == "idle":
-            if (self._liquid_added and self.thermometer.attached
-                    and self.frame_idx >= 5 + self.idle_dwell_frames):
+            if (self._liquid_added and self.zeolite_added and self.thermometer.hung
+                    and self.flame_lit):
                 self.phase = "ignited"
                 self._set_visible(self._flame_paths(), True)
-                print(f"[b2] ignite: flame on @ frame {self.frame_idx}")
+                print(f"[b2] ignite: flame on (match lit) @ frame {self.frame_idx}")
 
         elif self.phase == "ignited":
             if self.frame_idx >= 5 + self.idle_dwell_frames + self.ignite_dwell_frames:
@@ -382,11 +627,13 @@ class B2AlcoholHeatLiquidTask(BaseTask):
             if self.temperature >= self.boiling_point:
                 self.phase = "boiling"
                 self._set_visible(self.bubble_prims, True)
+                self._set_visible(self.STEAM, True)
                 print(f"[b2] boiling at T={self.temperature:.1f}")
 
         elif self.phase == "boiling":
             self._boil_frames += 1
             self._animate_bubbles()
+            self._animate_steam()
             if self._boil_frames >= self.boil_dwell_frames:
                 self.phase = "done"
                 print(f"[b2] done: boiling point {self.boiling_point:.1f}°C recorded")
@@ -403,6 +650,42 @@ class B2AlcoholHeatLiquidTask(BaseTask):
             if t[2] > pop_z:
                 t = list(base)
             self._set_translate(p, t)
+
+    def _animate_steam(self):
+        """水蒸气两段式（2026-08-27 用户「雾气要先在试管范围内」）：
+        阶段A（前 60% 帧）steam_inner 管内雾从实际液面长到管口——雾先只在试管里；
+        阶段B（后 40% 帧）steam_plume 管口羽流从管口升起扩散消散（apex 钉管口）。
+        到顶后 ±3% 高度呼吸。管内雾半径 < 管内径，被管壁约束绝不超出试管。"""
+        self._steam_grow += 1
+        progress = min(1.0, self._steam_grow / self.STEAM_GROW_FRAMES)
+        base = self.TUBE_BOTTOM_Z + self._liquid_level       # 实际液面（沸腾时已满）
+        inner_full = self.STEAM_MOUTH_Z - base               # 液面→管口高度（管内雾上限）
+        # 阶段A：管内雾 0→1（t² 缓入，雾积聚感）
+        inner_p = min(1.0, progress / self.STEAM_INNER_SHARE)
+        inner_h = inner_full * inner_p * inner_p
+        # 阶段B：管口羽流（apex 钉管口，上升扩散；半径随高度同涨 = 越升越散）
+        plume_p = max(0.0, (progress - self.STEAM_INNER_SHARE) / (1.0 - self.STEAM_INNER_SHARE))
+        plume_h = self.STEAM_PLUME_H * plume_p * plume_p
+        plume_r = self.STEAM_PLUME_R * plume_p
+        if progress >= 1.0:                                  # 到顶后轻微呼吸
+            resp = 1.0 + 0.03 * np.sin(self.frame_idx * 0.05)
+            inner_h *= resp
+            plume_h *= resp
+        for p in self.steam_prims:
+            prim = self.stage.GetPrimAtPath(p)
+            if not prim.IsValid():
+                continue
+            name = prim.GetName()
+            if name == "steam_inner":
+                UsdGeom.Cylinder(prim).GetHeightAttr().Set(inner_h)
+                UsdGeom.Xformable(prim).GetOrderedXformOps()[0].Set(
+                    Gf.Vec3d(TUBE_XY[0], TUBE_XY[1], base + inner_h / 2))
+            elif name == "steam_plume":
+                UsdGeom.Cone(prim).GetHeightAttr().Set(plume_h)
+                UsdGeom.Cone(prim).GetRadiusAttr().Set(plume_r)
+                # apex-down：translate 中心 = apex(管口) + 半高，apex 恒钉管口
+                UsdGeom.Xformable(prim).GetOrderedXformOps()[0].Set(
+                    Gf.Vec3d(TUBE_XY[0], TUBE_XY[1], self.STEAM_MOUTH_Z + plume_h / 2))
 
     # ------------------------------------------------------------------
     # 温度计读数：毛细柱锚定缩放（底 z=0.005 不动，柱顶随温度爬升）
@@ -532,12 +815,135 @@ class B2AlcoholHeatLiquidTask(BaseTask):
                            0.0, 0.0, 1.0, 0.0,
                            THERMO_XY[0], THERMO_XY[1], THERMO_REST_Z, 1.0)
 
+    def _thermo_hang_grasp(self):
+        """挂位夹爪世界坐标（松爪判定参考点）= THERMO_HANG。"""
+        return THERMO_HANG
+
+    def _thermo_hang_matrix(self):
+        """温度计挂位固定世界矩阵（挂环套铁架台钩、自然下垂；泡尖在管内浸液面）。
+
+        旋转 = diag(-1,-1,1)：与 FWD 持握终点（_THERMO_HELD·tool_world）的世界旋转
+        一致（实证：FWD 时温度计 local Z→世界 +Z 泡尖下挂环上、local X→世界 -X 挂环
+        孔沿 X 套钩棍），松爪切换零跳变。平移 = 泡尖世界 = 夹爪 THERMO_HANG 正下方
+        0.20（FWD tool+X=世界 -Z）：THERMO_HANG - (0,0,0.20)。
+        """
+        px = THERMO_HANG[0]
+        py = THERMO_HANG[1]
+        pz = THERMO_HANG[2] - THERMO_GRASP_OFFSET
+        return Gf.Matrix4d(-1.0, 0.0, 0.0, 0.0,
+                           0.0, -1.0, 0.0, 0.0,
+                           0.0, 0.0, 1.0, 0.0,
+                           px, py, pz, 1.0)
+
     def _ease_thermo_world(self, target, k=0.18):
         """夹爪合拢期间温度计逐帧平滑移向持握位（消除闪现吸附）。"""
         cur = UsdGeom.Xformable(self.stage.GetPrimAtPath(self.THERMOMETER)) \
             .ComputeLocalToWorldTransform(Usd.TimeCode.Default())
         self._set_thermo_world(_blend_world(cur, target, k))
 
+    # ------------------------------------------------------------------
+    # 沸石矩阵持握（阶段 C：沸石中心落夹爪处，随夹爪平移/旋转 → 松爪坠落沉底）
+    # ------------------------------------------------------------------
+    def _zeolite_held_matrix(self):
+        """沸石当前持握世界矩阵 = _ZEO_HELD · tool_world（沸石中心落在夹爪处）。"""
+        return _ZEO_HELD * self._tool_world()
+
+    def _set_zeolite_world(self, path, world_matrix):
+        """把沸石写到给定世界位姿（局部 = 父世界逆 · 世界，清 op 表 + 单 transform op）。"""
+        prim = self.stage.GetPrimAtPath(path)
+        if not prim.IsValid():
+            return
+        parent = self.stage.GetPrimAtPath("/World")
+        parent_xf = UsdGeom.Xformable(parent).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        local = world_matrix * parent_xf.GetInverse()
+        xf = UsdGeom.Xformable(prim)
+        xf.ClearXformOpOrder()
+        xf.AddTransformOp().Set(local)
+
+    def _zeolite_translate_matrix(self, center_pos):
+        """沸石中心在 center_pos 的恒等旋转位姿（沸石底 = 中心 - 半高 ZEO_CENTER_OFFSET）。"""
+        cx, cy, cz = center_pos
+        return Gf.Matrix4d(1.0, 0.0, 0.0, 0.0,
+                           0.0, 1.0, 0.0, 0.0,
+                           0.0, 0.0, 1.0, 0.0,
+                           cx, cy, cz - ZEO_CENTER_OFFSET, 1.0)
+
+    def _zeolite_rest_matrix(self, grasp):
+        """沸石皿上静止位姿（中心在 grasp，底贴皿顶）。"""
+        return self._zeolite_translate_matrix(grasp)
+
+    def _zeolite_settle_center(self, settle_dz=0.0):
+        """沸石沉底后沸石中心世界坐标（管口 xy、z = 管底 + 半高 + settle_dz，穿过液面沉底）。"""
+        return np.array([TUBE_XY[0], TUBE_XY[1],
+                         self.TUBE_BOTTOM_Z + ZEO_CENTER_OFFSET + settle_dz])
+
+    def _zeolite_settle_matrix(self, settle_dz=0.0):
+        """沸石沉底位姿（恒等旋转，中心在管底 + 半高 + settle_dz）。"""
+        return self._zeolite_translate_matrix(self._zeolite_settle_center(settle_dz))
+
+    def _ease_zeolite_world(self, path, target, k=0.18):
+        """夹爪合拢期间沸石逐帧平滑移向持握位（消除闪现吸附）。"""
+        cur = UsdGeom.Xformable(self.stage.GetPrimAtPath(path)) \
+            .ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        self._set_zeolite_world(path, _blend_world(cur, target, k))
+
+    def _is_closest_zeolite(self, zeolite):
+        """这颗沸石能否附着：离夹爪最近的 rest 态沸石，且无其他沸石正被夹/坠落。
+
+        两颗抓点仅 2cm < 近窗 3cm，须双重门禁防同时误抓：
+        1) 有别的沸石正 attached/released（正被夹持或坠落入管）→ 本颗绝不附着；
+        2) 存在比本颗更近的 rest 沸石 → 本颗不附着。
+        （2026-08-27 bug：第一颗 attach 后 state 离开 rest，第二颗失去「更近竞争者」、
+        仍在 3cm 近窗内 + opening<closed，同帧连附 → 第一遍就抓走两颗，第二遍夹空。）
+        """
+        gripper_pos = self.robot.get_gripper_position()
+        d_self = np.linalg.norm(np.asarray(gripper_pos) - zeolite.grasp)
+        for other in self.zeolites:
+            if other is zeolite:
+                continue
+            if other.state in ("attached", "released"):
+                return False
+            if other.state == "rest":
+                if np.linalg.norm(np.asarray(gripper_pos) - other.grasp) < d_self:
+                    return False
+        return True
+
+
+    # ------------------------------------------------------------------
+    # 火柴纯平移持握（阶段 E：火柴横躺水平头朝 +X，只跟夹爪平移不随旋转）
+    # ------------------------------------------------------------------
+    def _match_rest_pos(self):
+        """火柴原点台面静止位（MATCH_XY + MATCH_REST_Z）。"""
+        return np.array([MATCH_XY[0], MATCH_XY[1], MATCH_REST_Z])
+
+    def _set_match_world(self, position):
+        """把火柴写到给定世界位置（纯平移，火柴水平头朝 +X 姿态不变）。"""
+        self._set_obj_world(self.MATCH, position)
+
+    def _ease_match_world(self, target, k=0.18):
+        """夹爪合拢期间火柴逐帧平滑移向持握位（消除闪现吸附）。"""
+        self._ease_obj_world(self.MATCH, target, k)
+
+    def _match_tip(self, gripper_pos):
+        """火柴头中心世界坐标 = 夹爪 + MATCH_TIP_OFFSET（头在夹爪 +X 0.0494，水平朝前）。"""
+        return np.asarray(gripper_pos, dtype=float) + np.array(MATCH_TIP_OFFSET)
+
+    def _step_match_ignite(self, gripper_pos):
+        """点火检测（仿 flametest _update_ignite）：火柴 attached 期间头近灯芯连续
+        MATCH_IGNITE_NEAR_FRAMES 帧 → flame_lit=True（idle 门控随后 reveal 火焰）。"""
+        if self.flame_lit:
+            return
+        if self.match.attached:
+            tip = self._match_tip(gripper_pos)
+            if np.linalg.norm(tip - np.array(WICK)) < self.MATCH_IGNITE_DIST:
+                self.match_ignite_counter += 1
+                if self.match_ignite_counter >= self.MATCH_IGNITE_NEAR_FRAMES:
+                    self.flame_lit = True
+                    print(f"[b2] flame lit by match @ frame {self.frame_idx}")
+            else:
+                self.match_ignite_counter = 0
+        else:
+            self.match_ignite_counter = 0
 
     def _near(self, pos, gripper_pos, z_thresh=0.015):
         return (np.linalg.norm(gripper_pos[:2] - pos[:2]) < self.grasp_xy_threshold
@@ -618,7 +1024,9 @@ class B2AlcoholHeatLiquidTask(BaseTask):
     # 辅助（v1 保留）
     # ------------------------------------------------------------------
     def _flame_paths(self):
-        return ["/World/AlcoholLamp/flame_outer", "/World/AlcoholLamp/flame_inner"]
+        # 火焰迁到 /World 顶层（gen rebuild_flames）：灯下引用子 prim 在 RTX 不渲染，
+        # 顶层 Cone 才渲染（flametest 已验证）。默认可见，任务 reset 熄、点着翻 visible。
+        return ["/World/flame_outer", "/World/flame_inner"]
 
     def _children(self, root):
         prim = self.stage.GetPrimAtPath(root)
@@ -672,6 +1080,9 @@ class B2AlcoholHeatLiquidTask(BaseTask):
         print(f"[b2] episode done success={success} phase={self.phase} "
               f"dropper_dropped={self.dropper.dropped} "
               f"thermometer_attached={self.thermometer.attached} "
+              f"thermometer_hung={self.thermometer.hung} "
+              f"zeolite_added={self.zeolite_added} "
+              f"flame_lit={self.flame_lit} "
               f"boiling_point={self.boiling_point:.1f}°C temp={self.temperature:.1f}°C")
         super().on_task_complete(success)
 

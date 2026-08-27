@@ -42,9 +42,10 @@ from .meta_actions.constants import (
     DROP_ACID_REST, DROP_ACID_GRASP, ACID_BOTTLE_XY,
     EFFECT_TUBE_DROPS, EFFECT_PRECIPITATE, EFFECT_PRECIPITATE_CLOUD,
     EFFECT_DROPPER_DROP, EFFECT_TUBE_SAMPLE,
+    SPAT_GRASP,   # D3-S 药匙家用：第一列第3排 (0.659,0.3209,0.94)（非 d2s 第二列第4排）
 )
 from catalogue.d_wetchem.d2s_water_solubility.meta_actions.constants import (
-    GRIP_SPATULA, SPAT_GRASP, SPAT_HEAD_DIST,
+    GRIP_SPATULA, SPAT_HEAD_DIST,
     POWDER_TOP_Z, POWDER_X, DISH_XY,
     GRIP_TUBE, TUBE_GRASP_TCP, TUBE_ORIG_Z, TUBE_HELD_OFFSET_Z,
     TUBE_XY, TUBE_MOUTH_Z,
@@ -984,12 +985,12 @@ class D3SAcidReagentTask(BaseTask):
 
 
 def _spatula_rest_matrix():
-    """药匙架内竖插位姿（d2s 同款，用户 temp_d2s.usd 2026-08-14 更新）：与世界 /World/Spatula
-    矩阵一致 (translate (0.6993,0.3608,0.828)，rotateXYZ(0,0,-180) 烘平后即下行序)。"""
+    """药匙架内竖插位姿（2026-08-26 药匙移到第一列第3排）：与世界 /World/Spatula 矩阵一致
+    (translate (0.659,0.3209,0.828)，rotateXYZ(0,0,-180) 烘平后即下行序)。"""
     return Gf.Matrix4d(-1.0, 0.0, 0.0, 0.0,
                        0.0, -1.0, 0.0, 0.0,
                        0.0, 0.0, 1.0, 0.0,
-                       0.6993, 0.3608, 0.828, 1.0)
+                       0.659, 0.3209, 0.828, 1.0)
 
 
 def _dropper_rest_matrix():

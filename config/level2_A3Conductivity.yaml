@@ -1,0 +1,88 @@
+name: Level2_A3Conductivity
+
+# 注意：A3 task.py / controller.py 尚未实现（目前只完成 dynamic_cable.py + 场景）。
+# 本配置先作为环境布局记录（机器人底座 / 相机 / 场景路径），待 A3 task 实现后再
+# 在 catalogue/factory.py 注册 a3_conductivity 才能运行。
+task_type: "a3_conductivity"
+controller_type: "a3_conductivity"
+
+mode: "collect"
+
+# 场景：a3_conductivity（A3 电导率测量，桌面 z=0.80，2m×2m 台面中心为原点）
+# 布局（2026-08-27 pxr 实测世界 bbox，gen_a3_scene.py verify 全绿，站间净距全部 ≥0.35m——
+# 用户要求器材展开分开放、间隔大）：
+#   电导率仪 (0.05,0.35) 屏幕朝 +y，电极(+x 侧)朝 +x 面向样品烧杯；z 0.80..1.032
+#   样品烧杯 (0.72,0.24) 烧杯111，口顶 0.916；距电极插座 (0.01,0.2485) ~0.71m（线缆 0.8m 内安全）
+#   洗杯烧杯 (-0.52,0.28) 电极冲洗用，距插座 ~0.53m
+#   分析天平 (-0.60,-0.55) 盘顶 z 0.8475；称量纸 12cm 贴盘顶；粉堆叠纸上（底 0.8485）；
+#   药匙 (-0.72,-0.35) 立放天平侧上方（簇内净距 ~0.10）
+#   洗瓶 (0.50,-0.60) rotZ-90 红嘴朝 +y（对样品杯方向），z 0.80..0.987
+#   玻璃棒 (-0.05,-0.3695) rotX90 平躺桌面沿 y（长 0.261）
+#   机械臂底座 (0.00,0.00,0.71) = 台面中心：最远操作点（天平盘顶 0.81 / 样品杯中心 0.76 /
+#   洗瓶身 0.75 / 药匙 0.81）全部 >0.15 失效区、<Franka 0.855m 臂展
+usd_path: "assets/scenes/a_instrument/a3_conductivity/a3_conductivity.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（gripper 开度 = joint[7]，与 flametest/d2s/a1/a2 一致）
+grasp_xy_threshold: 0.03        # 夹爪距抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  # camera1：俯视全景——器材跨 x[-0.76,0.78] y[-0.63,0.46]，高位俯拍看全站间距
+  #（复用 d3s camera2 的近俯视朝向；机位/朝向待用户目检微调）
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [0.10, 0.05, 2.10]
+    resolution: [512, 512]
+    focal_length: 12
+    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    image_type: "rgb"
+
+  # camera2：直拍电导率仪显示屏（用户要看读数，同 a1/a2）：机位 (0.05,0.75,1.25) 在
+  # +y 屏前朝 -y，focal 35 让屏幕占画面
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.05, 0.75, 1.25]
+    resolution: [512, 512]
+    focal_length: 35
+    orientation: [0.0, 0.0, 0.4099, 0.9122]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 = 台面中心 (0.00,0.00,0.71)：器材环形散布四象限，全在 0.855m 臂展内且站间净距 ≥0.35
+  position: [0.0, 0.0, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

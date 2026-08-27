@@ -1,0 +1,121 @@
+name: Level2_D4SAlkaliReagent
+
+task_type: "d4s_alkali_reagent"
+controller_type: "d4s_alkali_reagent"
+
+mode: "collect"
+
+# 场景：d4s_alkali_reagent（D4-S 固体样品 + 碱性试剂滴加反应，桌面 z=0.80）
+# = D3-S 把「盐酸瓶」换成「碱性试剂瓶（alkaline_bottle.usd）」：挖粉动作与试管震荡完全不变
+# （皿/粉/试管/试管架坐标逐字一致；药匙家用参数化到 d4s 第一列第3排，挖粉 y 基准仍锚 0.3608），
+# 碱滴管用 B2 同款水平横夹（手指朝前）。碱瓶是塑料瓶（不玻璃化），自带橡胶塞翻放桌面倒放
+# （同 d4l，gen 静态摆，无拔塞动作）。
+# 台面（2026-08-27 pxr 实测世界 bbox，gen_d4s_scene.py verify 输出）：
+#   试管架 (0.6803,0.3607) 顶板 z 0.917、试管 (0.659,0.241,0.806) 架近侧左孔=第一列第1排 口 z 0.9593
+#   药匙 (0.659,0.3209,0.828) 第一列第3排竖插、勺头在下；表面皿 (0.5365,0.105) / 粉丘 (0.5383,0.0992)
+#   碱滴管 (0.659,0.4002,0.806) 立插主试管架第一列第5排（2026-08-26 用户三次改位：原右近孔挡震荡 →
+#     右后远端 IK 够不着 → 第二列第3排与药匙同列相邻穿模 → "药匙第一列第三排、滴管第一列第5排、
+#     第二列不放物品"=本布局）
+#   碱瓶 (0.370,0.30) 口 rim 0.870 液面 0.840（塑料瓶；橡胶塞翻放桌面倒放 0.305,0.30）
+usd_path: "assets/scenes/d_wetchem/d4s_alkali_reagent/d4s_alkali_reagent.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s/d3l 一致）
+grasp_xy_threshold: 0.03        # 夹爪距药匙/滴管/试管抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+# 开合小于此值算"挤胶头"（排空气/滴液）。0.0035：持握开度 0.0055 之上留 0.002 裕量
+# （防手指晃动误判挤），挤胶头 0.002 之下 0.0015（同 d3l/B2）
+squeeze_close_threshold: 0.0035
+
+# 碱滴管（吸碱→滴入试管）一次持握内循环遍数：多滴几滴让管内液体更明显（液面逐滴升高）
+# 加碱滴入即触发现象（气泡/沉淀/液体变色）
+alkali_cycles: 2
+# 试管震荡（d2s TubeShakePass）来回次数
+shake_cycles: 5
+
+# 实验结果输入接口（运行前 --result has_bubbles=yes input_color=blue liquid_color=green 等；
+# task 读 cfg.has_bubbles 等）。input_color=滴入碱溶液颜色（震荡前），liquid_color=震荡反应后
+# 输出色。默认改 true——直接跑命令也能看到气泡/沉淀（同 d3l 根因）。
+experiment_result:
+  has_bubbles:
+    label: "滴加后是否产生气泡"
+    type: bool
+    default: true
+  has_precipitate:
+    label: "滴加后是否产生沉淀"
+    type: bool
+    default: true
+  input_color:
+    label: "输入碱溶液的颜色（滴入后、震荡反应前的颜色）"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: clear
+  liquid_color:
+    label: "震荡反应后液体颜色（输出色/目标色）"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: clear
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.has_bubbles / cfg.has_precipitate / cfg.input_color / cfg.liquid_color。
+has_bubbles: true
+has_precipitate: true
+input_color: clear
+liquid_color: clear
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [1.20, 0.40, 1.15]
+    resolution: [512, 512]
+    focal_length: 10
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.8, 0.1, 1.44]
+    resolution: [512, 512]
+    focal_length: 10
+    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座与 d2s 完全一致 [-0.15, 0.05, 0.71]（用户明确"不能跟 d2s 保持同款吗"→保持同款，
+  # 不动底座；挖粉动作坐标才不跑偏）。判据：关键终点相对底座 y ≥0.15 才稳。
+  position: [-0.15, 0.05, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
