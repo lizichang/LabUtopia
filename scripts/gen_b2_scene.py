@@ -6,8 +6,13 @@
   / 玻璃皿+沸石 / 待测液体样品瓶 / 火柴——阶段A 机械臂操作升级新增）
 - 布局 = 用户 b2_tmp.usd 相对位置（2026-08-25 改版：整组绕 Z 旋 180° 并平移），锚：铁架台铁柱在 (STAND_X, STAND_Y)，
   垂直堆叠中心线 x=铁架台x−0.100（堆叠在铁柱 −X 侧，R180 后环/钩支臂指向 −X）：
-      酒精灯(桌面 z0.80) → 铁环(z0.910-0.918 托石棉网) → 石棉网(z0.919)
-      → 试管(底 z0.9206 坐网上) → 试管夹(夹管上部 z1.024-1.053) → 钩(z1.216-1.227，挂温度计)
+      酒精灯(桌面 z0.80) → 铁环(z0.930-0.938 托石棉网) → 石棉网(z0.939)
+      → 试管(底 z0.9406 坐网上) → 试管夹(夹管上部 z1.044-1.073) → 钩(z1.236-1.2473，挂温度计)
+- 2026-08-27 用户：铁架台上整套（铁环+挂钩+石棉网+试管+试管夹）上移 2cm（RING_RAISE）——
+  酒精灯当前是内焰加热不是外焰加热，先动几何看效果，动作/火焰后续再改。酒精灯+火焰不动。
+- 2026-08-27 二改：温度计玻璃管（杆/泡/毛细柱/白底/刻度）绕竖轴旋 -90°（y→x，Rz(-90)，
+  刻度面从 +X 转到 -Y 朝 camera_2 特写，白底转到 -X），挂环方向不变；火焰底座从灯芯顶
+  0.9005 下移到灯芯根部 0.891（holder 顶/灯芯露出点，包裹外露灯芯）——机械臂动作未改。
 - 台面前区 (0.50,0.35) 放试管架：滴管插左孔（中排，底面落孔底 z0.806）、温度计插右后排孔
   (0.521,0.468)（2026-08-25 用户：右中排温度计顶高1.084 挡机械臂下探滴管 → 移 y 值最大=最远孔）
 - 去资产自带 env_light 残留（重复 DomeLight）；灯帽从灯顶挪到桌边(y-0.467)；
@@ -29,17 +34,25 @@ ENV_TEX_SRC = os.path.join(REPO, "assets", "scenes", "d_wetchem", "d2s_water_sol
                            "textures", "env_bright.png")
 
 TABLE_TOP = 0.80
+# 2026-08-27 用户：铁架台上整套上移 2cm（酒精灯内焰加热→想改外焰加热，先动几何看效果）。
+# 作用于铁环/挂钩（子 prim translate）+ 石棉网/试管/试管夹（EQUIP z）。酒精灯+火焰不动。
+RING_RAISE = 0.02
+# 2026-08-27 用户：「铁架台上面的挂钩能不能再往上移1厘米…这样子温度计能挂的高一点」。
+# 挂钩在 RING_RAISE 之上再 +1cm（铁环/网/管/夹不动）；钩卡箍顶 1.2473→1.2573 逼近柱顶
+# 1.26 → 铁柱加高 POLE_RAISE（柱顶 1.27，钩下留 1.3cm 柱身）。
+HOOK_RAISE_EXTRA = 0.01    # 挂钩额外 +1cm（仅挂钩）
+POLE_RAISE = 0.01          # 铁柱 Mesh 加高（顶 0.460→0.470）
 # 锚：铁架台铁柱世界位置。b2_tmp 2026-08-25 用户整组绕 Z 旋 180° 并平移：
 # 铁柱到 (0.6286, 0.0029)，堆叠中心线在铁柱 −X 侧 10cm → x=0.5286（环心/试管/石棉网/酒精灯）。
 STAND_X, STAND_Y = 0.6286, 0.0029
 TUBE_X = STAND_X - 0.100
 TUBE_Y = STAND_Y
-GAUZE_Z = TABLE_TOP + 0.1194        # 石棉网中心（坐铁环上，环顶 0.918）
-TUBE_BOTTOM_Z = TABLE_TOP + 0.1206  # 试管底（坐石棉网上，b2_tmp 试管 translate z=0.1206）
-TUBE_MOUTH_Z = TUBE_BOTTOM_Z + 0.1533  # 试管口（底 0.9206 + 高 0.1533 = 1.0739）
+GAUZE_Z = TABLE_TOP + 0.1194 + RING_RAISE        # 石棉网中心（坐铁环上，环顶 0.918+RING_RAISE）
+TUBE_BOTTOM_Z = TABLE_TOP + 0.1206 + RING_RAISE  # 试管底（坐石棉网上；b2_tmp translate z +RING_RAISE）
+TUBE_MOUTH_Z = TUBE_BOTTOM_Z + 0.1533  # 试管口（底 0.9406 + 高 0.1533 = 1.0939）
 # 试管夹：b2_tmp 里相对铁柱偏移 (0.0505,-0.0209,0.2384)，整组 R180 后 → (−0.0505,+0.0209,0.2384)。
 # asset test_tube_clamp.usd 已内置 cm→m 换算，故 scene 只需平移（R180 由场景 xform op [T,R] 提供）。
-CLAMP_T = (STAND_X - 0.0505, STAND_Y + 0.0209, TABLE_TOP + 0.2384)
+CLAMP_T = (STAND_X - 0.0505, STAND_Y + 0.0209, TABLE_TOP + 0.2384 + RING_RAISE)
 # 试管架：asset 世界 bbox z[-0.0965,0.0205]，min z=-0.0965 → tz=None 贴台面 = 架原点 z=0.80+0.0965=0.8965。
 # 孔心相对架原点（skill 坑33 校准 + 2026-08-25 pxr 顶板 mesh 圆拟合）：顶板 2列×7行 Ø22.4 孔格。
 # 列 x=±0.019；行 y=+0.118(后排=最远)/+0.079/+0.039/0.000(中排)/-0.040/-0.080/-0.119(前排)。
@@ -115,6 +128,8 @@ LIQUID_R = 0.008                       # 水柱半径 < 管内径 ~0.0085
 BUBBLE_R = 0.0025                      # 气泡半径（2026-08-27 加大：原 1.5mm 在 512px 下不可见）
 # 气泡基础位（液体内，task 上升动画的复位点；以试管中心 (TUBE_X,TUBE_Y) 为基准）。
 # 沸石在管底（成核点）→ 气泡基础位聚在底部附近，沸腾时从底部冒出成串上升。
+# 2026-08-27 用户「逐渐出现气泡…沸腾的时候有很多气泡」→ 8→16 泡（加热 8s 逐个 reveal，
+# 沸腾全亮 16 泡），基础位在液面下 0.042 内交错分布（x/y 距心 <0.006，管内径 Ø~17）。
 BUBBLE_BASE = [
     (TUBE_X + 0.0000, TUBE_Y + 0.0000, TUBE_BOTTOM_Z + 0.012),
     (TUBE_X - 0.0035, TUBE_Y + 0.0025, TUBE_BOTTOM_Z + 0.020),
@@ -124,19 +139,18 @@ BUBBLE_BASE = [
     (TUBE_X + 0.0000, TUBE_Y + 0.0010, TUBE_BOTTOM_Z + 0.038),
     (TUBE_X - 0.0025, TUBE_Y + 0.0000, TUBE_BOTTOM_Z + 0.024),
     (TUBE_X + 0.0025, TUBE_Y + 0.0010, TUBE_BOTTOM_Z + 0.032),
+    (TUBE_X - 0.0018, TUBE_Y - 0.0018, TUBE_BOTTOM_Z + 0.014),
+    (TUBE_X + 0.0020, TUBE_Y + 0.0020, TUBE_BOTTOM_Z + 0.022),
+    (TUBE_X - 0.0040, TUBE_Y - 0.0010, TUBE_BOTTOM_Z + 0.028),
+    (TUBE_X + 0.0040, TUBE_Y + 0.0000, TUBE_BOTTOM_Z + 0.036),
+    (TUBE_X + 0.0000, TUBE_Y - 0.0020, TUBE_BOTTOM_Z + 0.040),
+    (TUBE_X - 0.0022, TUBE_Y + 0.0032, TUBE_BOTTOM_Z + 0.018),
+    (TUBE_X + 0.0022, TUBE_Y - 0.0032, TUBE_BOTTOM_Z + 0.034),
+    (TUBE_X + 0.0008, TUBE_Y + 0.0028, TUBE_BOTTOM_Z + 0.042),
 ]
 
-# 水蒸气（沸腾时从液面升起的雾，task 动画驱动）——2026-08-27 用户「雾气太假：整个柱体
-# 超过试管；真实沸腾雾先只在试管范围内」→ 两段式：
-#   steam_inner 管内雾 = Cylinder r0.007（< 管内径 Ø17/2=0.0085，被管壁约束）底锚液面，
-#     高度从 0 长到管口——雾先只在试管里、绝不超出试管；
-#   steam_plume 管口羽流 = 尖端朝下 Cone（apex 钉管口 1.0739），高 0→0.12、顶半径
-#     0→0.016——雾升出管口后扩散消散。
-# 时序：管内雾先长满（雾先在试管范围内），羽流才从管口升起。双层初始隐藏。
-STEAM_BASE_Z = TUBE_BOTTOM_Z + 0.060    # 液面顶 0.9806（雾柱底起点；task 沸腾时按实际液面写）
-STEAM_INNER_R = 0.007                   # 管内雾半径（< 管内径 Ø17/2，被管壁约束）
-STEAM_PLUME_R = 0.016                   # 管口上羽流顶半径（上升扩散）
-STEAM_PLUME_H = 0.12                    # 羽流高（管口 1.0739 → 1.1939，挂钩底 1.216 之下）
+# 2026-08-27 用户「整体去掉蒸汽的显示」→ 蒸汽两段式（steam_inner/steam_plume）已删，
+# 沸腾只留气泡动画（task 驱动）。
 
 
 # —— 阶段B 滴加：液体材质配方（同 d3l：水透明 + ior 水折射；滴落液滴更亮更不透）——
@@ -254,35 +268,6 @@ def add_b2_effects(stage):
     print(f"[effect] {len(BUBBLE_BASE)} bubbles hidden")
 
 
-def add_steam_effects(stage):
-    """沸腾水蒸气（2026-08-27 用户「雾气要先在试管范围内」→ 两段式）：
-    1) steam_inner 管内雾 = Cylinder r0.007（< 管内径 0.0085，被管壁约束）底锚液面，
-       高度从 0 长到管口——雾先只在试管里、绝不超出试管；
-    2) steam_plume 管口羽流 = 尖端朝下 Cone（ops [Translate, RotateXYZ180]，apex 钉管口
-       1.0739），高 0→0.12、顶半径 0→0.016——雾升出管口后扩散消散。
-    时序：管内雾先长满（雾先在试管范围内），羽流才从管口升起。双层初始隐藏、高 0。"""
-    g = UsdGeom.Xform.Define(stage, "/World/TestTubeSteam")
-    # 可见性由父 Xform 门控（同 DropperDrop 良方：reveal 父 → 子继承可见）：
-    # 子 prim 不设 invisible（否则父 visible 后子仍 invisible 不显示），只靠父隐藏。
-    UsdGeom.Imageable(g).MakeInvisible()
-    # 1) 管内雾（Cylinder，底锚液面）
-    c = UsdGeom.Cylinder.Define(stage, "/World/TestTubeSteam/steam_inner")
-    c.CreateRadiusAttr(STEAM_INNER_R)
-    c.CreateHeightAttr(0.0)                  # 初始 0，task 长高
-    c.CreateAxisAttr("Z")
-    c.AddTranslateOp().Set(Gf.Vec3d(TUBE_X, TUBE_Y, STEAM_BASE_Z))
-    add_material(stage, c.GetPrim(), (0.95, 0.95, 1.0), 0.10, roughness=0.6, double_sided=True)
-    # 2) 管口羽流（Cone 尖端朝下：apex 钉管口、base 在上；旋转后 translate 中心=apex+半高）
-    p = UsdGeom.Cone.Define(stage, "/World/TestTubeSteam/steam_plume")
-    p.CreateHeightAttr(0.0)
-    p.CreateRadiusAttr(STEAM_PLUME_R)
-    p.CreateAxisAttr("Z")
-    p.AddTranslateOp().Set(Gf.Vec3d(TUBE_X, TUBE_Y, TUBE_MOUTH_Z))
-    p.AddRotateXYZOp().Set(Gf.Vec3f(180, 0, 0))
-    add_material(stage, p.GetPrim(), (0.95, 0.95, 1.0), 0.07, roughness=0.6, double_sided=True)
-    print(f"[effect] TestTubeSteam hidden (parent-gated: inner fog fills tube + plume above mouth)")
-
-
 def add_env_light(stage):
     """环境光（DomeLight + 亮环境贴图）：玻璃试管/酒精灯在无环境反射下照不亮。
     贴图路径先用相对 ./textures/，烘平后由 fix_env_light() 在场景层重新指向。"""
@@ -334,16 +319,22 @@ def remove_asset_env_lights(st2):
 
 
 def move_lamp_cap(st2):
-    """灯帽从灯顶挪到桌边（b2_tmp 用户布局：cap 放 y-0.467，闭口朝下贴台面）。
+    """灯帽从灯顶挪到桌边（闭口朝下贴台面），位置 2026-08-28 从 y-0.467 改到 y-0.103。
+
+    旧位（ty 0.467）帽世界中心在灯 −Y 侧 46.7cm：灯移到 y=-0.0971 后帽中心落在
+    (0.5286,-0.5645) —— 机械臂底座 y=-0.08，帽在底座后方 48cm，Lula IK 无解，机械臂
+    卡住不动。新位 ty 0.103：移灯后帽中心落在 (0.5286,-0.20)（底座前方 0.55m 可达），
+    盖帽运输 10cm，全在 −Y 侧不跨试管堆叠。与灯体/火柴/架/铁架台均无碰撞（pxr 实测）。
+
     资产 cap xform = [Translate(0,0,0) rotateX90 scale0.01]，mesh 在局部 z[0.076,0.107]，
     故 translate z=-0.076 让帽底(z=0.076)落回台面 0.80。
-    酒精灯整组已 R180，cap 局部 y 会被旋 180° 取反，故 y 用 +0.467 才能落到桌边 −Y。"""
+    酒精灯整组已 R180，cap 局部 y 会被旋 180° 取反，故 y 用 +0.103 才能落到桌边 −Y。"""
     cap = st2.GetPrimAtPath("/World/AlcoholLamp/cap")
     if not cap.IsValid():
         print("[clean] /World/AlcoholLamp/cap not found, skip")
         return
     xf = UsdGeom.Xformable(cap)
-    tgt = Gf.Vec3d(0.0, 0.467, -0.076)
+    tgt = Gf.Vec3d(0.0, 0.103, -0.076)
     ops = xf.GetOrderedXformOps()
     for op in ops:
         if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
@@ -352,6 +343,79 @@ def move_lamp_cap(st2):
             return
     xf.AddTranslateOp().Set(tgt)
     print(f"[clean] cap (no translate op) add translate {tuple(tgt)}")
+
+
+def raise_stand_ring_hook(st2):
+    """铁环/挂钩上移 RING_RAISE；挂钩再额外 +HOOK_RAISE_EXTRA（2026-08-27 用户：整套上移
+    2cm 改外焰加热 → 挂钩再往上移 1cm 让温度计挂更高。高于柱顶则柱子加高，见 raise_stand_pole）。
+
+    iron_stand.usd 里 ring/hook 是无本地 transform 的子 prim（位置烘焙在 mesh 里），
+    烘平后路径 /World/IronStand/root/{ring,hook}。给它们加 translate(0,0,+RING_RAISE)
+    （hook 再 +HOOK_RAISE_EXTRA）：R180 只影响 x/y，局部 +Z 即世界 +Z。石棉网/试管/试管夹
+    由 EQUIP 常量+RING_RAISE 上移（不随挂钩额外抬升）。
+    """
+    raises = {"ring": RING_RAISE, "hook": RING_RAISE + HOOK_RAISE_EXTRA}
+    for name, dz in raises.items():
+        p = st2.GetPrimAtPath(f"/World/IronStand/root/{name}")
+        if not p.IsValid():
+            print(f"[raise] /World/IronStand/root/{name} MISSING")
+            continue
+        UsdGeom.Xformable(p).AddTranslateOp().Set(Gf.Vec3d(0, 0, dz))
+        r = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"]).ComputeWorldBound(p).ComputeAlignedRange()
+        print(f"[raise] {name} +{dz:.3f} world z -> [{r.GetMin()[2]:+.4f},{r.GetMax()[2]:+.4f}]")
+
+
+def raise_stand_pole(st2):
+    """铁柱加高 POLE_RAISE（2026-08-27 用户：挂钩上移后若高于柱顶就把柱子调高）。
+
+    iron_stand.usd 的柱是 Mesh（/root/root/pole/pole_002，points z[0.010,0.460]，父 Xform
+    无 op），不是圆柱 prim → 不能改高度 attr。在父 Xform /World/IronStand/root/pole 加
+    [T,S] op 绕柱底锚 0.010 缩放：底不动（贴底座顶 0.81）、顶 0.460→0.460+POLE_RAISE。
+    半径不变（scale 只在 Z），铁环/挂钩卡箍仍贴合柱身。op 序 [T,S] → M=T·S，p'=S(p) 再 T：
+    p' = s·p + t，取 t = 0.010·(1−s) 即底锚不动。
+    """
+    p = st2.GetPrimAtPath("/World/IronStand/root/pole")
+    if not p.IsValid():
+        print("[raise] /World/IronStand/root/pole MISSING")
+        return
+    bottom, top = 0.010, 0.460            # 柱 mesh 点 z 范围（asset 局部）
+    s = (top + POLE_RAISE - bottom) / (top - bottom)
+    t = bottom * (1 - s)
+    xf = UsdGeom.Xformable(p)
+    xf.AddTranslateOp().Set(Gf.Vec3d(0, 0, t))
+    xf.AddScaleOp().Set(Gf.Vec3d(1, 1, s))
+    r = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"]).ComputeWorldBound(p).ComputeAlignedRange()
+    print(f"[raise] pole scale {s:.5f} tz {t:+.6f} world z -> [{r.GetMin()[2]:+.4f},{r.GetMax()[2]:+.4f}]")
+
+
+def rotate_thermo_stem(st2):
+    """温度计玻璃管绕竖轴旋 -90°（2026-08-27 用户：上面挂环方向不变，下面整根玻璃管以及
+    所有东西以 z 为轴 y 朝 x 方向转 90°）。camera_2 特写从 -Y 朝 +Y 看温度计，旋后刻度面
+    从 +X 转到 -Y（朝向镜头）、白底从 -Y 转到 -X。
+
+    asset 里 stem/bulb/毛细柱/白底/刻度各 prim 局部原点都在温度计轴线上（居中），给每个
+    杆件 prim 加 RotateXYZ(0,0,-90) = 绕自身竖轴转（Rz(-90) 使 +Y→+X = 用户说的"y 朝 x"）。
+    挂环 hanging_ring 不加 → 方向不变。杆/泡/液柱轴对（转了看不出来），实际只有白底
+    (→-X) 和刻度(→-Y 朝镜头) 换边。机械臂抓杆/插管/挂环坐标不受影响（杆轴对仍居中，
+    抓点是位置无关轴向）。
+    """
+    rot = Gf.Vec3f(0, 0, -90)
+    for name in ("stem", "bulb", "bulb_liquid", "capillary_liquid", "white_backing", "scale"):
+        p = st2.GetPrimAtPath(f"/World/Thermometer/Thermometer/{name}")
+        if not p.IsValid():
+            print(f"[thermo] {name} MISSING")
+            continue
+        UsdGeom.Xformable(p).AddRotateXYZOp().Set(rot)
+        print(f"[thermo] {name} RotateXYZ(0,0,-90)")
+    # 挂环必须没有 rotate op（方向不变）
+    ring = st2.GetPrimAtPath("/World/Thermometer/Thermometer/hanging_ring")
+    for op in UsdGeom.Xformable(ring).GetOrderedXformOps():
+        assert op.GetOpType() != UsdGeom.XformOp.TypeRotateXYZ, \
+            "hanging_ring got a rotation — ring direction must stay"
+    r = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"]).ComputeWorldBound(
+        st2.GetPrimAtPath("/World/Thermometer")).ComputeAlignedRange()
+    print(f"[thermo] thermometer bbox after stem rotation "
+          f"x[{r.GetMin()[0]:+.4f},{r.GetMax()[0]:+.4f}] y[{r.GetMin()[1]:+.4f},{r.GetMax()[1]:+.4f}]")
 
 
 # 酒精灯火焰迁到 /World 顶层（2026-08-27 用户「火柴点燃看不到火焰」）。
@@ -363,33 +427,37 @@ def move_lamp_cap(st2):
 # 已验证良方）、默认 visible（不设 invisible——prim 在 population 时 invisible 会阻止
 # RTX 材质初始化，之后翻 visible 仍渲染默认灰；熄灭由任务 reset() 的 _set_visible(False)
 # 负责，点着时再翻 visible）。
-FLAME_WICK_Z = TABLE_TOP + 0.1005     # 灯芯顶世界 z（0.9005，火焰底）
+# 2026-08-27 用户一改：火焰底座从灯芯顶(0.9005)下移到灯芯根部 = holder 顶（世界 0.891，
+# 灯芯从 holder 露出的位置），火焰底在根部包裹外露灯芯。
+# 2026-08-27 二改（用户：「要加长追上面刚好能碰到石棉网，然后火焰不应该是一个锥形，应该
+# 像一个水滴底部是圆的」）→ 火焰加长到 apex 刚好碰石棉网底，每焰改水滴形（底半球 Sphere
+# 圆底 + 上部 Cone 收尖），不再是尖锥。
+FLAME_BASE_Z = TABLE_TOP + 0.091            # 灯芯根部世界 z（火焰底 = holder 顶/灯芯露出点）
+FLAME_APEX_Z = GAUZE_Z - 0.00105            # 石棉网底 0.9384（火焰尖刚好碰到；derive 自 GAUZE_Z）
+FLAME_OUTER_R = 0.009                       # 外焰肚半径（水滴最宽处 = 底半球半径）
+FLAME_INNER_R = 0.005                       # 内焰（焰心）肚半径
+FLAME_INNER_APEX_Z = FLAME_BASE_Z + 0.022   # 内焰焰心 apex（0.913，在外焰内）
 
-def rebuild_flames(st2):
-    """酒精灯火焰：删灯下引用子 prim，在 /World 顶层重建（flametest 已验证良方）。
-
-    几何尺寸沿用资产自带火焰（outer h35 r9、inner h22 r5，比例贴合灯模型），材质用
-    近黑 diffuse + HDR 单通道主导 emissive（黄橙焰：R 主导，同染色锥良方），默认可见。
-    """
-    for path in ("/World/AlcoholLamp/flame_outer", "/World/AlcoholLamp/flame_inner",
-                 "/World/AlcoholLamp/_materials/flame_outer_mat",
-                 "/World/AlcoholLamp/_materials/flame_inner_mat"):
-        if st2.GetPrimAtPath(path).IsValid():
-            st2.RemovePrim(path)
-    # 火焰高须 ≤ 18mm：灯芯顶 0.9005→石棉网底 0.9184 仅 18mm 间隙；outer h18 r7 / inner
-    # h12 r4，apex 恰够网底（2026-08-27 曾放大到 h90/60 诊断可见性，确认可见后已改回）。
-    for name, h, r, emissive in (
-            ("flame_outer", 0.018, 0.007, (2.20, 0.45, 0.15)),   # 酒精灯焰（黄橙，R 主导）
-            ("flame_inner", 0.012, 0.004, (2.60, 0.55, 0.20))):  # 焰心（更亮）
-        cone = UsdGeom.Cone.Define(st2, f"/World/{name}")
-        cone.GetHeightAttr().Set(h)
-        cone.GetRadiusAttr().Set(r)
-        cone.CreateAxisAttr("Z")   # 锥尖 +Z 朝上（底=灯芯顶，焰舌向上）
-        UsdGeom.Xformable(cone).AddTranslateOp().Set(
-            Gf.Vec3d(TUBE_X, TUBE_Y, FLAME_WICK_Z + h / 2))
-        UsdGeom.Imageable(cone).GetVisibilityAttr().Clear()   # 默认可见（勿 invisible）
-        mat = UsdShade.Material.Define(st2, f"/World/{name}_mat")
-        sh = UsdShade.Shader.Define(st2, f"/World/{name}_mat/Shader")
+def add_droplet_flame(st2, name, r, z_b, z_a, emissive):
+    """水滴形火焰 = 底半球 Sphere（底部圆） + 上部 Cone（收尖），一组两 prim，绕 Z 轴。
+    球心在 z_b+r（球底 z_b 贴根部）、cone 底在球心处（=水滴最宽肚）收尖到 z_a。
+    材质近黑 diffuse + HDR 单通道 emissive（flametest 良方），默认可见（勿 invisible，
+    熄灭由 task reset() _set_visible(False) 负责）。"""
+    zc = z_b + r                       # 球心 = 水滴最宽处
+    sph = UsdGeom.Sphere.Define(st2, f"/World/{name}_sphere")
+    sph.CreateRadiusAttr(r)
+    UsdGeom.Xformable(sph).AddTranslateOp().Set(Gf.Vec3d(TUBE_X, TUBE_Y, zc))
+    h = z_a - zc
+    cone = UsdGeom.Cone.Define(st2, f"/World/{name}")
+    cone.GetHeightAttr().Set(h)
+    cone.GetRadiusAttr().Set(r)
+    cone.CreateAxisAttr("Z")          # 锥尖 +Z 朝上（焰舌向石棉网）
+    UsdGeom.Xformable(cone).AddTranslateOp().Set(Gf.Vec3d(TUBE_X, TUBE_Y, zc + h / 2))
+    for prim in (sph, cone):
+        pname = prim.GetPath().name   # 球 = flame_<x>_sphere、锥 = flame_<x>
+        UsdGeom.Imageable(prim).GetVisibilityAttr().Clear()   # 默认可见（勿 invisible）
+        mat = UsdShade.Material.Define(st2, f"/World/{pname}_mat")
+        sh = UsdShade.Shader.Define(st2, f"/World/{pname}_mat/Shader")
         sh.CreateIdAttr("UsdPreviewSurface")
         sh.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.01, 0.01, 0.01))
         sh.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*emissive))
@@ -397,8 +465,31 @@ def rebuild_flames(st2):
         sh.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.3)
         sh.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
         mat.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), "surface")
-        UsdShade.MaterialBindingAPI(cone).Bind(mat)
-    print(f"[lamp] flames relocated to /World top level (wick base {FLAME_WICK_Z:.4f})")
+        UsdShade.MaterialBindingAPI(prim).Bind(mat)
+    print(f"[lamp] droplet {name}: sphere r{r} c{zc:.4f} (bottom {z_b:.4f}) + cone apex {z_a:.4f}")
+
+
+def rebuild_flames(st2):
+    """酒精灯火焰：删灯下引用子 prim，在 /World 顶层重建（flametest 已验证良方）。
+
+    2026-08-27 二改（用户：「要加长追上面刚好能碰到石棉网，然后火焰不应该是一个锥形，
+    应该像一个水滴底部是圆的」）→ 每焰水滴形 = 底半球 Sphere(圆底) + 上部 Cone(收尖)：
+    外焰 flame_outer 底 0.891(灯芯根部) apex 0.9384(石棉网底) 刚好碰，内焰 flame_inner
+    焰心更小 apex 0.913。材质近黑 diffuse + HDR 单通道 emissive，默认可见。
+    2026-08-27 焰色（用户：「外焰偏蓝色，内焰偏黄色」）= 外焰 B 主导淡蓝、内焰 R 主导黄。
+    task._flame_paths() 返回两组的 4 个路径统一控制熄/亮。
+    """
+    for path in ("/World/AlcoholLamp/flame_outer", "/World/AlcoholLamp/flame_inner",
+                 "/World/AlcoholLamp/_materials/flame_outer_mat",
+                 "/World/AlcoholLamp/_materials/flame_inner_mat"):
+        if st2.GetPrimAtPath(path).IsValid():
+            st2.RemovePrim(path)
+    add_droplet_flame(st2, "flame_outer", FLAME_OUTER_R, FLAME_BASE_Z, FLAME_APEX_Z,
+                      (0.35, 0.55, 2.40))                          # 外焰偏蓝（B 主导淡蓝）
+    add_droplet_flame(st2, "flame_inner", FLAME_INNER_R, FLAME_BASE_Z, FLAME_INNER_APEX_Z,
+                      (2.80, 0.55, 0.20))                          # 内焰偏黄（R 主导黄）
+    print(f"[lamp] flames droplet: outer base {FLAME_BASE_Z:.4f} apex {FLAME_APEX_Z:.4f} "
+          f"(touches gauze bottom {GAUZE_Z - 0.00105:.4f}), inner apex {FLAME_INNER_APEX_Z:.4f}")
 
 
 def override_bound_shader(st2, prim, recipe):
@@ -537,9 +628,9 @@ def verify(st2):
     # 铁架台：底座贴台面，钩顶 < 铁柱顶
     smn, smx = boxes["IronStand"]
     assert abs(smn[2] - TABLE_TOP) < 0.002, f"IronStand base z {smn[2]} != table {TABLE_TOP}"
-    # 石棉网坐铁环上：网底 > 环顶(0.918)，网底 − 环顶 ≤ 2mm
+    # 石棉网坐铁环上：网底 > 环顶(0.918+RING_RAISE)，网底 − 环顶 ≤ 2mm
     gmn, gmx = boxes["AsbestosGauze"]
-    ring_top = TABLE_TOP + 0.118
+    ring_top = TABLE_TOP + 0.118 + RING_RAISE
     assert gmn[2] >= ring_top - 0.002, f"gauze bottom {gmn[2]} below ring top {ring_top}"
     # 试管底坐石棉网上：管底 − 网顶 ≤ 1.5mm 且 ≥ 0
     tmn, tmx = boxes["TestTube"]
@@ -556,8 +647,17 @@ def verify(st2):
     # 灯芯顶 = wick_tip 世界 z（资产内 0.1005 → 台面 0.80）
     wick_top = TABLE_TOP + 0.1005
     assert wick_top + 0.015 < gmn[2], f"flame gap {gmn[2] - wick_top:.3f} < 1.5cm"
-    # 钩低于铁柱顶（铁柱顶 = 台面 0.80 + 0.46 = 1.26）
-    assert smx[2] < TABLE_TOP + 0.461, f"IronStand top {smx[2]} exceeds pole top"
+    # 钩低于铁柱顶（铁柱顶 = 台面 0.80 + 0.46 + POLE_RAISE 0.01 = 1.27；柱 Mesh 加高后）
+    assert smx[2] < TABLE_TOP + 0.470 + 0.002, f"IronStand top {smx[2]} exceeds pole top"
+    # 挂钩上移 1cm 后：钩顶 = 台面 + 0.4273(钩 mesh 顶) + RING_RAISE + HOOK_RAISE_EXTRA = 1.2573，
+    #   且低于柱顶 ≥1cm（柱子加高留白，卡箍不会悬在柱尖）
+    hk = st2.GetPrimAtPath("/World/IronStand/root/hook")
+    hr = bc.ComputeWorldBound(hk).ComputeAlignedRange()
+    hook_top = TABLE_TOP + 0.4273 + RING_RAISE + HOOK_RAISE_EXTRA
+    assert abs(hr.GetMax()[2] - hook_top) < 0.003, \
+        f"hook top {hr.GetMax()[2]:+.4f} != {hook_top:+.4f}"
+    assert hr.GetMax()[2] < smx[2] - 0.01, \
+        f"hook top {hr.GetMax()[2]:+.4f} not below pole top {smx[2]:+.4f}"
     # 灯帽在桌边（y 偏移 -0.467），帽底贴台面
     cap = st2.GetPrimAtPath("/World/AlcoholLamp/cap")
     r = bc.ComputeWorldBound(cap).ComputeAlignedRange()
@@ -580,6 +680,18 @@ def verify(st2):
     assert abs(thn[2] - HOLE_Z) < 0.002, f"thermo bottom {thn[2]} != hole bottom {HOLE_Z}"
     assert abs((thn[0] + thx[0]) / 2 - (RACK_X + 0.021)) < 0.003, f"thermo x center {(thn[0]+thx[0])/2:.4f} not at right hole"
     assert abs((thn[1] + thx[1]) / 2 - (RACK_Y + 0.118)) < 0.003, f"thermo y center {(thn[1]+thx[1])/2:.4f} not at back row"
+    # 2026-08-27 温度计玻璃管绕竖轴 -90°（刻度面转朝 -Y/camera_2，白底转 -X），挂环不转
+    for nm in ("stem", "bulb", "bulb_liquid", "capillary_liquid", "white_backing", "scale"):
+        sp = st2.GetPrimAtPath(f"/World/Thermometer/Thermometer/{nm}")
+        assert sp.IsValid(), f"thermo {nm} missing"
+        rots = [op.Get() for op in UsdGeom.Xformable(sp).GetOrderedXformOps()
+                if op.GetOpType() == UsdGeom.XformOp.TypeRotateXYZ]
+        assert rots == [Gf.Vec3f(0, 0, -90)], f"thermo {nm} rotate {rots} != (0,0,-90)"
+    ring_p = st2.GetPrimAtPath("/World/Thermometer/Thermometer/hanging_ring")
+    assert ring_p.IsValid(), "thermo hanging_ring missing"
+    ring_rots = [op for op in UsdGeom.Xformable(ring_p).GetOrderedXformOps()
+                 if op.GetOpType() == UsdGeom.XformOp.TypeRotateXYZ]
+    assert not ring_rots, "thermo hanging_ring must have no rotation (ring direction unchanged)"
     # 滴管/温度计都在架顶板范围（x±0.043, y±0.143），确认孔位在板内
     assert dmx[0] < rmx[0] + 0.001 and thn[0] > rmn[0] - 0.001, "instruments outside rack plate x"
     # 效果 prim：试管内水柱初始隐藏 h0（阶段B 滴加后逐滴生长，上限远低于管口），气泡组存在
@@ -611,38 +723,39 @@ def verify(st2):
         bs = st2.GetPrimAtPath(f"/World/TestTubeBubbles/bubble_{i}")
         assert abs(UsdGeom.Sphere(bs).GetRadiusAttr().Get() - BUBBLE_R) < 0.0005, \
             f"bubble_{i} radius {UsdGeom.Sphere(bs).GetRadiusAttr().Get()} != {BUBBLE_R}"
-    # 水蒸气两段式：steam_inner 管内雾（Cylinder 底锚液面高0）+ steam_plume 管口羽流
-    # （尖端朝下 Cone，apex 钉管口），都初始隐藏
-    stm = st2.GetPrimAtPath("/World/TestTubeSteam")
-    assert stm.IsValid(), "TestTubeSteam missing"
-    assert UsdGeom.Imageable(stm).ComputeVisibility() == "invisible", "TestTubeSteam should be hidden"
-    c = st2.GetPrimAtPath("/World/TestTubeSteam/steam_inner")
-    assert c.IsValid() and c.GetTypeName() == "Cylinder", "steam_inner missing/not cylinder"
-    cyl = UsdGeom.Cylinder(c)
-    assert cyl.GetHeightAttr().Get() == 0.0, "steam_inner height should be 0"
-    assert abs(cyl.GetRadiusAttr().Get() - STEAM_INNER_R) < 0.001, \
-        f"steam_inner radius {cyl.GetRadiusAttr().Get()} != {STEAM_INNER_R}"
-    tz = UsdGeom.Xformable(c).GetOrderedXformOps()[0].Get()[2]
-    assert abs(tz - STEAM_BASE_Z) < 0.002, f"steam_inner base z {tz} != {STEAM_BASE_Z}"
-    assert UsdGeom.Imageable(c).ComputeVisibility() == "invisible", "steam_inner should be hidden"
-    p = st2.GetPrimAtPath("/World/TestTubeSteam/steam_plume")
-    assert p.IsValid() and p.GetTypeName() == "Cone", "steam_plume missing/not cone"
-    cone = UsdGeom.Cone(p)
-    assert cone.GetHeightAttr().Get() == 0.0, "steam_plume height should be 0"
-    assert abs(cone.GetRadiusAttr().Get() - STEAM_PLUME_R) < 0.001, \
-        f"steam_plume radius {cone.GetRadiusAttr().Get()} != {STEAM_PLUME_R}"
-    ptz = UsdGeom.Xformable(p).GetOrderedXformOps()[0].Get()[2]
-    assert abs(ptz - TUBE_MOUTH_Z) < 0.002, f"steam_plume apex z {ptz} != mouth {TUBE_MOUTH_Z}"
-    assert UsdGeom.Imageable(p).ComputeVisibility() == "invisible", "steam_plume should be hidden"
-    # 火焰迁到 /World 顶层（灯下子 prim 已删；顶层 Cone 默认可见，任务 reset 再熄）
-    # 火焰高须 ≤ 18mm：灯芯顶 0.9005→石棉网底 gmn[2] 间隙；apex 不得穿网伸进试管
-    for name, h in (("flame_outer", 0.018), ("flame_inner", 0.012)):
+    # 火焰迁到 /World 顶层（灯下子 prim 已删；顶层 prim 默认可见，任务 reset 再熄）
+    # 2026-08-27 二改：水滴形 = 每焰 /World/{name} Cone(收尖) + /World/{name}_sphere
+    # Sphere(圆底)。底在灯芯根部 FLAME_BASE_Z(0.891)；外焰 apex FLAME_APEX_Z 须刚好碰
+    # 石棉网底 gmn[2]（≤±0.004），内焰 apex 在外焰内。球心 z_b+r、cone 底同球心。
+    for name, r, z_b, z_a in (("flame_outer", FLAME_OUTER_R, FLAME_BASE_Z, FLAME_APEX_Z),
+                              ("flame_inner", FLAME_INNER_R, FLAME_BASE_Z, FLAME_INNER_APEX_Z)):
         f = st2.GetPrimAtPath(f"/World/{name}")
         assert f.IsValid() and f.GetTypeName() == "Cone", f"{name} top-level cone missing"
         assert UsdGeom.Imageable(f).ComputeVisibility() != "invisible", f"{name} should be default visible"
-        assert abs(UsdGeom.Cone(f).GetHeightAttr().Get() - h) < 0.0005, f"{name} height wrong"
-        apex_z = UsdGeom.Xformable(f).GetOrderedXformOps()[0].Get()[2] + h / 2
-        assert apex_z <= gmn[2] + 0.002, f"{name} apex {apex_z} above gauze bottom {gmn[2]}"
+        assert abs(UsdGeom.Cone(f).GetRadiusAttr().Get() - r) < 0.0005, f"{name} cone r wrong"
+        h = z_a - (z_b + r)
+        assert abs(UsdGeom.Cone(f).GetHeightAttr().Get() - h) < 0.0005, f"{name} cone height wrong"
+        tz = UsdGeom.Xformable(f).GetOrderedXformOps()[0].Get()[2]
+        assert abs(tz - ((z_b + r) + h / 2)) < 0.002, \
+            f"{name} cone center z {tz} != {(z_b + r) + h / 2}"
+        sph = st2.GetPrimAtPath(f"/World/{name}_sphere")
+        assert sph.IsValid() and sph.GetTypeName() == "Sphere", f"{name}_sphere missing"
+        assert UsdGeom.Imageable(sph).ComputeVisibility() != "invisible", f"{name}_sphere default visible"
+        assert abs(UsdGeom.Sphere(sph).GetRadiusAttr().Get() - r) < 0.0005, f"{name}_sphere r wrong"
+        sz = UsdGeom.Xformable(sph).GetOrderedXformOps()[0].Get()[2]
+        assert abs(sz - (z_b + r)) < 0.002, \
+            f"{name}_sphere center z {sz} != {z_b + r} (bottom should be {z_b})"
+        # 焰色（2026-08-27 用户：外焰偏蓝、内焰偏黄）：外焰 B 主导、内焰 R 主导
+        sh = UsdShade.Shader(st2.GetPrimAtPath(f"/World/{name}_mat/Shader"))
+        c = sh.GetInput("emissiveColor").Get()
+        assert c is not None, f"{name} emissive input missing"
+        if name == "flame_outer":
+            assert c[2] > c[0] and c[2] > 1.0, f"outer flame should be blue-dominant, got {tuple(c)}"
+        else:
+            assert c[0] > c[2] and c[0] > 1.0, f"inner flame should be yellow-dominant, got {tuple(c)}"
+        if name == "flame_outer":
+            assert abs(z_a - gmn[2]) < 0.004, \
+                f"outer flame apex {z_a} not at gauze bottom {gmn[2]}"
     assert not st2.GetPrimAtPath("/World/AlcoholLamp/flame_outer").IsValid(), \
         "old lamp sub-prim flame still present"
     # 阶段A 新器材：玻璃皿贴台、两颗沸石底贴皿顶且并排（±1cm 沿 x）、样品瓶贴台、火柴抬高 12mm
@@ -662,7 +775,7 @@ def verify(st2):
     assert not stoppers, f"stopper still present: {stoppers}"
     mt = boxes["Match"]
     assert mt[0][2] > TABLE_TOP + 0.010, f"match bottom {mt[0][2]} not raised 12mm above table"
-    print(f"[verify] OK: 台面贴底 / 网坐环上 / 管坐网上 / 灯在网下 / 钩在柱内 / 架贴台 / 滴管+温度计插孔 / 滴加效果(管柱隐藏h0+瓶液面可见+滴球) / 气泡组齐({nb}泡r{BUBBLE_R}) / 水蒸气两段式(管内雾Cyl r{STEAM_INNER_R}+管口羽流Cone apex管口 r{STEAM_PLUME_R}h{STEAM_PLUME_H},高0隐藏) / 火焰迁/World顶层(默认可见) / 皿贴台+两颗沸石并排叠皿上+样品瓶(开瓶)+火柴抬高12mm")
+    print(f"[verify] OK: 台面贴底 / 网坐环上 / 管坐网上 / 灯在网下 / 钩在柱内 / 架贴台 / 滴管+温度计插孔 / 滴加效果(管柱隐藏h0+瓶液面可见+滴球) / 气泡组齐({nb}泡r{BUBBLE_R}) / 火焰迁/World顶层(默认可见) / 皿贴台+两颗沸石并排叠皿上+样品瓶(开瓶)+火柴抬高12mm")
 
 
 def main():
@@ -676,7 +789,6 @@ def main():
         add_equip(stage, name, asset, t, scale, rot180)
     add_b2_effects(stage)
     add_dropper_drops(stage)     # 挤胶头滴落串（初始隐藏，task 动画驱动）
-    add_steam_effects(stage)     # 沸腾水蒸气雾柱（初始隐藏，task 沸腾相动画驱动）
     add_env_light(stage)
     stage.Export(OUT)  # 烘平：单层自包含，带 lab_clean 的 defaultPrim=/World
 
@@ -690,6 +802,9 @@ def main():
     fix_bottle_materials(st2)    # 瓶玻璃透明化（SampleLiquid 液面透出）
     fix_dropper_materials(st2)   # 滴管玻璃透明化（吸起的液体/滴落效果透出）
     fix_tube_material(st2)       # 试管玻璃透明化（滴加液柱/气泡看得清）
+    raise_stand_ring_hook(st2)   # 2026-08-27 铁环/挂钩上移 2cm + 挂钩额外 1cm（网/管/夹已在 EQUIP 常量+RING_RAISE）
+    raise_stand_pole(st2)        # 柱加高 POLE_RAISE（挂钩上移后钩卡箍顶逼近柱顶）
+    rotate_thermo_stem(st2)      # 2026-08-27 温度计玻璃管绕竖轴 -90°（刻度面转朝 camera_2，挂环不动）
     verify(st2)
     st2.GetRootLayer().Save()
     print("SAVED", OUT)

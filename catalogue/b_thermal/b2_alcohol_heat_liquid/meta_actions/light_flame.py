@@ -7,7 +7,7 @@ IgniteLamp（controllers/flametest_meta_actions/ignite_lamp.py）的「取火柴
 流程（一次持握，无循环）：
   ① 取火柴：默认朝向（手指朝下）高位接近 → 竖直下探到杆身中部抓点，合爪夹住
      火柴杆（GRIP_MATCH 贴合 Ø3mm 杆，火柴已抬高 12mm 避免夹爪扎桌面）。
-  ② 低位运移：竖直提起火柴到 MATCH_LIFT_Z=0.90（压灯体顶 0.8897、钩支臂 1.216 之下），
+  ② 低位运移：竖直提起火柴到 MATCH_LIFT_Z=0.90（压灯体顶 0.8897、钩支臂 1.246 之下），
      水平运到灯芯偏 -X 侧（IGNITE，夹爪 x=0.4792 在灯体 min x=0.485 之外）。
   ③ 触灯芯：火柴头（夹爪 +X 0.0494 处）落在灯芯顶 WICK (0.5286,0.0029,0.9005)，
      task 检测火柴头近灯芯 → 点火（flame reveal，见 task._step_match_ignite）。
@@ -18,7 +18,7 @@ IgniteLamp（controllers/flametest_meta_actions/ignite_lamp.py）的「取火柴
 恒等旋转只跟夹爪平移）。火柴头相对夹爪 = MATCH_TIP_OFFSET=(0.0494,0,0)（抓点 x=0.04、
 头中心 x=0.0894 → 头在夹爪 +X 0.0494）。
 
-避穿模：运移走 MATCH_LIFT_Z=0.90（火柴+夹爪全程在灯体顶 0.8897 之上、钩支臂 1.216
+避穿模：运移走 MATCH_LIFT_Z=0.90（火柴+夹爪全程在灯体顶 0.8897 之上、钩支臂 1.246
 之下）；触灯芯时夹爪 x=0.4792 在灯体 x 范围外（灯体 min x=0.485），仅火柴头伸到灯芯。
 
 轨迹（TCP 世界坐标，全程默认朝向手指朝下）：

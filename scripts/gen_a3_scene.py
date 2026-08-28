@@ -7,25 +7,27 @@
   或按需显式 tz：天平盘顶的称量纸/粉末、平躺的玻璃棒）
 - 无内建效果 prim（样品粉是 assets 资产，直接引用；溶解液/读数等由 task 运行时加）
 
-布局（2026-08-27，用户要求器材展开分开放、间隔大；机器人底座写 config = 台面中心
-(0,0) 以便器材环形散布、全在 Franka 0.855m 臂展内）：
-  机器人底座      (0.00, 0.00)   config robot.position [0.0,0.0,0.71]
-  ── 测量区（电导率仪电极线缆锚在机身插座，烧杯须在插座 0.8m 内）──
-  Meter          (0.05, 0.35)   不旋转：屏幕朝 +y；电极（+x 侧）朝 +x 面向样品烧杯
-  SampleBeaker   (0.72, 0.24)   烧杯111 样品杯；距 meter 插座 ~0.73m（线缆够）
-  RinseBeaker    (-0.52, 0.28)  烧杯111 洗杯（电极冲洗）
-  ── 称量区（簇，内部间距豁免）──
-  Balance        (-0.60,-0.55)  分析天平
-  WeighingPaper  称量纸 12cm 放天平称盘顶（盘顶 z=0.8475）
-  Powder         样品粉堆 放称量纸上（纸顶 z=0.8485）
-  Spatula        (-0.75,-0.40)  药匙放天平左侧
+布局（2026-08-27 二改 = 用户 Isaac 重摆后 scene-realign，tmp=a3_conductivity_tmp.usd 为真相，
+全部器材围绕机械臂底座 (0.37,0.16) 环形摆放；config robot.position = [0.37,0.16,0.71]）：
+  机器人底座      (0.37, 0.16)    config robot.position [0.37,0.16,0.71]（用户指定）
+  ── 测量区 ──
+  Meter          (0.3982,-0.1054) 不旋转：屏幕朝 +y；电极（+x 侧）朝 +x
+  SampleBeaker   (0.6469,0.0880,0.8857) rotX(-135) 烧杯111 样品杯——**完全复刻 tmp**：
+                                 T(0.6469,0.0880,0.8857)+rotateXYZ(-135,0,0)，bbox
+                                 0.609..0.685 / 0.049..0.209 / 0.765..0.925（与 tmp 逐位一致）
+  ── 称量区（简化：无药匙/称量纸；表面皿+粉直接叠天平盘）──
+  Balance        (0.3442, 0.5550) 分析天平
+  SurfaceDish    表面皿 Ø60 放天平盘顶（盘顶 z=0.8475；皿底 0.8474 顶 0.8540）
+  SamplePowder   粉堆 scale 0.25 落皿内（0.022×0.030×0.0075 半大小，贴皿内不溢出）
   ── 水/工具区 ──
-  WashBottle     (0.50,-0.60)   rotZ −90°（红嘴朝 +Y，对样品杯方向）
-  GlassRod       (-0.05,-0.50)  rotX 90° 平躺桌面（沿 y，中心 -0.50）
+  WashBottle     (0.6400, 0.3600) 洗瓶 rotZ180（tmp 里被翻转：红嘴朝 +X，对试管架方向）
+  TestTubeRack   (0.8537, 0.1763) 试管架（玻璃棒插在其中）
+  GlassRod       (0.8341, 0.1769) 玻璃棒 Ø6×261 立架内（底贴台面 0.80，顶 1.061
+                                 高出架顶 0.917 上 0.144 供抓取）
 
-主要间隔（器材 bbox 净距）：meter–sample 0.35 / meter–rinse 0.37 /
-sample–rinse >1.2 / balance–meter >0.8 / balance–wash >0.7 / wash–sample >0.75
-全部 ≥0.35（玻璃棒 0.15）；电极插座到烧杯 ≤0.73m（动态线缆 0.8m 内安全）。
+站间 bbox 净距（用户重摆后紧凑）：最紧 Meter~SampleBeaker ~0.03m、WashBottle~Rack ~0.06m；
+最远抓点 玻璃棒顶 (0.834,0.177,1.061) 距底座 (0.37,0.16) 3D 0.58m ≤ 0.855m 臂展（用户
+中央底座布局，全器材围绕，均达记）。电极插座到烧杯 ~0.32m（动态线缆 0.8m 内安全）。
 
 用法：python scripts/gen_a3_scene.py   （conda env labutopia 有 pxr）
 """
@@ -40,6 +42,12 @@ EQ = os.path.join(REPO, "assets", "equipment")
 
 TABLE_TOP = 0.80
 BALANCE_PAN_TOP = 0.8475     # 天平称盘顶 z（资产 bbox 顶 0.047 + 台面 0.80）
+# 表面皿(Ø60)叠天平盘顶：皿本地底 z=0.0001 → 皿底 0.8474、皿顶 0.8540
+DISH_TZ = BALANCE_PAN_TOP - 0.0001
+DISH_TOP = DISH_TZ + 0.0066
+# 粉堆 scale 0.25 落皿内（2026-08-28 用户：粉末缩小一半）：本地底 z=0.0083*0.25=0.002075 → 粉底贴皿顶
+POWDER_SCALE = 0.25
+POWDER_TZ = DISH_TOP - 0.0083 * POWDER_SCALE
 # 环境贴图源（d2s 同款；DomeLight 贴图断链会整场发黑）
 ENV_TEX_SRC = os.path.join(REPO, "assets", "scenes", "d_wetchem", "d2s_water_solubility",
                            "textures", "env_bright.png")
@@ -48,18 +56,16 @@ KEEP = {"table", "Cube", "GroundPlane", "CylinderLight", "PhysicsScene", "Looks"
 
 # (name, asset, translate, scale, rot_x, rot_z)
 #   translate tz=None → 动态贴台面（资产底座 min z -> 0.80）
-#   称量纸/粉末显式 tz（叠在天平盘上）；玻璃棒显式 tz（平躺贴台面）
+#   表面皿/粉堆显式 tz（叠天平盘）；玻璃棒显式 tz（立架内，底贴台面）
 EQUIP = [
-    ("Meter",         "conductivity_meter.usd",   (0.05, 0.35, None), None, None, None),
-    ("SampleBeaker",  "beaker_111x75x116.usd",    (0.72, 0.24, None), None, None, None),
-    ("RinseBeaker",   "beaker_111x75x116.usd",    (-0.52, 0.28, None), None, None, None),
-    ("Balance",       "analytical_balance.usd",   (-0.60, -0.55, None), None, None, None),
-    ("WeighingPaper", "weighing_paper.usd",       (-0.60, -0.55, BALANCE_PAN_TOP + 0.0005), None, None, None),
-    # 粉堆本地底 z=0.0083（堆在原点之上）→ tz 让世界底落在纸顶 0.8485：0.8485 - 0.0083 = 0.8402
-    ("Powder",        "powder.usd",               (-0.60, -0.55, 0.8485 - 0.0083), None, None, None),
-    ("Spatula",       "spatula.usd",              (-0.72, -0.35, None), None, None, None),
-    ("WashBottle",    "wash_bottle.usd",          (0.50, -0.60, None), None, None, -90.0),
-    ("GlassRod",      "glass_rod_6x6x261.usd",    (-0.05, -0.3695, TABLE_TOP + 0.003), None, 90.0, None),
+    ("Meter",         "conductivity_meter.usd",   (0.3982, -0.1054, None), None, None, None),
+    ("SampleBeaker",  "beaker_111x75x116.usd",    (0.6469,  0.0880, 0.8857), None, -135, None),
+    ("Balance",       "analytical_balance.usd",   (0.3442,  0.5550, None), None, None, None),
+    ("SurfaceDish",   "sample_dish.usd",          (0.3442,  0.5550, DISH_TZ), None, None, None),
+    ("SamplePowder",  "powder.usd",               (0.3442,  0.5550, POWDER_TZ), POWDER_SCALE, None, None),
+    ("WashBottle",    "wash_bottle.usd",          (0.6400,  0.3600, None), None, None, 180),
+    ("TestTubeRack",  "test_tube_rack.usd",       (0.8537,  0.1763, None), None, None, None),
+    ("GlassRod",      "glass_rod_6x6x261.usd",    (0.8341,  0.1769, TABLE_TOP), None, None, None),
 ]
 
 
@@ -208,7 +214,7 @@ def post_fix(st2):
     fix_env_light(st2)
     brighten_lights(st2)
     set_cylinder_light_x(st2, -10.0)
-    for name in ("SampleBeaker", "RinseBeaker"):
+    for name in ("SampleBeaker",):
         fix_beaker_glass(st2, f"/World/{name}")
 
 
@@ -245,55 +251,54 @@ def verify():
     # ---- 就位 / 贴台 / 关键高度（世界 bbox，以左下角为准）----
     lo, hi = _wbb(st, bc, "/World/Meter")
     check("Meter 贴台面 z0.80", abs(lo[2] - 0.80) < 1e-3)
-    check("Meter 左下 (-0.098,0.231)", abs(lo[0] + 0.098) < 0.01 and abs(lo[1] - 0.231) < 0.01)
+    check("Meter 左下 (0.250,-0.224)", abs(lo[0] - 0.250) < 0.01 and abs(lo[1] + 0.224) < 0.01)
     check("Meter 高 0.232", abs(hi[2] - lo[2] - 0.232) < 0.01)
 
     lo, hi = _wbb(st, bc, "/World/SampleBeaker")
-    check("SampleBeaker 贴台面", abs(lo[2] - 0.80) < 1e-3)
-    check("SampleBeaker 左下 (0.664,0.202)", abs(lo[0] - 0.664) < 0.01 and abs(lo[1] - 0.202) < 0.01)
-    check("SampleBeaker 顶 0.916", abs(hi[2] - 0.916) < 1e-3)
-
-    lo, hi = _wbb(st, bc, "/World/RinseBeaker")
-    check("RinseBeaker 左下 (-0.576,0.242)", abs(lo[0] + 0.576) < 0.01 and abs(lo[1] - 0.242) < 0.01)
-    check("RinseBeaker 顶 0.916", abs(hi[2] - 0.916) < 1e-3)
+    # tmp 原样：T(0.6469,0.0880,0.8857)+rotateXYZ(-135,0,0)，bbox 与 tmp 逐位一致
+    check("SampleBeaker 左下 (0.609,0.049,0.765)", abs(lo[0] - 0.609) < 0.01
+          and abs(lo[1] - 0.049) < 0.01 and abs(lo[2] - 0.765) < 0.01)
+    check("SampleBeaker 右上 (0.685,0.209,0.925)", abs(hi[0] - 0.685) < 0.01
+          and abs(hi[1] - 0.209) < 0.01 and abs(hi[2] - 0.925) < 0.01)
 
     lo, hi = _wbb(st, bc, "/World/Balance")
     check("Balance 贴台面", abs(lo[2] - 0.80) < 0.01)
-    check("Balance 左下 (-0.70,-0.655)", abs(lo[0] + 0.70) < 0.01 and abs(lo[1] + 0.655) < 0.01)
+    check("Balance 左下 (0.244,0.450)", abs(lo[0] - 0.244) < 0.01 and abs(lo[1] - 0.450) < 0.01)
 
-    lo, hi = _wbb(st, bc, "/World/WeighingPaper")
-    check("WeighingPaper 贴天平盘顶 0.8475", abs(lo[2] - 0.8475) < 1e-3)
-    check("WeighingPaper 左下 (-0.66,-0.61)", abs(lo[0] + 0.66) < 0.01 and abs(lo[1] + 0.61) < 0.01)
+    lo, hi = _wbb(st, bc, "/World/SurfaceDish")
+    check("SurfaceDish 贴天平盘顶 0.8475", abs(lo[2] - 0.8475) < 1e-3)
+    check("SurfaceDish 左下 (0.314,0.525)", abs(lo[0] - 0.314) < 0.01 and abs(lo[1] - 0.525) < 0.01)
 
-    lo, hi = _wbb(st, bc, "/World/Powder")
-    check("Powder 底在纸顶 0.8485", abs(lo[2] - 0.8485) < 1e-3)
-    check("Powder 左下 (-0.649,-0.595)", abs(lo[0] + 0.6487) < 0.01 and abs(lo[1] + 0.5946) < 0.01)
-
-    lo, hi = _wbb(st, bc, "/World/Spatula")
-    check("Spatula 贴台面", abs(lo[2] - 0.80) < 0.01)
-    check("Spatula 左下 (-0.731,-0.355)", abs(lo[0] + 0.731) < 0.01 and abs(lo[1] + 0.3548) < 0.01)
+    lo, hi = _wbb(st, bc, "/World/SamplePowder")
+    check("SamplePowder 底贴皿顶 0.854", abs(lo[2] - 0.854) < 1e-3)
+    check("SamplePowder 左下 (0.332,0.544)", abs(lo[0] - 0.332) < 0.01 and abs(lo[1] - 0.544) < 0.01)
+    check("SamplePowder 顶 0.8615 (高 0.0075 半大小)", abs(hi[2] - 0.8615) < 1e-3)
 
     lo, hi = _wbb(st, bc, "/World/WashBottle")
     check("WashBottle 贴台面", abs(lo[2] - 0.80) < 0.01)
-    check("WashBottle 左下 (0.468,-0.632)", abs(lo[0] - 0.468) < 0.01 and abs(lo[1] + 0.632) < 0.01)
+    check("WashBottle 左下 (0.608,0.328)", abs(lo[0] - 0.608) < 0.01 and abs(lo[1] - 0.328) < 0.01)
+
+    lo, hi = _wbb(st, bc, "/World/TestTubeRack")
+    check("TestTubeRack 贴台面", abs(lo[2] - 0.80) < 0.01)
+    check("TestTubeRack 左下 (0.811,0.034)", abs(lo[0] - 0.811) < 0.01 and abs(lo[1] - 0.034) < 0.01)
 
     lo, hi = _wbb(st, bc, "/World/GlassRod")
-    check("GlassRod 平躺贴台面", abs(lo[2] - 0.80) < 0.01)
-    check("GlassRod 沿 y 长 0.261", abs(hi[1] - lo[1] - 0.261) < 0.01)
+    check("GlassRod 立架内 底贴台面", abs(lo[2] - 0.80) < 0.01)
+    check("GlassRod 顶 1.061 (高 0.261)", abs(hi[2] - 1.061) < 0.01)
 
-    # ---- 站间净距 ≥0.35（称量簇=天平+称量纸+粉堆+药匙 合并为一个站）----
+    # ---- 站间净距 ≥0.02（2026-08-27 用户中央底座重摆后紧凑：Meter~Beaker ~0.03、
+    #      WashBottle~Rack ~0.06 为最紧对；阈值只拦真实重叠，不拦用户有意紧凑摆放）----
     station_bbox = {
         "Meter": _wbb(st, bc, "/World/Meter"),
         "SampleBeaker": _wbb(st, bc, "/World/SampleBeaker"),
-        "RinseBeaker": _wbb(st, bc, "/World/RinseBeaker"),
         "WashBottle": _wbb(st, bc, "/World/WashBottle"),
-        "GlassRod": _wbb(st, bc, "/World/GlassRod"),
     }
-    bbs = [_wbb(st, bc, p) for p in ("/World/Balance", "/World/WeighingPaper",
-                                     "/World/Powder", "/World/Spatula")]
-    cluster = (tuple(min(bb[0][i] for bb in bbs) for i in range(3)),
-               tuple(max(bb[1][i] for bb in bbs) for i in range(3)))
-    station_bbox["WeighStation"] = cluster
+    bbs = [_wbb(st, bc, p) for p in ("/World/Balance", "/World/SurfaceDish", "/World/SamplePowder")]
+    station_bbox["WeighStation"] = (tuple(min(bb[0][i] for bb in bbs) for i in range(3)),
+                                    tuple(max(bb[1][i] for bb in bbs) for i in range(3)))
+    bbs = [_wbb(st, bc, p) for p in ("/World/TestTubeRack", "/World/GlassRod")]
+    station_bbox["RackStation"] = (tuple(min(bb[0][i] for bb in bbs) for i in range(3)),
+                                   tuple(max(bb[1][i] for bb in bbs) for i in range(3)))
 
     names = list(station_bbox)
     for i in range(len(names)):
@@ -301,7 +306,7 @@ def verify():
             lo1, hi1 = station_bbox[names[i]]
             lo2, hi2 = station_bbox[names[j]]
             g = clear_gap(lo1, hi1, lo2, hi2)
-            check(f"净距 {names[i]}~{names[j]} ≥0.35 ({g:.3f})", g >= 0.35)
+            check(f"净距 {names[i]}~{names[j]} ≥0.02 ({g:.3f})", g >= 0.02)
 
     ok = all(passed for _, passed in checks)
     assert os.path.exists(os.path.join(SCENE_DIR, "textures", "env_bright.png")), \

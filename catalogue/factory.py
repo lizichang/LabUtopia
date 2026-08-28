@@ -34,10 +34,14 @@ from catalogue.e_physical.e1_ph_testpaper.task import E1PhTestpaperTask
 from catalogue.e_physical.e1_ph_testpaper.controller import E1PhTestpaperTaskController
 from catalogue.e_physical.e2_magnetic.task import E2MagneticTask
 from catalogue.e_physical.e2_magnetic.controller import E2MagneticTaskController
+from catalogue.e_physical.e3_density.task import E3DensityTask
+from catalogue.e_physical.e3_density.controller import E3DensityTaskController
 from catalogue.a_instrument.a1_refractometer.task import A1RefractometerTask
 from catalogue.a_instrument.a1_refractometer.controller import A1RefractometerTaskController
 from catalogue.a_instrument.a2_polarimeter.task import A2PolarimeterTask
 from catalogue.a_instrument.a2_polarimeter.controller import A2PolarimeterTaskController
+from catalogue.a_instrument.a3_conductivity.task import A3ConductivityTask
+from catalogue.a_instrument.a3_conductivity.controller import A3ConductivityTaskController
 from catalogue.d_wetchem.d6_testpaper_gas.task import D6TestpaperGasTask
 from catalogue.d_wetchem.d6_testpaper_gas.controller import D6TestpaperGasTaskController
 from catalogue.d_wetchem.d7_gas_identification.task import D7GasIdentificationTask
@@ -108,6 +112,13 @@ def register_catalogue_actions() -> None:
     register_task("e2_magnetic", E2MagneticTask)
     register_controller("e2_magnetic", E2MagneticTaskController)
 
+    # E3 密度测定（catalogue 内原生：Lula IK + 移液管竖直平移跟随；v2 加天平完整测密度
+    # ρ=Δm/5mL——量筒预置天平称盘上不动、样品瓶预开盖；4 元动作
+    # PickPipette→DrawPipette→TransferPipette→ReturnPipette；液色变色接口 liquid_color
+    # 6 色变体 + 密度接口 density 5 档（天平屏 m2+ρ 预烘焙贴图切显））
+    register_task("e3_density", E3DensityTask)
+    register_controller("e3_density", E3DensityTaskController)
+
     # A1 折光率测量（catalogue 内原生：Lula IK + 取瓶塞直拔 + 滴管吸样滴样到棱镜）
     register_task("a1_refractometer", A1RefractometerTask)
     register_controller("a1_refractometer", A1RefractometerTaskController)
@@ -116,6 +127,11 @@ def register_catalogue_actions() -> None:
     # + 放导轨 + 按启动键读旋光角；10 元动作，屏幕读数按档位预烘焙切显）
     register_task("a2_polarimeter", A2PolarimeterTask)
     register_controller("a2_polarimeter", A2PolarimeterTaskController)
+
+    # A3 电导率测量（catalogue 内原生：Lula IK + 竖直夹皿元动作；v1 第一步=竖直夹住
+    # 玻璃皿提起来，称量配液/电极浸入/读数后续追加）
+    register_task("a3_conductivity", A3ConductivityTask)
+    register_controller("a3_conductivity", A3ConductivityTaskController)
 
     # D6 试纸气体检测（通用；catalogue 内原生：试纸夹预夹 + 滴管润湿 + 移试管观察）
     register_task("d6_testpaper_gas", D6TestpaperGasTask)

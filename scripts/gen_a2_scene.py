@@ -6,30 +6,42 @@
 - 引用 assets/equipment/ 真实器材 + 设 translate（架高按资产 bbox 动态贴台面）
 - 内建效果 prim：TubePowder（试管预装白粉，初始可见）+ TestTubeWater（蒸馏水，
   隐藏，洗瓶注水后显示）+ TubeLiquid（旋光管内液柱，PolarimeterTube 子 prim，
-  随管移动，倒液后显示）+ WaterStream/PourStream（挤水/倒液 16 滴水流，隐藏，
+  随管移动，滴入后显示）+ WaterStream/DropperDrip（注水/滴液 16 滴水流，隐藏，
   task 逐帧写位置）+ 屏幕读数 ScreenMeasuring_<i>/ScreenGlow_<key>（贴图发光，隐藏，
   task 测量期逐帧切显进度条、完成后按档位定格旋光角读数）
 
 导出 stage.Export()：单层自包含，无引用弧。
 
-布局（2026-08-27 二版，用户要求拉开器材间距防机械臂穿模；台面 Cube 顶面 2m×2m、
-      x/y ∈ [−1,1]，器材散布四角，旋光仪居中；台面顶 z=0.80）：
-  Polarimeter    (0.30, 0.00)   不旋转：屏幕朝 +y（面向底座/camera1）、光源 −y、
-                                lid −y 已掀开（资产内 120° 掀开态），资产 min z=0 贴台面
-  PolarimeterTube (0.70, 0.30, 0.811)  1dm 空管桌面横放泡朝上（+y 端泡、+z 加液口），
-                                旋光仪右前方（距仪右缘 ~21cm）；min z=−0.011（泡底）→ 贴台面 0.811
-  TestTubeRack   (0.82, 0.55)   右前角，自动贴台面（距旋光仪右缘净空 29cm）
-  TestTube       (0.799, 0.43, 0.806)  架近侧孔（偏移架 −0.021,−0.120，同 d2s），预装白粉
-  WashBottle     (−0.10, 0.60)  rotZ −180°（红嘴朝 +X，对试管方向，同 d2s）；左前
+布局（2026-08-27 滴管转移改造：倒液 → 胶头滴管吸3次挤进加液口；台面 Cube
+      顶面 2m×2m、x/y ∈ [−1,1]；台面顶 z=0.80）：
+  d2s 同款三件（坐标与 gen_d2s_scene.py 一字不差，复用其已证可行包络）：
+    TestTubeRack (0.6803, 0.3607)   右前，自动贴台面
+    TestTube     (0.659, 0.241, 0.806)  架近侧孔（偏移架 −0.021,−0.120），预装白粉
+    WashBottle   (0.370, 0.525)     rotZ −180°（红嘴朝 +X，对试管方向，同 d2s）
+  A2 专用三件（全部在机械臂 +x 侧）：
+    Polarimeter    (0.48, −0.24)   rotZ+90°：屏幕朝 −x（相机2 从 −x 拍）、光源 +x、
+                                    lid 铰链沿世界+X（近侧 y−0.184）已掀 120°（资产内
+                                    掀开态，板伸向深侧 −y），资产 min z=0 贴台面
+    Dropper        (0.6993, 0.4003, 0.806)  胶头滴管立插主试管架第二列第5排
+                                    （尖嘴底=架孔底 0.806，夹胶头 TCP 0.936）
+    PolarimeterTube (0.5265, 0.241, 0.811)  1dm 空管桌面横放 rotZ-90°（轴 X、泡 +x、
+                                    加液口 +x 端顶 0.830）；加液口 = 滴管滴液点
+                                    （试管口 0.659 往 −x 10cm → 0.559）；管身伸 −x 到
+                                    0.4685 清开试管 6.5cm（rotZ+90 泡 −x 会顶试管，弃用）；
+                                    min z=−0.011（泡底）→贴台面 0.811
 
-简化流程：试管预装粉 → 洗瓶加水溶解 → 倒进旋光管（加液口朝上）→ 旋光管放导轨
-（tube_rails 顶 z≈0.201 世界 1.001，管中心 1.0075；槽已后移 30mm 至开口 y −0.155..0.095）
-→ 屏幕读数。无浓度称量。
+简化流程：试管预装粉 → 洗瓶加水溶解 → 胶头滴管从试管吸 3 次、每次挤进旋光管加液口
+（滴管全程横夹 ORIENT_FWD，无倒液旋转）→ 旋光管放导轨（tube_rails 顶 z≈0.201 世界
+1.001，管中心 1.0075；槽已后移 30mm 至开口 y −0.155..0.095）→ 屏幕读数。无浓度称量。
 
-机器人底座 (0.30, 0.50, 0.71) 写在 config（场景不含 robot）：旋光仪正后方 +y 略近，
-全部路径点 3D 距离 ≤0.67m（已证可行包络；旧 0.65 时洗瓶 0.76m/旋光管 0.82m/放管 0.75m 卡死）。
-放管下探须过屏幕/面板（世界 z~1.05-1.10）进腔室（管中心 ~1.008、腔室开口顶 1.050），
-用户目检后可能调底座。
+机器人底座 (-0.15, 0.05, 0.71) 写在 config（场景不含 robot）= d2s 同款；旋光仪
+(0.48,−0.24) rotZ+90 在底座右后方（按钮 (0.30,−0.24) 0.64m/导轨 (0.51,−0.24) 0.78m，
++x/−y 方向达记，见下），旋光管 (0.5265,0.241) 与试管同 y（加液口 0.559 滴液点泡在上方，
+抓点 3D 0.55m），滴管 (0.6993,0.4003) 架第二列第5排（抓点 3D 0.946m 贴 d2s 已证包络
+上限，若 IK FAIL 回退列1第5排 0.659,0.4003）。无倒液走廊（不再横移倒液）。
+放管下探须过屏幕/面板（世界 z~1.05-1.10）进腔室（管中心 ~1.008、腔室开口顶 1.050）。
+包络提示：按钮 0.64m/导轨 0.78m（+x 主向、−y 至 −0.24），超旧 A2 0.62m 包络，
+属达记项——若运行时 IK FAIL 需把旋光仪收回或再旋转朝向。
 
 用法：python scripts/gen_a2_scene.py   （本地 conda env 有 pxr）
 """
@@ -52,15 +64,22 @@ KEEP = {"table", "Cube", "GroundPlane", "CylinderLight", "PhysicsScene", "Looks"
 
 # (prim, asset_file, translate, scale, rot_z)   tz=None 表示动态贴台面（资产底座 min z -> 0.80）
 EQUIP = [
-    ("Polarimeter", "polarimeter.usd", (0.30, 0.00, None), None, None),
-    ("PolarimeterTube", "polarimeter_tube_1dm.usd", (0.70, 0.30, None), None, None),
-    ("TestTubeRack", "test_tube_rack.usd", (0.82, 0.55, None), None, None),
-    ("TestTube", "test_tube.usd", (0.799, 0.43, 0.806), None, None),
-    ("WashBottle", "wash_bottle.usd", (-0.10, 0.60, None), None, -180.0),  # 红嘴朝 +X（对试管）
+    # d2s 同款三件（坐标与 gen_d2s_scene.py 一字不差，复用其已证可行包络）
+    ("TestTubeRack", "test_tube_rack.usd", (0.6803, 0.3607, None), None, None),
+    ("TestTube", "test_tube.usd", (0.659, 0.241, 0.806), None, None),
+    ("WashBottle", "wash_bottle.usd", (0.370, 0.525, None), None, -180.0),  # 红嘴朝 +X（对试管）
+    # A2 专用三件（远离 d2s 三件）：旋光仪 rotZ+90（2026-08-27 用户「把机器以z为轴旋转90度」
+    # = 逆时针）：屏幕朝 -x、按钮 (0.30,-0.24)、导轨 (0.51,-0.24)；滴管立插主试管架
+    # 第二列第5排（同 d3s 酸滴管持握）；旋光管 rotZ-90（2026-08-27 滴管转移改造：加液口 =
+    # 滴管滴液点（试管口 0.659 往 -x 10cm → 0.559），泡 +x 朝滴液点、管身伸 -x 清开试管，
+    # 放导轨时管轴方向才与导轨一致——纯平移持握不转管）
+    ("Polarimeter", "polarimeter.usd", (0.48, -0.24, None), None, 90.0),
+    ("Dropper", "dropper.usd", (0.6993, 0.4003, 0.806), None, None),
+    ("PolarimeterTube", "polarimeter_tube_1dm.usd", (0.5265, 0.241, None), None, -90.0),
 ]
 
-# 试管内效果坐标基准（试管世界位置，同 EQUIP TestTube）
-TUBE_X, TUBE_Y, TUBE_BOT = 0.799, 0.43, 0.806
+# 试管内效果坐标基准（试管世界位置，同 EQUIP TestTube；d2s 同款）
+TUBE_X, TUBE_Y, TUBE_BOT = 0.659, 0.241, 0.806
 TUBE_SAMPLE_R = 0.006    # 粉末柱半径（管内）
 TUBE_SAMPLE_H = 0.012    # 粉末柱高
 TUBE_LIQUID_R = 0.007    # 液体柱半径
@@ -70,22 +89,29 @@ TUBE_LIQUID_H = 0.035    # 液体柱高（洗瓶注水一次）
 TUBE_LIQ_R = 0.0048      # 内径 Ø10 → 略细
 TUBE_LIQ_LEN = 0.10      # 管身全长（1dm 管身 116mm 内）
 
-# 水流/倒液滴（task 动画驱动，抛物线坠入）：/World/WaterStream 洗瓶注水（16 球）、
-# /World/PourStream 倒液（16 球），父 Xform + Drop_<i> 子球，task 写逐帧位置 + 显隐。
+# 水流/液滴滴（task 动画驱动，抛物线坠入）：/World/WaterStream 洗瓶注水（16 球）、
+# /World/DropperDrip 滴管滴液（16 球），父 Xform + Drop_<i> 子球，task 写逐帧位置 + 显隐。
 STREAM_DROPS = 16
 STREAM_DROP_R = 0.002    # Ø4mm 水滴（256px 相机 ~2px，可辨）
 WATER_COLOR = (0.90, 0.95, 1.0)      # 蒸馏水（无色透明）
-POUR_COLOR = (0.85, 0.80, 0.55)      # 糖水（旋光液，同 TubeLiquid）
+DRIP_COLOR = (0.85, 0.80, 0.55)      # 糖水（旋光液，同 TubeLiquid；滴管滴入加液口）
 
 # 屏幕读数（Polarimeter 资产自带 screen_glass/screen_bezel，局部系烘焙进 mesh、无 xform；
-#   前表面局部 bbox x ±0.089 / y 0.2752..0.2942 / z 0.2789..0.3396，屏幕朝 +y）。
-#   贴图发光 quad 贴在前表面 +y 0.8mm 处（防 z-fighting），随表面倾斜：
-#   下沿 (y0.2752,z0.2789) → 上沿 (y0.2942,z0.3396)，up=(0,0.2989,0.9543)。世界（Polarimeter
-#   平移 (0.30,0,0.80)）：中心 (0.30, 0.295, 1.10925)。
-SCREEN_C = (0.30, 0.295, 0.80 + (0.2789 + 0.3396) / 2)   # (0.30, 0.295, 1.10925)
-SCREEN_UP = (0.0, 0.2989, 0.9543)
-SCREEN_HW = 0.075         # 半宽 7.5cm（玻璃宽 17.8cm 内）
-SCREEN_HH = 0.030         # 半高 3cm（玻璃高 6.07cm 内；宽高比 2.5:1 = 贴图 640×256）
+#   前表面局部 bbox x ±0.089 / y 0.2752..0.2942 / z 0.2789..0.3396：屏幕玻璃是竖直平板
+#   （局部 y 面，前表面 rotZ+90 后 = 世界 x=0.1858 竖直面），上方向 = 局部 +z。
+#   rotZ+90° 后：前表面世界法线朝 −x、宽轴世界 +y、上方向 = 世界 +z（竖直，无倾斜）。
+#   （2026-08-27 五改：旧 SCREEN_UP=(0.2588,0,0.9659) 把 quad 倾斜 15°，但玻璃是竖直的
+#   → quad 顶缘突出机外 5mm/底缘嵌入机内 7mm = 用户报「悬空的模糊矩形」；改竖直贴合。）
+#   贴图发光 quad 竖直贴合前表面（a1 同款，见 a1 add_screen_tex_quad）：
+#   宽沿 W=(0,1,0)、高沿 UP=(0,0,1)。世界（Polarimeter 平移 (0.48,-0.24,0.80) rotZ+90）：
+#   玻璃前表面世界 x=0.1858；quad 中心 x 向相机 −x 再偏 2mm = 0.1838（2026-08-28：旧版 quad
+#   与玻璃前表面完全共面 x0.1858 → z-fighting → 用户报「悬空的模糊矩形」不是数字；偏 2mm 脱离
+#   共面 + winding 反向使法线朝 −x 相机（[0,3,2,1]）→ 数字不镜像，见 add_screen_tex_quad）。
+SCREEN_C = (0.48 - 0.2942 - 0.002, -0.24, 0.80 + (0.2789 + 0.3396) / 2)   # (0.1838, -0.24, 1.10925)
+SCREEN_W = (0.0, 1.0, 0.0)          # 宽轴：rotZ+90 后局部 +x（宽）→ 世界 +y
+SCREEN_UP = (0.0, 0.0, 1.0)         # 上方向：屏幕玻璃竖直，quad 竖直贴合（勿倾斜=悬空）
+SCREEN_HW = 0.050         # 半宽 5cm（显示区 10cm 居中；勿铺满整块玻璃=贴平板，a1 同款比例）
+SCREEN_HH = 0.022         # 半高 2.2cm（显示区 4.4cm ~73% 玻璃高；宽高比 2.27:1 ≈ 贴图 640×256）
 # 测量进度条帧数（红条 0%→100%，task 测量期逐帧切显；须与 constants.py PROGRESS_STEPS 一致）
 PROGRESS_STEPS = 16
 SCREEN_TEX_MEASURING_TPL = "textures/screen_measuring_{step:02d}.png"
@@ -201,10 +227,10 @@ def add_effects(stage):
 
 
 def add_streams(stage):
-    """洗瓶注水/倒液水流：/World/WaterStream、/World/PourStream 父 Xform + Drop_<i> 小球。
-    整体初始隐藏；task._step_water_anim / _step_pour_anim 逐帧写 Drop_i 位置（抛物线坠入）
+    """洗瓶注水/滴管滴液：/World/WaterStream、/World/DropperDrip 父 Xform + Drop_<i> 小球。
+    整体初始隐藏；task._step_water_anim / _step_drip_anim 逐帧写 Drop_i 位置（抛物线坠入）
     并切显隐，故 Drop 初始 translate 任意（未显示前不渲染）。"""
-    for parent, color in (("WaterStream", WATER_COLOR), ("PourStream", POUR_COLOR)):
+    for parent, color in (("WaterStream", WATER_COLOR), ("DropperDrip", DRIP_COLOR)):
         g = UsdGeom.Xform.Define(stage, f"/World/{parent}")
         for i in range(STREAM_DROPS):
             s = UsdGeom.Sphere.Define(stage, f"/World/{parent}/Drop_{i}")
@@ -219,7 +245,7 @@ def make_screen_textures(tex_dir):
     真实旋光仪屏（2026-08-27 调研）：α 旋光角大字 + 温度小字 + 状态进度条（测量中红 →
     完成绿）。读数 α 由输入档位 ROTATION_OPTIONS 决定，每档一张 result 贴图
     screen_result_<key>.png（text 显示该档读数 + '°'），温度固定 20.0°C。
-    屏幕 15cm×6cm → 640×256（2.5:1）。"""
+    屏幕显示区 10cm×4.4cm → 640×256（2.5:1）。"""
     from PIL import Image, ImageDraw, ImageFont
 
     def font(size):
@@ -228,8 +254,8 @@ def make_screen_textures(tex_dir):
     W, H = 640, 256
     BG = (10, 14, 24)          # 近黑蓝屏底（不发光，仅亮字/进度条自发光）
     BAR_OUT = (95, 100, 115)   # 进度条边框（仪器灰）
-    GREEN = (46, 220, 90)      # 完成绿
-    RED = (238, 72, 60)        # 测量红
+    GREEN = (46, 220, 90)      # 完成绿（result 满进度条，a1 同款）
+    RED = (238, 72, 60)        # 测量红（measuring 进度条）
     ALPHA = (160, 250, 185)    # 主读数绿白
     TEMP = (205, 214, 224)     # 温度灰白
     bx0, by0, bx1, by1 = 24, 216, 616, 240   # 进度条（宽 592、高 24、留边 2px 边框）
@@ -248,7 +274,8 @@ def make_screen_textures(tex_dir):
         d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], 96), t, font=f, fill=(255, 255, 255))
         img.save(os.path.join(tex_dir, f"screen_measuring_{i:02d}.png"))
 
-    # —— result：绿满进度条 + 大字 α <档位>° + 小字 20.0 °C，每档一张 ——
+    # —— result：绿满进度条 + 大字 α <档位>° + 小字 20.0 °C，每档一张（a1 同款）；
+    #    quad 已缩到 10×4.4cm 居中（勿铺满整块玻璃=平板），进度条与 a1 一致 ——
     for v in ROTATION_OPTIONS:
         img = Image.new("RGB", (W, H), BG)
         d = ImageDraw.Draw(img)
@@ -272,18 +299,22 @@ def add_screen_tex_quad(stage, name, tex_path):
     贴图经 UsdUVTexture 接 emissiveColor：屏上亮字/进度条自发光、近黑屏底不发。
     task 按测量状态显隐 ScreenMeasuring（测量中）/ScreenGlow（完成 α 读数）。"""
     cx, cy, cz = SCREEN_C
-    upx, upy, upz = SCREEN_UP
+    wx, wy, wz = SCREEN_W     # 宽轴单位向量（rotZ+90 后 = 世界 +y）
+    upx, upy, upz = SCREEN_UP  # 上方向单位向量（世界 +z，竖直贴合屏幕玻璃）
     hw, hh = SCREEN_HW, SCREEN_HH
+    # 四角 = 中心 ± hw·W ± hh·UP（顶点序 0..3 = 左下/右下/右上/左上 → 贴图直立不翻转）
     pts = [
-        Gf.Vec3f(cx - hw, cy - hh * upy, cz - hh * upz),
-        Gf.Vec3f(cx + hw, cy - hh * upy, cz - hh * upz),
-        Gf.Vec3f(cx + hw, cy + hh * upy, cz + hh * upz),
-        Gf.Vec3f(cx - hw, cy + hh * upy, cz + hh * upz),
+        Gf.Vec3f(cx - hw * wx - hh * upx, cy - hw * wy - hh * upy, cz - hw * wz - hh * upz),
+        Gf.Vec3f(cx + hw * wx - hh * upx, cy + hw * wy - hh * upy, cz + hw * wz - hh * upz),
+        Gf.Vec3f(cx + hw * wx + hh * upx, cy + hw * wy + hh * upy, cz + hw * wz + hh * upz),
+        Gf.Vec3f(cx - hw * wx + hh * upx, cy - hw * wy + hh * upy, cz - hw * wz + hh * upz),
     ]
     gl = UsdGeom.Mesh.Define(stage, f"/World/{name}")
     gl.CreatePointsAttr(pts)
     gl.CreateFaceVertexCountsAttr([4])
-    gl.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
+    # winding 反向 [0,3,2,1] → 法线朝 −x（相机侧）：旧 [0,1,2,3] 法线 +x 朝机内，相机（−x 侧）
+    # 见的是背面 → 数字镜像（用户报「模糊矩形」另一因）。反向绕序后 front face 朝相机，贴图直立。
+    gl.CreateFaceVertexIndicesAttr([0, 3, 2, 1])
     gl.CreateSubdivisionSchemeAttr("none")
     # st UV（每顶点，顶点序 0..3 = 左下/右下/右上/左上 → 贴图直立不翻转）
     pv = UsdGeom.PrimvarsAPI(gl).CreatePrimvar("st", Sdf.ValueTypeNames.Float2Array,
@@ -427,30 +458,37 @@ def verify():
     checks = []
     lo, hi = wbb("/World/Polarimeter")
     checks.append(("Polarimeter 贴台面", abs(lo[2] - 0.80) < 1e-3))
-    checks.append(("Polarimeter x 宽 ~0.375", abs((hi[0] - lo[0]) - 0.375) < 0.02))
-    # 资产 x 本就不对称（side_switch 凸出 +x），中心允许 5mm 偏差
-    checks.append(("Polarimeter x 中心 ~0.30", abs((lo[0] + hi[0]) / 2 - 0.30) < 0.005))
-    checks.append(("Polarimeter y 宽 ~0.613", abs((hi[1] - lo[1]) - 0.613) < 0.02))
+    # rotZ+90 后原 x 宽 0.375 ↔ y 宽 0.613 互换（绕 translate (0.48,-0.24) 转，中心不变）
+    checks.append(("Polarimeter x 宽 ~0.613", abs((hi[0] - lo[0]) - 0.613) < 0.02))
+    # 资产 x 本就不对称（side_switch 凸出 +x，rotZ+90 后凸到 ±y），中心允许 5mm 偏差
+    checks.append(("Polarimeter x 中心 ~0.48", abs((lo[0] + hi[0]) / 2 - 0.48) < 0.005))
+    checks.append(("Polarimeter y 宽 ~0.375", abs((hi[1] - lo[1]) - 0.375) < 0.02))
 
     lo, hi = wbb("/World/PolarimeterTube")
     checks.append(("PolarimeterTube 泡贴台面", abs(lo[2] - 0.80) < 1e-3))
-    checks.append(("PolarimeterTube 中心 (0.70,0.30)", abs(lo[0] + hi[0] - 1.40) < 1e-3 and abs(lo[1] + hi[1] - 0.60) < 1e-3))
+    # rotZ-90 后局部 y±0.058（管长）→ 世界 x、局部 x±0.011（管径）→ 世界 y：中心 (0.5265,0.241)
+    checks.append(("PolarimeterTube 中心 (0.5265,0.241)", abs(lo[0] + hi[0] - 1.053) < 1e-3 and abs(lo[1] + hi[1] - 0.482) < 1e-3))
+
+    lo, hi = wbb("/World/Dropper")
+    checks.append(("Dropper 尖嘴底 0.806", abs(lo[2] - 0.806) < 1e-3))
+    checks.append(("Dropper 中心 (0.6993,0.4003)", abs(lo[0] + hi[0] - 1.3986) < 1e-3 and abs(lo[1] + hi[1] - 0.8006) < 1e-3))
 
     lo, hi = wbb("/World/TestTube")
     checks.append(("TestTube 管底 0.806", abs(lo[2] - 0.806) < 1e-3))
     checks.append(("TestTube 顶 0.959", abs(hi[2] - 0.959) < 1e-3))
-    checks.append(("TestTube xy (0.799,0.43)", abs(lo[0] - 0.789) < 0.02 and abs(lo[1] - 0.420) < 0.02))
+    checks.append(("TestTube xy (0.659,0.241)", abs(lo[0] - 0.649) < 0.02 and abs(lo[1] - 0.231) < 0.02))
 
     lo, hi = wbb("/World/WashBottle")
     checks.append(("WashBottle 贴台面", abs(lo[2] - 0.80) < 0.01))
-    # 抓点 (-0.10,0.60) 落在瓶身上（资产几何绕自身原点偏 ~4cm，bbox 中心 ≠ translate）
-    checks.append(("WashBottle 抓点 (-0.10,0.60) 在瓶身上", lo[0] - 0.01 < -0.10 < hi[0] + 0.01 and lo[1] - 0.01 < 0.60 < hi[1] + 0.01))
+    # 抓点 (0.370,0.525) 落在瓶身上（资产几何绕自身原点偏 ~4cm，bbox 中心 ≠ translate）
+    checks.append(("WashBottle 抓点 (0.370,0.525) 在瓶身上", lo[0] - 0.01 < 0.370 < hi[0] + 0.01 and lo[1] - 0.01 < 0.525 < hi[1] + 0.01))
 
     lo, hi = wbb("/World/TestTubeRack")
     checks.append(("TestTubeRack 贴台面", abs(lo[2] - 0.80) < 0.01))
 
     # 启动按钮（资产自带 /root/start_button → /World/Polarimeter/start_button）：
-    # 局部 translate (0,0.18,0.253)，世界顶 z=0.80+0.256=1.056（task 按下下沉 5mm 到 0.248）
+    # 局部 translate (0,0.18,0.253) → rotZ+90 世界 (0.30,-0.24)，顶 z=0.80+0.256=1.056
+    #（task 按下下沉 5mm 到 0.248）
     btn = st.GetPrimAtPath("/World/Polarimeter/start_button")
     assert btn.IsValid(), "start_button prim missing (asset)"
     assert btn.GetTypeName() == "Cylinder", "start_button should be cylinder"
@@ -458,10 +496,10 @@ def verify():
     checks.append(("start_button 有 translate op", ops == ["xformOp:translate"]))
     blo, bhi = wbb("/World/Polarimeter/start_button")
     checks.append(("start_button 顶 1.056", abs(bhi[2] - 1.056) < 0.001))
-    checks.append(("start_button y 中心 0.18", abs((blo[1] + bhi[1]) / 2 - 0.18) < 0.001))
+    checks.append(("start_button x 中心 0.30", abs((blo[0] + bhi[0]) / 2 - 0.30) < 0.001))
 
     # 水流/倒液：父 Xform 隐藏，各 16 颗 Drop 球（task 动画驱动）
-    for parent in ("WaterStream", "PourStream"):
+    for parent in ("WaterStream", "DropperDrip"):
         g = st.GetPrimAtPath(f"/World/{parent}")
         assert g.IsValid(), f"{parent} missing"
         # Drop_<i> 球 + Drop_<i>_mat 材质同为父 Xform 子 prim，只数 Sphere 类型
@@ -477,8 +515,9 @@ def verify():
         assert sp.IsValid(), f"{sname} missing"
         assert UsdGeom.Imageable(sp).ComputeVisibility() == "invisible", f"{sname} should be hidden"
         sr = bc.ComputeWorldBound(sp).ComputeAlignedRange()
-        assert abs(sr.GetMax()[0] - (SCREEN_C[0] + SCREEN_HW)) < 0.002, f"{sname} width off"
-        assert abs((sr.GetMax()[1] + sr.GetMin()[1]) / 2 - SCREEN_C[1]) < 0.004, f"{sname} y off"
+        # rotZ+90 后宽沿世界 +y：max y = SCREEN_C[1] + 半宽
+        assert abs(sr.GetMax()[1] - (SCREEN_C[1] + SCREEN_HW)) < 0.002, f"{sname} width off"
+        assert abs((sr.GetMax()[0] + sr.GetMin()[0]) / 2 - SCREEN_C[0]) < 0.004, f"{sname} x off"
         assert abs((sr.GetMax()[2] + sr.GetMin()[2]) / 2 - SCREEN_C[2]) < 0.004, f"{sname} z off"
         st_pv = UsdGeom.PrimvarsAPI(sp).GetPrimvar("st")
         assert st_pv.GetAttr().IsValid(), f"{sname} st UV primvar missing"

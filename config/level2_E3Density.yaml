@@ -1,0 +1,111 @@
+name: Level2_E3Density
+
+task_type: "e3_density"
+controller_type: "e3_density"
+
+mode: "collect"
+
+# 场景：e3_density（E3 密度测定，桌面 z=0.80）
+# 台面（2026-08-28 pxr 实测世界 bbox，gen_e3_scene.py verify）：
+#   分析天平   (0.40,0.17)     中央（称盘顶 z=0.8475，前面板屏读数）
+#   量筒 10mL  (0.40,0.17)     预置天平称盘上（预设不动，口 z 0.995，5mL 液面 0.921）
+#   移液管架   (0.22,0.17)     底贴台面 z=0.80
+#   移液管 5mL (0.22,0.17,0.82) 尖端插架孔（v2 压缩 185mm，洗耳球顶 1.005）
+#   样品瓶     (0.40,0.00)     预开盖（瓶塞已停用，口 z 0.87，液面 0.831）
+usd_path: "assets/scenes/e_physical/e3_density/e3_density.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s/e1 一致）
+grasp_xy_threshold: 0.03        # 夹爪距抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+
+# 实验结果输入接口（运行前 --result liquid_color=blue --result density=1.0 等；
+# task 读 cfg.liquid_color / cfg.density）
+# 液色变色接口（用户要求「颜色反应根据输入显示不同颜色」）：样品瓶液柱 / 移液管吸液柱 /
+# 量筒液柱 各有 6 色变体预制隐藏，task 按此枚举显示其一。
+# 密度接口（天平+量筒法 ρ=Δm/5mL）：m1=35.00g 空量筒，m2=m1+ρ×5.00，天平屏显示
+# m2+ρ；ρ 为任意数值（type:number），task 运行时 PIL 烘焙 balance_result.png 覆写
+# 场景贴图（headless 下改贴图路径不渲染，须覆写同名文件）。
+experiment_result:
+  liquid_color:
+    label: "待测液体颜色（密度测定液色）"
+    type: enum
+    options: [colorless, blue, red, green, yellow, purple]
+    default: colorless
+  density:
+    label: "待测液体密度（g/mL，驱动天平屏 m2+ρ 读数）"
+    type: number
+    default: 1.0
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.liquid_color / cfg.density（density 为任意数值，type:number）。
+liquid_color: colorless
+density: 1.0
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 前侧拉远俯拍整个工作区（复用 E1/E2 相机位，工作区中心约 (0.40,0.25,0.85)）。
+    translation: [0.35, 1.00, 1.45]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.0, 0.0, 0.46726, 0.88412]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 正对天平前面板屏读数（m1/m2+ρ）：在屏前方（-Y）抬头俯视 ~44°，up=+Z，
+    # 视线越过样品瓶顶（0.87）不遮挡（08-28 用户要求对准读数）。
+    # focal_length 17→220（08-28 用户"屏幕要占相机至少 1/2、数字太小"）：屏幕
+    # 100×16.3mm 距相机 383mm，focal 17 时 FOV~63°、屏仅占画面高 ~2.4%、数字 16px。
+    # 拉 220（FOV~5.5°）→ 屏高占 ~31%、主数字"40.00 g"~150px 清晰可读；屏宽 6:1 在
+    # 方形相机里无法既占 1/2 高又不裁"ρ = X.XXX g/mL"行（240→ρ行 95% 宽贴边、
+    # 286→裁 ρ 行），220 是"数字最大且 ρ 行不裁"的平衡点。
+    translation: [0.40, -0.20, 1.10]
+    resolution: [1024, 1024]
+    focal_length: 220
+    orientation: [0.92717, 0.37465, 0.0, 0.0]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [1024, 1024]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 (0.25, 0.57)：E3 v2 布局「天平中央、量筒在称盘上、移液管架左、样品瓶前」。
+  # 器材整体沿 -Y 移远 0.15m，避开底座最小可达半径（避免机械臂自碰撞改道穿模）。
+  # 全部器材在 Franka 0.855m 臂展内（最远抓点=吸液位 (0.40,0.00) → 距底座
+  # sqrt(0.15²+0.57²)=0.59m；放液位 (0.40,0.17) → 距底座 sqrt(0.15²+0.40²)=0.43m，
+  # 均 > 最小可达半径 0.35m、< 0.855m 上限）。
+  position: [0.25, 0.57, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

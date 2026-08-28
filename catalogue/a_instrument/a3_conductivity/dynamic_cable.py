@@ -34,8 +34,10 @@ ANCHOR_A = Gf.Vec3d(-0.060, -0.1015, 0.088)   # 机身后测量插座中心（�
 ANCHOR_C = Gf.Vec3d(0.205, -0.108, 0.088)     # 固定后右角（机身右后外侧）
 CONTROL_B = Gf.Vec3d(0.020, -0.025, -0.070)   # 帽端下垂偏移 → Q1 = B + cb
 CAP_TOP = Gf.Vec3d(0.195, 0.040, 0.165)       # 静止态电极帽顶（移动端初始值）
-SEGMENTS = 30                                  # 段数（按三段弧长比例分配，帽端下垂段不少于 5 段）
+SEGMENTS = 120                                 # 段数（按三段弧长比例分配，帽端下垂段不少于 5 段）
+                                               # 2026-08-27 用户嫌每段太长有瑕疵：30→120，段长 ~4mm
 RADIUS = 0.0035                                # Ø7mm，与原 Blender 线缆 bevel 一致
+SEG_OVERLAP = 1.08                             # 每段圆柱比弦长延长 8%：平端盖埋进邻段，接缝/棱消失
 
 
 def _catmull(p0, p1, p2, p3, t):
@@ -46,11 +48,12 @@ def _catmull(p0, p1, p2, p3, t):
                   + (-p0 + 3 * p1 - 3 * p2 + p3) * t3)
 
 
-def _seg_matrix(a, b, radius):
+def _seg_matrix(a, b, radius, overlap=SEG_OVERLAP):
     """段圆柱矩阵：从 a 到 b（a,b 为曲线采样点）。平移在最后一行，+Z 对齐切线×长度，
-    +X/+Y × radius。pxr 实测：写 AddTransformOp 后 bbox 端点恰为 a/b（round-trip 全对）。"""
+    +X/+Y × radius。长度 = 弦长×overlap（8%）：平端盖伸出到邻段内部，接缝/棱被埋掉，
+    整根线读起来是连续圆管。pxr 实测：写 AddTransformOp 后 bbox 中心恰为 (a+b)/2。"""
     d = b - a
-    length = d.GetLength()
+    length = d.GetLength() * overlap
     z = d / length if length > 1e-9 else Gf.Vec3d(0.0, 0.0, 1.0)
     ref = Gf.Vec3d(0.0, 0.0, 1.0) if abs(z[2]) < 0.95 else Gf.Vec3d(1.0, 0.0, 0.0)
     y = Gf.Cross(z, ref).GetNormalized()

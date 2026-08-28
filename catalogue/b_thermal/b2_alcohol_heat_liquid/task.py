@@ -9,9 +9,11 @@ v2 = v1 自动加热观测 + 阶段B 滴加（V7 步骤 2-3 的滴加部分）�
 温度模型（v1 保留，config 可调）：T 从 room_temp 开始，ignite 停留后按 heat_rate
 （°C/帧）升温，到达 cfg.boiling_point（水 100.0）后保持。相态机：
     idle（灯焰隐藏，T=room_temp，等滴加完成）→ ignited（灯焰 reveal）
-    → heating（T 按 heat_rate 升温，温度计毛细柱随实时温度爬升）
-    → boiling（到 cfg.boiling_point，气泡 reveal）→ done（保持
-    boil_dwell_frames 后完成，上报沸点）。全部 phase 通过
+    → heating（T 按 heat_rate 升温；2026-08-27 用户：8s 内气泡随温度进度逐个 reveal，
+    机械臂不动）→ boiling（到 cfg.boiling_point，气泡全亮 16 泡，保持 boil_dwell 5s，
+    气泡不熄）→ move_lamp（机械臂 LampMovePass 水平横夹灯体宽处 -y 移 10cm；移灯期间
+    气泡继续沸腾）→ done（灯移到位松爪后气泡逐个逐渐熄灭，全部消失后完成，上报沸点）。
+    全部 phase 通过
     get_basic_state_info(additional_info) 上报，controller 读到 phase=="done" 即报成功。
 
 滴管生命周期（照 d3l _DropperLifecycle，gripper 开度 = joint[7]，判定纯关节+TCP）：
@@ -38,7 +40,8 @@ op 表 + 单 transform op 写矩阵）——滴管沿 tool+X 伸出、随夹爪�
     底锚 z=0.005 不动、柱顶 = z_of(T) 随温度爬升（行向量约定：pxr 中 A·B 表示 A 先作用）。
 
 驱动 prim（b2_alcohol_heat_liquid.usd，由 scripts/gen_b2_scene.py 生成）：
-    /World/flame_outer|flame_inner   火焰（Cone，迁到 /World 顶层——灯下引用子 prim RTX 不渲染）
+    /World/flame_outer|flame_inner(±_sphere)  火焰（水滴形=底半球Sphere+上部Cone，迁到 /World
+    顶层——灯下引用子 prim RTX 不渲染；2026-08-27 外焰 apex 加长到刚好碰石棉网底）
     /World/Thermometer/Thermometer/capillary_liquid  温度计毛细红液柱（锚定缩放）
     /World/TestTubeBubbles/bubble_{0..7}         沸腾气泡（球组 r2.5mm 亮白，初始隐藏，上升动画）
     /World/Dropper / DropperDrop / TestTubeLiquid  滴加效果（阶段B；DropperFill 固定液柱
@@ -57,6 +60,11 @@ from .meta_actions.constants import (
     THERMO_HANG,
     ZEO_GRASP, ZEO2_GRASP, ZEO_CENTER_OFFSET, ZEO_DROP_Z, ZEO_STACK_DZ,
     MATCH_XY, MATCH_REST_Z, MATCH_GRASP, MATCH_HELD_OFFSET, MATCH_TIP_OFFSET, WICK,
+    LAMP_XY, LAMP_REST_Z, LAMP_GRASP_OFFSET, LAMP_GRASP, GRIP_LAMP,
+    LAMP_CLOSED_THRESHOLD, LAMP_OPEN_THRESHOLD,
+    LAMP_MOVE, LAMP_TARGET,
+    CAP_CENTER_DZ, CAP_GRASP, CAP_HELD_OFFSET, CAP_BURNER, GRIP_CAP,
+    CAP_CLOSED_THRESHOLD, CAP_COVER_NEAR,
     EFFECT_TUBE_DROPS, EFFECT_DROPPER_DROP,
 )
 
@@ -70,7 +78,7 @@ from .meta_actions.constants import (
 # （胶头朝上、尖嘴朝下）挂在夹爪前下方，与架内竖插姿态零跳变；尖嘴 = 夹爪 + 0.13·tool+X
 # 方向（见 _dropper_tip_pos）。
 #  手指朝前(ORIENT_FWD，tool+X=世界-Z) → 滴管竖直挂夹爪下、尖嘴朝下：吸液浸瓶口 /
-#    低空横越（杆体 z = 夹爪-0.13 ~ 夹爪，全程压挂钩支臂 1.216 之下）/ 两段式滴液
+#    低空横越（杆体 z = 夹爪-0.13 ~ 夹爪，全程压挂钩支臂 1.246 之下）/ 两段式滴液
 #    （先到管口偏 -X 侧、再只水平移 x 到管口正上方，尖嘴在管口上 2mm——2026-08-25
 #    用户弃 45° 倾斜 + 弃沉入管内，避免穿试管壁）
 _T_HELD = Gf.Matrix4d(0.0, 0.0, -1.0, 0.0,
@@ -102,6 +110,19 @@ _ZEO_HELD = Gf.Matrix4d(0.0, 0.0, -1.0, 0.0,
                         0.0, -1.0, 0.0, 0.0,
                         -1.0, 0.0, 0.0, 0.0,
                         ZEO_CENTER_OFFSET, 0.0, 0.0, 1.0)
+
+# 酒精灯相对夹爪的持握矩阵 _LAMP_HELD（阶段 F 沸腾 5s 后移灯，2026-08-27 用户修订）。
+# 旋转与 _T_HELD/_THERMO_HELD 完全一致（灯 Z 朝上→tool -X、X→tool -Z、Y→tool -Y），仅平移
+# 改 LAMP_GRASP_OFFSET=0.0448（抓点 z=0.845 − 灯原点 z=0.8002）。灯局部原点=底座中心、+Z 朝上
+# （灯体/neck/灯芯在 +Z 端）。行向量：对象世界 = _LAMP_HELD · tool_world。Orient_FWD 下 tool+X=
+# 世界-Z → tool -X=世界 +Z，故灯局部 +Z（朝上）映射到世界 +Z，灯保持竖直——xz/朝向都不变，
+# 只跟夹爪水平平移。平移 (0.0448,0,0) 沿 tool+X（FWD=世界-Z）→ 灯原点在夹爪正下方 0.0448：
+# 抓灯体宽处（z=0.845）时灯底座正好回原位（0.8002），附着手腕已回正、与场景 R180 世界旋转
+# 一致 → 零跳变。
+_LAMP_HELD = Gf.Matrix4d(0.0, 0.0, -1.0, 0.0,
+                         0.0, -1.0, 0.0, 0.0,
+                         -1.0, 0.0, 0.0, 0.0,
+                         LAMP_GRASP_OFFSET, 0.0, 0.0, 1.0)
 
 
 class _DropperLifecycle:
@@ -408,14 +429,151 @@ class _MatchLifecycle:
             print(f"[b2] match released to rest")
 
 
+class _LampLifecycle:
+    """单支酒精灯状态机（rest → attached → released，阶段 F 沸腾 5s 后移灯）。
+
+    持握 = 矩阵 _LAMP_HELD · tool_world（水平横夹灯体宽处，ORIENT_FWD 手指朝前，
+    d2s 夹药匙同款矩阵持握）：灯随夹爪，垂直姿态保持（xz/朝向不变），只跟夹爪水平平移。
+    移灯终点松爪 → released：灯锁移灯位（不再跟随夹爪），火焰跟随灯锁定；task 读
+    lamp.released → 气泡逐个渐熄 → phase move_lamp → done。reset 时写回原位（移灯前的位置）。
+    参考点（gripper/TCP 世界坐标）：
+      grasp   灯体宽处抓点（LAMP_GRASP，z=0.845 Ø76.8mm）
+      rest    灯底座中心静止位（LAMP_XY + LAMP_REST_Z）
+      target  移灯终点夹爪（LAMP_TARGET；松爪判定）
+    """
+
+    def __init__(self, task, name, path, rest, grasp, target):
+        self.task = task
+        self.name = name
+        self.path = path
+        self.rest = np.array(rest)
+        self.grasp = np.array(grasp)
+        self.target = np.array(target)
+        self.state = "rest"
+        self._near_frames = 0
+        self.attached = False
+        self.released = False
+
+    def reset(self):
+        self.state = "rest"
+        self._near_frames = 0
+        self.attached = False
+        self.released = False
+        self.task._set_lamp_world(self.task._lamp_rest_matrix())
+
+    def step(self, gripper_pos, opening):
+        """每帧推进。gripper_pos = TCP，opening = joint[7]（m）。"""
+        if self.state == "rest":
+            near = self.task._near(self.grasp, gripper_pos)
+            self._near_frames = self._near_frames + 1 if near else 0
+            held = self.task._lamp_held_matrix()
+            # 夹爪开始合拢且已进近窗：先把灯平滑拉向持握位（消除闭合瞬间闪现吸附）
+            if near and opening < self.task.gripper_open_threshold:
+                self.task._ease_lamp_world(held)
+            # 灯专用 attach 阈值 lamp_closed_threshold（灯体 Ø76.8 宽，合不到常规 0.025）
+            if (near and self._near_frames >= self.task.GRASP_NEAR_FRAMES
+                    and opening < self.task.lamp_closed_threshold):
+                self.state = "attached"
+                self.attached = True
+                self.task._set_lamp_world(held)
+                print(f"[b2] lamp attached (grip={opening:.4f})")
+            return
+
+        # 吸附期：灯逐帧跟随夹爪（矩阵持握，灯保持竖直只跟平移）；火焰跟随灯（y=灯原点 y）
+        self.task._set_lamp_world(self.task._lamp_held_matrix())
+        self.task._set_flame_lamp_y(gripper_pos[1])
+        # 松爪判定：夹爪到移灯终点且 grip 打开 → released，灯锁移灯位（火焰也锁移灯位）。
+        # 用 lamp_open_threshold（>GRIP_LAMP 0.038 才真松爪）：常规 gripper_open_threshold 0.03
+        # 在 -y 移灯时开度保持 0.038 已超标 → 灯一进终点 3cm 就提前 released（10cm 移灯看不全 +
+        # 灯瞬跳终点）。真开爪（GRIP_OPEN 0.04）才触发，即 LampMovePass 第⑧步松爪。
+        if (opening > self.task.lamp_open_threshold
+                and self.task._near(self.target, gripper_pos)):
+            self.released = True
+            self.state = "released"
+            self.task._set_lamp_world(self.task._lamp_target_matrix())
+            self.task._set_flame_lamp_y(self.target[1])
+            print(f"[b2] lamp released at target (grip={opening:.4f})")
+
+        # released：灯锁移灯位（不再跟随夹爪），火焰锁定不移（夹爪已退走）
+        # 空状态，复位靠 task.reset() 写回原位
+
+
+class _CapLifecycle:
+    """单支灯帽状态机（rest → attached → settled，阶段 G 移灯后盖灯帽灭火）。
+
+    持握 = 纯平移 offset（CAP_HELD_OFFSET）：帽全程竖直开口朝下，不随夹爪旋转
+    （与火柴同款纯平移持握，非矩阵持握）。帽是灯的子 prim，吸附期逐帧把帽写到夹爪
+    持握位（帽中心 = 夹爪 + CAP_HELD_OFFSET，经 _set_cap_world 换算成帽相对灯的
+    local translate）。盖到位（夹爪近 CAP_BURNER 连续帧）→ settled：火焰熄灭、帽锁灯口。
+    参考点（gripper/TCP 世界坐标）：
+      grasp   移灯后帽位夹点（CAP_GRASP，帽顶下 7mm）
+      cover   盖灯口夹爪（CAP_BURNER，帽中心 0.9067 = 灯口 0.8912 + 半高）
+    """
+
+    def __init__(self, task, name, path, grasp, cover):
+        self.task = task
+        self.name = name
+        self.path = path
+        self.grasp = np.array(grasp)
+        self.cover = np.array(cover)
+        self.state = "rest"
+        self._near_frames = 0
+        self.attached = False
+        self.settled = False
+        self.extinguish_counter = 0
+
+    def reset(self):
+        self.state = "rest"
+        self._near_frames = 0
+        self.attached = False
+        self.settled = False
+        self.extinguish_counter = 0
+        self.task._set_cap_rest()
+
+    def step(self, gripper_pos, opening):
+        """每帧推进。gripper_pos = TCP，opening = joint[7]（m）。"""
+        if self.state == "rest":
+            near = self.task._near(self.grasp, gripper_pos)
+            self._near_frames = self._near_frames + 1 if near else 0
+            held = np.asarray(gripper_pos, dtype=float) + np.array(CAP_HELD_OFFSET)
+            if near and opening < self.task.gripper_open_threshold:
+                self.task._ease_cap_world(held)
+            if (near and self._near_frames >= self.task.GRASP_NEAR_FRAMES
+                    and opening < self.task.cap_closed_threshold):
+                self.state = "attached"
+                self.attached = True
+                self.task._set_cap_world(held)
+                print(f"[b2] cap attached (grip={opening:.4f})")
+            return
+
+        if self.state == "attached":
+            # 吸附期：帽跟随夹爪（纯平移），帽中心 = 夹爪 + CAP_HELD_OFFSET
+            held = np.asarray(gripper_pos, dtype=float) + np.array(CAP_HELD_OFFSET)
+            self.task._set_cap_world(held)
+            # 盖到位：夹爪近盖灯口位 CAP_BURNER 连续帧 → settled → 火焰熄灭、帽锁灯口
+            if np.linalg.norm(np.asarray(gripper_pos) - self.cover) < self.task.cap_cover_near:
+                self.extinguish_counter += 1
+                if self.extinguish_counter >= self.task.cap_dwell_frames:
+                    self.state = "settled"
+                    self.settled = True
+                    self.task._on_cap_settled(held)
+                    print(f"[b2] cap settled, flame extinguished")
+            else:
+                self.extinguish_counter = 0
+            return
+
+        # settled：帽锁灯口（不再跟随夹爪，帽已停在盖灭位），火焰已熄（_on_cap_settled 处理）
+
+
 class B2AlcoholHeatLiquidTask(BaseTask):
     """B2 沸点测定任务：滴加出液柱（阶段B）→ 加热 → 沸腾 → 记录沸点。"""
 
     TABLE_Z = 0.80
     GRASP_NEAR_FRAMES = 3
 
-    # 试管底（坐石棉网上，b2_tmp pxr 实测）/ 管内液体逐滴生长
-    TUBE_BOTTOM_Z = 0.9206
+    # 试管底（坐石棉网上，b2_tmp pxr 实测；2026-08-27 铁架台上整套上移 2cm → 0.9406）/
+    # 管内液体逐滴生长
+    TUBE_BOTTOM_Z = 0.9406
     DROP_LEVEL_STEP = 0.004   # 每滴落定后液面升高 4mm（视觉夸张，真实单滴 <1mm）
     DROP_LEVEL_MAX = 0.060    # 上限 60mm（3 遍 × 4 滴 = 48mm，接近上限）
 
@@ -438,17 +596,8 @@ class B2AlcoholHeatLiquidTask(BaseTask):
     # 气泡上升速度（m/帧）
     BUBBLE_SPEED = 0.004
 
-    # 水蒸气两段式（2026-08-27 用户「雾气太假：整个柱体超过试管；真实沸腾雾先只在试管
-    # 范围内」→ 改两段）：steam_inner 管内雾（Cylinder r0.007 < 管内径，底锚液面，长到
-    # 管口，只填试管内部）+ steam_plume 管口羽流（尖端朝下 Cone，apex 钉管口 1.0739，
-    # 升出管口后扩散消散）。时序：管内雾先长满（雾先只在试管里），羽流才从管口升起。
-    STEAM = "/World/TestTubeSteam"
-    STEAM_MOUTH_Z = TUBE_MOUTH_Z      # 管口 1.0739（管内雾上限 / 羽流 apex）
-    STEAM_INNER_R = 0.007             # 管内雾半径（< 管内径 Ø17/2=0.0085，被管壁约束）
-    STEAM_PLUME_R = 0.016             # 管口上羽流顶半径（上升扩散）
-    STEAM_PLUME_H = 0.12              # 羽流高（管口 → 1.1939，挂钩底 1.216 之下）
-    STEAM_GROW_FRAMES = 90            # 两段总帧数（~1.5s @60fps）
-    STEAM_INNER_SHARE = 0.6           # 前 60% 帧：管内雾先长满（雾先在试管范围内）
+    # 2026-08-27 用户「整体去掉蒸汽的显示」→ 蒸汽两段式（steam_inner/steam_plume）已删，
+    # 沸腾只留气泡动画（task 驱动）。
 
     # 滴加效果 prim 路径
     DROPPER = "/World/Dropper"
@@ -464,6 +613,11 @@ class B2AlcoholHeatLiquidTask(BaseTask):
     MATCH = "/World/Match"
     MATCH_IGNITE_NEAR_FRAMES = 15   # 火柴头近灯芯连续帧数阈值（仿 flametest）
     MATCH_IGNITE_DIST = 0.035       # 火柴头距灯芯 < 3.5cm 判定点火接近
+    # 酒精灯（阶段 F 沸腾 5s 后移灯）：/World/AlcoholLamp（R180 立放；火焰是 /World 顶层
+    # 独立 prim，task 移灯时让火焰 y 跟随灯原点 y）
+    LAMP = "/World/AlcoholLamp"
+    # 灯帽（阶段 G 盖灯帽灭火）：帽是灯的子 prim（灯 R180 后帽局部 y 取反），碰撞已随灯 disable
+    CAP = "/World/AlcoholLamp/cap"
 
     def __init__(self, cfg, world, stage, robot):
         super().__init__(cfg, world, stage, robot)
@@ -474,17 +628,29 @@ class B2AlcoholHeatLiquidTask(BaseTask):
         self.idle_dwell_frames = int(getattr(cfg, "idle_dwell_frames", 20))
         self.ignite_dwell_frames = int(getattr(cfg, "ignite_dwell_frames", 30))
         self.boil_dwell_frames = int(getattr(cfg, "boil_dwell_frames", 240))
+        self.bubble_fade_frames = int(getattr(cfg, "bubble_fade_frames", 240))
+        # 调试：跳过前面所有动作（滴加/沸石/温度计/点火），只跑 LampMovePass 抓灯移灯
+        self.debug_lamp_move = bool(getattr(cfg, "debug_lamp_move", False))
+        self.lamp_closed_threshold = LAMP_CLOSED_THRESHOLD   # 灯专用 attach 阈值（灯体宽）
+        self.lamp_open_threshold = LAMP_OPEN_THRESHOLD       # 灯专用 release 阈值（>GRIP_LAMP 才真松爪）
+        # 灯帽（阶段 G 盖灯帽灭火）：阈值 + 调试（只跑 CapLampPass 盖帽，灯预摆移灯位+火焰亮）
+        self.cap_closed_threshold = CAP_CLOSED_THRESHOLD     # 帽 attach 阈值（帽 Ø37mm）
+        self.cap_dwell_frames = int(getattr(cfg, "cap_dwell_frames", 15))  # 盖到位连续帧
+        self.cap_cover_near = CAP_COVER_NEAR                 # 夹爪距 CAP_BURNER 盖到位近窗
+        self.debug_cap_lamp = bool(getattr(cfg, "debug_cap_lamp", False))
+        self.flame_extinguished = False
 
         # 气泡球组（骨架 Sphere，排除 bubble_mat 材质 prim）
         self.bubble_prims = self._children("/World/TestTubeBubbles")
         self.bubble_base = [self._read_translate(p) for p in self.bubble_prims]
-        # 水蒸气雾柱（同心双层 Cylinder，_children 已滤到几何）：初始隐藏高 0，沸腾相长高
-        self.steam_prims = self._children(self.STEAM)
-        self._steam_grow = 0
+        # 火焰 prim（水滴形两焰×2=4，迁 /World 顶层；移灯时 y 跟随灯原点 y）
+        self.flame_prims = self._flame_paths()
+        self.flame_base = [self._read_translate(p) for p in self.flame_prims]
 
         self.phase = "idle"
         self.temperature = self.room_temp
         self._boil_frames = 0
+        self._bubble_fade = 0          # 移灯后气泡逐渐熄灭的已用帧数（bubble_fade_frames 内 16→0）
         self._cap_op = None            # 毛细柱 transform op（首次惰性创建，之后只 Set）
 
         # 阶段B 滴加：阈值（config 可调）+ 滴管生命周期 + 液滴动画状态
@@ -519,10 +685,19 @@ class B2AlcoholHeatLiquidTask(BaseTask):
         self.match = _MatchLifecycle(self, "match", self.MATCH, match_rest, MATCH_GRASP)
         self.flame_lit = False         # 火柴触灯芯点燃（idle 门控：火焰 reveal）
         self.match_ignite_counter = 0  # 火柴头近灯芯连续帧计数
+        # 酒精灯（阶段 F 沸腾 5s 后移灯）：静态碰撞体，吸附期关碰撞；rest/grasp/target 三点位姿
+        self._disable_collision(self.LAMP)
+        lamp_rest = (LAMP_XY[0], LAMP_XY[1], LAMP_REST_Z)
+        self.lamp = _LampLifecycle(self, "lamp", self.LAMP, lamp_rest, LAMP_GRASP, LAMP_TARGET)
+        # 灯帽（阶段 G 盖灯帽灭火）：帽是灯子 prim（碰撞已随灯 disable）；grasp=移灯后帽位夹点、
+        # cover=盖灯口夹爪。帽静止 local translate 读场景（reset 写回）。
+        self.cap = _CapLifecycle(self, "cap", self.CAP, CAP_GRASP, CAP_BURNER)
+        self.cap_rest_translate = self._read_translate(self.CAP)
         self._drop_count = 0           # 已生成的液滴总数（每 +DROPS_PER_SQUEEZE）
         self._drop_queue = []          # 滴落动画队列（当前在飞的滴，含 delay/t/hang/fall）
         self._liquid_added = False     # 滴加完成（idle 门控：全 cycles 滴完才允许点火）
         self._liquid_level = 0.0       # 当前管内液面高（气泡破灭高度跟随）
+        self._bubble_reveal = 0        # 加热相已 reveal 的气泡数（0→16 逐个出现）
 
     def reset(self):
         super().reset()
@@ -530,31 +705,20 @@ class B2AlcoholHeatLiquidTask(BaseTask):
         self.phase = "idle"
         self.temperature = self.room_temp
         self._boil_frames = 0
+        self._bubble_fade = 0
         self._drop_count = 0
         self._drop_queue = []
         self._liquid_added = False
         self.zeolite_added = False
         self.flame_lit = False
+        self.flame_extinguished = False
         self.match_ignite_counter = 0
         self._liquid_level = 0.0
+        self._bubble_reveal = 0
         self._set_visible(self._flame_paths(), False)
         self._set_visible(self.bubble_prims, False)
         for p, base in zip(self.bubble_prims, self.bubble_base):
             self._set_translate(p, base)
-        self._steam_grow = 0
-        # 可见性父门控（同 DropperDrop 良方）：scene 中 steam_inner/plume 是默认可见、
-        # 由父 Xform 隐藏；reset/沸腾 只 toggle 父即可（子继承），不可只藏子（父 invisible
-        # 会阻挡所有后代渲染）。
-        self._set_visible(self.STEAM, False)
-        for p in self.steam_prims:
-            prim = self.stage.GetPrimAtPath(p)
-            if not prim.IsValid():
-                continue
-            if prim.GetName() == "steam_inner":
-                UsdGeom.Cylinder(prim).GetHeightAttr().Set(0.0)
-            elif prim.GetName() == "steam_plume":
-                UsdGeom.Cone(prim).GetHeightAttr().Set(0.0)
-                UsdGeom.Cone(prim).GetRadiusAttr().Set(self.STEAM_PLUME_R)
         self._set_capillary(self.room_temp)
         # 滴加复位：滴管回架、液滴/管柱效果隐藏、管柱高度归零
         self.dropper.reset()
@@ -565,6 +729,12 @@ class B2AlcoholHeatLiquidTask(BaseTask):
             z.reset()
         # 火柴复位：回台面静止位
         self.match.reset()
+        # 酒精灯复位：回原位（移灯前的位置），火焰回原位
+        self.lamp.reset()
+        # 灯帽复位：回静止位（帽相对灯 local translate 写回）
+        self.cap.reset()
+        for p, base in zip(self.flame_prims, self.flame_base):
+            self._set_translate(p, base)
         for p in (self.TUBE_DROPS, self.DROPPER_DROP):
             self._set_visible(p, False)
         lq = self.stage.GetPrimAtPath(self.TUBE_DROPS)
@@ -586,6 +756,8 @@ class B2AlcoholHeatLiquidTask(BaseTask):
             z.step(gripper_pos, opening)
         self.thermometer.step(gripper_pos, opening)
         self.match.step(gripper_pos, opening)
+        self.lamp.step(gripper_pos, opening)
+        self.cap.step(gripper_pos, opening)
         self._step_match_ignite(gripper_pos)   # 点火检测（火柴头触灯芯 → flame_lit）
         self._liquid_added = (self._drop_count
                               >= self.sample_cycles * self.DROPS_PER_SQUEEZE)
@@ -604,14 +776,32 @@ class B2AlcoholHeatLiquidTask(BaseTask):
             "thermometer_hung": self.thermometer.hung,
             "zeolite_added": self.zeolite_added,
             "match_attached": self.match.attached,
+            "lamp_attached": self.lamp.attached,
+            "lamp_moved": self.lamp.released,
+            "cap_attached": self.cap.attached,
+            "cap_settled": self.cap.settled,
+            "flame_extinguished": self.flame_extinguished,
         })
 
     # ------------------------------------------------------------------
-    # 相态机：idle（等滴加完成）→ ignited → heating → boiling → done
+    # 相态机：idle（等滴加完成）→ ignited → heating → boiling → move_lamp → done
+    # （move_lamp = 沸腾保持 boil_dwell 后，机械臂 LampMovePass 水平横夹灯体宽处 -y 移 10cm；
+    #   移灯期间气泡继续沸腾，松爪后逐个逐渐熄灭 → done）
     # ------------------------------------------------------------------
     def _update_experiment(self):
         if self.phase == "idle":
-            if (self._liquid_added and self.zeolite_added and self.thermometer.hung
+            # 调试：跳过段1全部 + 灯直接摆到移灯位 + 火焰点亮，直进 cap_lamp 相（只跑 CapLampPass 盖帽）
+            if self.debug_cap_lamp:
+                self._set_lamp_world(self._lamp_target_matrix())
+                self._set_flame_lamp_y(LAMP_TARGET[1])
+                self._set_visible(self._flame_paths(), True)
+                self.phase = "cap_lamp"
+                print("[b2] debug_cap_lamp: lamp pre-moved + flame on -> cap_lamp phase")
+            # 调试：跳过前面所有动作，任务直接进 move_lamp 相（只跑 LampMovePass 抓灯移灯）
+            elif self.debug_lamp_move:
+                self.phase = "move_lamp"
+                print("[b2] debug_lamp_move: skip to move_lamp phase")
+            elif (self._liquid_added and self.zeolite_added and self.thermometer.hung
                     and self.flame_lit):
                 self.phase = "ignited"
                 self._set_visible(self._flame_paths(), True)
@@ -624,19 +814,62 @@ class B2AlcoholHeatLiquidTask(BaseTask):
 
         elif self.phase == "heating":
             self.temperature = min(self.boiling_point, self.temperature + self.heat_rate)
+            # 2026-08-27 用户「逐渐出现气泡（从点燃酒精灯 沸腾需要8秒的时间 这时候机械臂不动）」：
+            # 气泡随温度进度逐个 reveal（0→16），已出现的气泡在液内上升搅动；沸腾全亮 16 泡。
+            progress = (self.temperature - self.room_temp) / max(
+                1e-6, self.boiling_point - self.room_temp)
+            reveal = int(progress * len(self.bubble_prims))
+            if reveal != self._bubble_reveal:
+                self._bubble_reveal = reveal
+                for i, p in enumerate(self.bubble_prims):
+                    self._set_visible(p, i < reveal)
+            if reveal > 0:
+                self._animate_bubbles()
             if self.temperature >= self.boiling_point:
                 self.phase = "boiling"
                 self._set_visible(self.bubble_prims, True)
-                self._set_visible(self.STEAM, True)
                 print(f"[b2] boiling at T={self.temperature:.1f}")
 
         elif self.phase == "boiling":
             self._boil_frames += 1
             self._animate_bubbles()
-            self._animate_steam()
+            # 沸腾保持 boil_dwell_frames（config 300 = 5s @60fps）→ 进入移灯相（气泡不熄）
             if self._boil_frames >= self.boil_dwell_frames:
+                self.phase = "move_lamp"
+                print(f"[b2] boiling hold done -> move lamp phase (arm grabs lamp -y {LAMP_MOVE}m)")
+
+        elif self.phase == "move_lamp":
+            # 机械臂 LampMovePass 移灯中：灯被夹走 → 火焰跟随灯；移灯期间气泡继续沸腾。
+            # 松爪（灯已移到位 released）后 → 气泡逐个逐渐熄灭（bubble_fade_frames 内
+            # 16→0，用户 2026-08-27「只有把酒精灯移走之后气泡才慢慢减少消失」）→ done。
+            if self.lamp.released:
+                # 调试模式：跳过气泡渐熄，松爪即 done（只验证抓灯移灯动作本身）
+                if self.debug_lamp_move:
+                    self.phase = "done"
+                    print(f"[b2] done (debug): lamp moved, boiling point {self.boiling_point:.1f}°C recorded")
+                    return
+                self._bubble_fade += 1
+                fade_progress = self._bubble_fade / max(1e-6, self.bubble_fade_frames)
+                visible = max(0, int((1.0 - fade_progress) * len(self.bubble_prims)))
+                if visible != self._bubble_reveal:
+                    self._bubble_reveal = visible
+                    for i, p in enumerate(self.bubble_prims):
+                        self._set_visible(p, i < visible)
+                if visible > 0:
+                    self._animate_bubbles()
+                if self._bubble_fade >= self.bubble_fade_frames:
+                    self.phase = "cap_lamp"
+                    print(f"[b2] bubbles gone -> cap lamp phase (grab cap, cover lamp)")
+            else:
+                # 灯仍在移灯动作中（未松爪）：气泡保持沸腾
+                self._animate_bubbles()
+
+        elif self.phase == "cap_lamp":
+            # 机械臂 CapLampPass 盖帽中：帽被夹走 → 火焰仍亮（跟随灯）；帽盖到位 settled →
+            # 火焰熄灭（_on_cap_settled）→ done（上报沸点）。
+            if self.cap.settled:
                 self.phase = "done"
-                print(f"[b2] done: boiling point {self.boiling_point:.1f}°C recorded")
+                print(f"[b2] done: cap covers lamp, flame extinguished, boiling point {self.boiling_point:.1f}°C recorded")
 
         # 温度计读数每帧跟随温度
         self._set_capillary(self.temperature)
@@ -650,42 +883,6 @@ class B2AlcoholHeatLiquidTask(BaseTask):
             if t[2] > pop_z:
                 t = list(base)
             self._set_translate(p, t)
-
-    def _animate_steam(self):
-        """水蒸气两段式（2026-08-27 用户「雾气要先在试管范围内」）：
-        阶段A（前 60% 帧）steam_inner 管内雾从实际液面长到管口——雾先只在试管里；
-        阶段B（后 40% 帧）steam_plume 管口羽流从管口升起扩散消散（apex 钉管口）。
-        到顶后 ±3% 高度呼吸。管内雾半径 < 管内径，被管壁约束绝不超出试管。"""
-        self._steam_grow += 1
-        progress = min(1.0, self._steam_grow / self.STEAM_GROW_FRAMES)
-        base = self.TUBE_BOTTOM_Z + self._liquid_level       # 实际液面（沸腾时已满）
-        inner_full = self.STEAM_MOUTH_Z - base               # 液面→管口高度（管内雾上限）
-        # 阶段A：管内雾 0→1（t² 缓入，雾积聚感）
-        inner_p = min(1.0, progress / self.STEAM_INNER_SHARE)
-        inner_h = inner_full * inner_p * inner_p
-        # 阶段B：管口羽流（apex 钉管口，上升扩散；半径随高度同涨 = 越升越散）
-        plume_p = max(0.0, (progress - self.STEAM_INNER_SHARE) / (1.0 - self.STEAM_INNER_SHARE))
-        plume_h = self.STEAM_PLUME_H * plume_p * plume_p
-        plume_r = self.STEAM_PLUME_R * plume_p
-        if progress >= 1.0:                                  # 到顶后轻微呼吸
-            resp = 1.0 + 0.03 * np.sin(self.frame_idx * 0.05)
-            inner_h *= resp
-            plume_h *= resp
-        for p in self.steam_prims:
-            prim = self.stage.GetPrimAtPath(p)
-            if not prim.IsValid():
-                continue
-            name = prim.GetName()
-            if name == "steam_inner":
-                UsdGeom.Cylinder(prim).GetHeightAttr().Set(inner_h)
-                UsdGeom.Xformable(prim).GetOrderedXformOps()[0].Set(
-                    Gf.Vec3d(TUBE_XY[0], TUBE_XY[1], base + inner_h / 2))
-            elif name == "steam_plume":
-                UsdGeom.Cone(prim).GetHeightAttr().Set(plume_h)
-                UsdGeom.Cone(prim).GetRadiusAttr().Set(plume_r)
-                # apex-down：translate 中心 = apex(管口) + 半高，apex 恒钉管口
-                UsdGeom.Xformable(prim).GetOrderedXformOps()[0].Set(
-                    Gf.Vec3d(TUBE_XY[0], TUBE_XY[1], self.STEAM_MOUTH_Z + plume_h / 2))
 
     # ------------------------------------------------------------------
     # 温度计读数：毛细柱锚定缩放（底 z=0.005 不动，柱顶随温度爬升）
@@ -928,6 +1125,101 @@ class B2AlcoholHeatLiquidTask(BaseTask):
         """火柴头中心世界坐标 = 夹爪 + MATCH_TIP_OFFSET（头在夹爪 +X 0.0494，水平朝前）。"""
         return np.asarray(gripper_pos, dtype=float) + np.array(MATCH_TIP_OFFSET)
 
+    # ------------------------------------------------------------------
+    # 酒精灯矩阵持握（阶段 F：水平横夹灯体宽处，灯保持竖直只跟夹爪平移；火焰跟随灯 y）
+    # ------------------------------------------------------------------
+    def _lamp_held_matrix(self):
+        """灯当前持握世界矩阵 = _LAMP_HELD · tool_world（Orient_FWD 下灯保持竖直 R180，
+        与场景世界旋转一致 → 附着手腕已回正零跳变；只跟夹爪水平平移）。"""
+        return _LAMP_HELD * self._tool_world()
+
+    def _set_lamp_world(self, world_matrix):
+        """把灯写到给定世界位姿（局部 = 父世界逆 · 世界，清 op 表 + 单 transform op）。"""
+        prim = self.stage.GetPrimAtPath(self.LAMP)
+        if not prim.IsValid():
+            return
+        parent = self.stage.GetPrimAtPath("/World")
+        parent_xf = UsdGeom.Xformable(parent).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        local = world_matrix * parent_xf.GetInverse()
+        xf = UsdGeom.Xformable(prim)
+        xf.ClearXformOpOrder()
+        xf.AddTransformOp().Set(local)
+
+    def _lamp_rest_matrix(self):
+        """灯原位静止位姿（底座中心 LAMP_XY + LAMP_REST_Z，世界旋转 R180 = 场景 EQUIP
+        rot180 一致）。平移写在最后一行（行向量），否则 AddTransformOp 读出世界平移 (0,0,0)。"""
+        return Gf.Matrix4d(-1.0, 0.0, 0.0, 0.0,
+                           0.0, -1.0, 0.0, 0.0,
+                           0.0, 0.0, 1.0, 0.0,
+                           LAMP_XY[0], LAMP_XY[1], LAMP_REST_Z, 1.0)
+
+    def _lamp_target_matrix(self):
+        """灯移灯位静止位姿（底座中心 = LAMP_TARGET 夹爪正下方 0.0448，xz 不变、y -10cm）。"""
+        return Gf.Matrix4d(-1.0, 0.0, 0.0, 0.0,
+                           0.0, -1.0, 0.0, 0.0,
+                           0.0, 0.0, 1.0, 0.0,
+                           LAMP_TARGET[0], LAMP_TARGET[1], LAMP_TARGET[2] - LAMP_GRASP_OFFSET, 1.0)
+
+    def _ease_lamp_world(self, target, k=0.18):
+        """夹爪合拢期间灯逐帧平滑移向持握位（消除闪现吸附）。"""
+        cur = UsdGeom.Xformable(self.stage.GetPrimAtPath(self.LAMP)) \
+            .ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        self._set_lamp_world(_blend_world(cur, target, k))
+
+    def _set_flame_lamp_y(self, y):
+        """把火焰全部 prim 的 translate y 设为 y（移灯时火焰跟随灯原点 y；x/z 不变）。"""
+        for p, base in zip(self.flame_prims, self.flame_base):
+            self._set_translate(p, (base[0], y, base[2]))
+
+    # ------------------------------------------------------------------
+    # 灯帽持握（阶段 G：纯平移持握，帽中心 = 夹爪 + CAP_HELD_OFFSET，帽是灯子 prim）
+    # ------------------------------------------------------------------
+    def _set_cap_translate(self, t):
+        """只写帽的 translate op（帽 xform op 序 translate→rotateXYZ→scale，不能动其它 op）。"""
+        prim = self.stage.GetPrimAtPath(self.CAP)
+        if not prim.IsValid():
+            return
+        xf = UsdGeom.Xformable(prim)
+        for op in xf.GetOrderedXformOps():
+            if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
+                op.Set(Gf.Vec3d(*t))
+                return
+        xf.AddTranslateOp().Set(Gf.Vec3d(*t))
+
+    def _set_cap_world(self, center):
+        """把帽写到给定帽中心世界坐标（帽 = 灯子 prim，只写帽 translate op，保留
+        rotateXYZ+scale 形状）。换算（pxr 实测，灯 R180Z）：
+        cx = 灯x−tx、cy = 灯y−ty、cz = 灯z+tz+CAP_CENTER_DZ
+        → tx = 灯x−cx、ty = 灯y−cy、tz = cz−灯z−CAP_CENTER_DZ。"""
+        lamp_pos = self._get_obj_world(self.LAMP)
+        if lamp_pos is None:
+            return
+        cx, cy, cz = center
+        tx = lamp_pos[0] - cx
+        ty = lamp_pos[1] - cy
+        tz = cz - lamp_pos[2] - CAP_CENTER_DZ
+        self._set_cap_translate((tx, ty, tz))
+
+    def _set_cap_rest(self):
+        """帽回静止位（写回读自场景的帽 local translate，帽底贴台面、开口朝下）。"""
+        if self.cap_rest_translate is not None:
+            self._set_cap_translate(self.cap_rest_translate)
+
+    def _ease_cap_world(self, target, k=0.18):
+        """夹爪合拢期间帽逐帧平滑移向持握位（消除闪现吸附）。"""
+        cur_origin = self._get_obj_world(self.CAP)
+        if cur_origin is None:
+            return
+        cur_center = np.asarray(cur_origin, dtype=float) + np.array([0.0, 0.0, CAP_CENTER_DZ])
+        nxt = cur_center + (np.asarray(target, dtype=float) - cur_center) * k
+        self._set_cap_world(nxt)
+
+    def _on_cap_settled(self, center):
+        """帽盖到位：火焰熄灭、帽锁灯口（settled 态不再跟随夹爪，帽停在盖灭位）。"""
+        self._set_visible(self._flame_paths(), False)
+        self.flame_extinguished = True
+        print(f"[b2] flame extinguished by cap @ frame {self.frame_idx}")
+
     def _step_match_ignite(self, gripper_pos):
         """点火检测（仿 flametest _update_ignite）：火柴 attached 期间头近灯芯连续
         MATCH_IGNITE_NEAR_FRAMES 帧 → flame_lit=True（idle 门控随后 reveal 火焰）。"""
@@ -1024,9 +1316,11 @@ class B2AlcoholHeatLiquidTask(BaseTask):
     # 辅助（v1 保留）
     # ------------------------------------------------------------------
     def _flame_paths(self):
-        # 火焰迁到 /World 顶层（gen rebuild_flames）：灯下引用子 prim 在 RTX 不渲染，
-        # 顶层 Cone 才渲染（flametest 已验证）。默认可见，任务 reset 熄、点着翻 visible。
-        return ["/World/flame_outer", "/World/flame_inner"]
+        # 火焰迁到 /World 顶层（gen rebuild_flames 水滴形 = 底半球 Sphere + 上部 Cone，
+        # 每焰两 prim，名字同源 4 个）：灯下引用子 prim 在 RTX 不渲染，顶层 prim 才渲染
+        # （flametest 已验证）。默认可见，任务 reset 熄、点着翻 visible。
+        return ["/World/flame_outer", "/World/flame_outer_sphere",
+                "/World/flame_inner", "/World/flame_inner_sphere"]
 
     def _children(self, root):
         prim = self.stage.GetPrimAtPath(root)
@@ -1083,6 +1377,9 @@ class B2AlcoholHeatLiquidTask(BaseTask):
               f"thermometer_hung={self.thermometer.hung} "
               f"zeolite_added={self.zeolite_added} "
               f"flame_lit={self.flame_lit} "
+              f"lamp_moved={self.lamp.released} "
+              f"cap_settled={self.cap.settled} "
+              f"flame_extinguished={self.flame_extinguished} "
               f"boiling_point={self.boiling_point:.1f}°C temp={self.temperature:.1f}°C")
         super().on_task_complete(success)
 

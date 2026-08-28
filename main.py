@@ -93,7 +93,7 @@ def parse_args():
                        help='Run in headless mode (default is with GUI)')
     parser.add_argument('--no-video', action='store_true',
                        help='Disable video display and saving')
-    parser.add_argument('--config-name', type=str, default='level3_Heat_Liquid',
+    parser.add_argument('--config-name', type=str, default='level3_HeatLiquid',
                        help='Configuration file name (without .yaml extension)')
     parser.add_argument('--config-dir', type=str, default='config',
                        help='Configuration directory path (default: config)')
@@ -135,6 +135,24 @@ from utils.object_utils import ObjectUtils
 from factories.task_factory import create_task
 from factories.controller_factory import create_controller
 from catalogue.factory import register_catalogue_actions
+
+def _stack_camera_images(images):
+    """混合分辨率相机图横排拼接：np.hstack 要求高度一致，先统一到最小高（宽等比缩放）。
+
+    2026-08-27 加：camera_4 特写 1920×1920、其余 512×512，直接 hstack 会崩；
+    INTER_AREA 下采样保留清晰度，各相机独立快照 PNG 仍是原始分辨率。
+    """
+    if not images:
+        return None
+    h = min(img.shape[0] for img in images)
+    resized = []
+    for img in images:
+        if img.shape[0] != h:
+            w = max(1, int(round(img.shape[1] * h / img.shape[0])))
+            img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
+        resized.append(img)
+    return np.hstack(resized)
+
 
 class FFmpegVideoWriter:
     """ffmpeg 子进程视频写入器（fragmented MP4 模式）。
@@ -300,7 +318,7 @@ def main():
                         cv2.imwrite(os.path.join(snapshot_dir, fname), img)
                     
                     # 也存一个拼接的全景图
-                    combined = np.hstack([img for _, img in camera_images])
+                    combined = _stack_camera_images([img for _, img in camera_images])
                     cv2.imwrite(os.path.join(snapshot_dir, f"frame_{snapshot_count:04d}_combined.png"), combined)
                     print(f"[snapshot] Saved frame {snapshot_count + 1}/{args.snapshot}")
                 
@@ -325,7 +343,7 @@ def main():
                     camera_images.append(display_img)
                 
                 if camera_images:
-                    combined_img = np.hstack(camera_images)
+                    combined_img = _stack_camera_images(camera_images)
                     total_width = 0
                     for idx, img in enumerate(camera_images):
                         label = f"Camera {idx+1} ({cfg.cameras[idx].image_type})"

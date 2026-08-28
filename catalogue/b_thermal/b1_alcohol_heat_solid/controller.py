@@ -1,8 +1,20 @@
-"""B1 酒精灯加热（固体样品）控制器：本批次 = 三个元动作顺序执行（用户指定先只写这三个）。
+"""B1 酒精灯加热（固体样品）控制器：本批次 = 八个元动作顺序执行。
 
 用户 2026-08-27 逐字：「先写咬粉末咬进试管里面，然后拿起酒精灯盖儿放到一边儿，再拿起火柴点燃
-酒精灯，这几个过程先只写这些我来验收。」→ 本控制器只编排这三段；拿试管→外焰预热（倾斜 10-15°）
-→集中加热→熄灭→归位留待验收后接续。
+酒精灯，这几个过程先只写这些我来验收。」→ 本控制器编排：挖粉倒粉 → 放回药匙 → 开灯帽 →
+点火。2026-08-27 追加第⑤步（用户逐字：「先夹住试管，水平横着夹住（跟夹药匙的方法一样）」）
+→ 点完火后水平横夹试管提出架顶；用户再批「最后动作就拿起试管，不要再做其他移动动作了，
+就先夹起试管」，又批「试管提出之后法兰旋转-100度」→ 改 -95°（「法兰改为旋转-95度吧」）
+→ ⑥ 法兰只动 joint7 转 -95° 试管竖直→近水平，再批「现在加动作水平往负x方向移动（yz还有朝向
+都不变）让爪子x坐标对齐火焰的x坐标」→ ⑦ 水平 -X 移到火焰上方；2026-08-28 再批「再加动作，
+竖直z方向降低，让爪子在z坐标比火焰小2cm（过程中yx还有朝向不变，只有z变）」→ ⑧ 竖直下降
+（爪子 z=火焰 z 0.9182−2cm=0.8982，x/y/朝向不变）；再批「然后加动作，只水平-y移动15cm，xz朝向
+不要变」→ ⑨ 水平 -Y 15cm（后改「最后一步水平移动改为11cm」→ y 0.241→0.131，x/z/朝向不变）。
+2026-08-28 追加预热/持续加热/放回（用户逐字：「现在需要加的动作是来回预热，现在加动作，在y的
+方向上来回移动2cm，来回移动5次速度不要太快，最后持续加热持续8s，最后放回试管，先写完这些动作。」）
+→ ⑥ PreheatTubePass（y 向 ±2cm 往复 5 次慢速预热，保持 -95° 倾斜）→ ⑦ HeatHoldPass（外焰
+持续加热 8s = hold 480 帧）→ ⑧ ReturnTubePass（+Y 退开 → 升 z → +X 回架 → 法兰转回竖直 →
+下降放回 → 松爪 → 抬走）。熄灭留待验收后接续。
 
 与 d2s/d3s 同构分层（Lula IK + 元动作组合，RMP 对低 z 下探发散，弃用 RMP 用 IkMotionEngine）：
   - atomic_actions/flametest/（IK 原子动作）
@@ -15,10 +27,25 @@
   ③OpenCapPass（拿起酒精灯盖放到一边：取帽 → 提起 → 横移 → 落台面 → 松爪归位）
   ④LightFlamePass（取火柴点燃酒精灯：抓杆 → 触灯芯 → 点燃 → 放回火柴；B1 无温度模型，
     flame_lit 置位即 reveal 火焰）
+  ⑤PickTubePass（水平横夹试管 ORIENT_FWD → 提出架顶 → 法兰转 -95° 倾斜近水平 → 水平 -X
+    移到火焰上方，爪子 x 对齐火焰 x → 竖直下降火焰下 2cm → 水平 -Y 15cm；用户「就先夹起试管」
+    「试管提出之后法兰旋转-100度」改 -95°「法兰改为旋转-95度吧」「现在加动作水平往负x方向移动
+    让爪子x坐标对齐火焰的x坐标」「让爪子在z坐标比火焰小2cm（过程中yx还有朝向不变，只有z变）」
+    「只水平-y移动15cm，xz朝向不要变」）
+  ⑥PreheatTubePass（预热：HeatSweepAction 在 TUBE_AT_FLAME_2 附近 y 向 ±2cm 正弦往复 5 次，
+    period 150=2.5s/来回慢速，首帧采样实际朝向保持 -95° 倾斜；用户「在y的方向上来回移动2cm，
+    来回移动5次速度不要太快」）
+  ⑦HeatHoldPass（持续加热 8s：纯 hold HEAT_HOLD_FRAMES=480 帧，试管停外焰集中加热；用户「最后
+    持续加热持续8s」；B1 无温度模型 → 无加热现象）
+  ⑧ReturnTubePass（放回试管：PickTubePass 逆过程 = +Y 退开火焰 → 升 z → +X 回架上方 → 法兰转回
+    竖直（FlangeRollTubeAction(angle=+95°)）→ 下降放回抓点 → 松爪（task 近抓点+开爪 → released
+    → 写回静置矩阵）→ 抬走；用户「最后放回试管」）
 
 动作级契约（grip 每帧发送、到达冻结、dwell、跨元动作 grip_target 传播）沿用 flametest/d2s。
 跨元动作 grip_target 传播：①② 之间（药匙放回后爪子张开）与 ③④ 之间（灯帽释放后爪子张开）
-由各元动作末尾 GripAction 置 GRIP_OPEN，持握状态不出单个元动作，无需额外传播。
+由各元动作末尾 GripAction 置 GRIP_OPEN；④→⑤ 之间 LightFlamePass 末尾 GripAction 置
+GRIP_OPEN，⑤ PickTubePass 首帧 grip_target=GRIP_OPEN（grip_target 在 _step_collect 元动作
+切换处逐项传播，见 _step_collect）。
 """
 import os
 import numpy as np
@@ -30,12 +57,14 @@ from isaacsim.core.utils.extensions import get_extension_path_from_name
 
 from controllers.base_controller import BaseController as TaskBaseController
 from controllers.atomic_actions.flametest import IkMotionEngine
-from .meta_actions import PickSpatula, ReturnSpatula, OpenCapPass, LightFlamePass
+from .meta_actions import (PickSpatula, ReturnSpatula, OpenCapPass, LightFlamePass, PickTubePass,
+                           PreheatTubePass, HeatHoldPass, ReturnTubePass)
 from .meta_actions.constants import GRIP_OPEN
 
 
 class B1AlcoholHeatSolidTaskController(TaskBaseController):
-    """Composite controller: B1 本批次 = 挖粉倒粉 → 放回药匙 → 开灯帽 → 点火四个元动作顺序执行。"""
+    """Composite controller: B1 本批次 = 挖粉倒粉 → 放回药匙 → 开灯帽 → 点火 → 拿试管提出架顶
+    → y 向 ±2cm 往复预热 ×5 → 外焰持续加热 8s → 放回试管。"""
 
     def __init__(self, cfg, robot):
         super().__init__(cfg, robot)
@@ -43,7 +72,7 @@ class B1AlcoholHeatSolidTaskController(TaskBaseController):
     # ------------------------------------------------------------------
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
-        print("[b1] controller VERSION v1 (meta-actions: PickSpatula->ReturnSpatula->OpenCapPass->LightFlamePass, IK-driven)")
+        print("[b1] controller VERSION v3 (meta-actions: PickSpatula->ReturnSpatula->OpenCapPass->LightFlamePass->PickTubePass->PreheatTubePass->HeatHoldPass->ReturnTubePass, IK-driven)")
         self.orient = euler_angles_to_quat(np.array([0, np.pi, 0]))
         # Lula IK 求解器（同 flametest/d2s/d3s）：精确关节控制替代 RMP
         mg_path = get_extension_path_from_name("isaacsim.robot_motion.motion_generation")
@@ -58,21 +87,30 @@ class B1AlcoholHeatSolidTaskController(TaskBaseController):
 
         # 元动作：
         # ①PickSpatula（挖粉倒粉）→ ②ReturnSpatula（药匙放回）→ ③OpenCapPass（开灯帽放一边）
-        # → ④LightFlamePass（取火柴点燃）。挖粉用 d2s 默认 home（None → d2s SPAT_XY (0.6993,
-        # 0.3608)）：用户先决条件「表面皿、粉末和机械臂坐标一定要复刻 D2S，粉末才挖得准」，
-        # B1 场景已逐字复刻 D2S，故不传 home/参数与 d2s 行为完全一致。
-        self.meta_classes = [PickSpatula, ReturnSpatula, OpenCapPass, LightFlamePass]
+        # → ④LightFlamePass（取火柴点燃）→ ⑤PickTubePass（水平横夹试管移到火焰上方）。
+        # 挖粉用 d2s 默认 home（None → d2s SPAT_XY (0.6993,0.3608)）：用户先决条件「表面皿、粉末
+        # 和机械臂坐标一定要复刻 D2S，粉末才挖得准」，B1 场景已逐字复刻 D2S，故不传 home/参数。
+        self.meta_classes = [PickSpatula, ReturnSpatula, OpenCapPass, LightFlamePass, PickTubePass,
+                             PreheatTubePass, HeatHoldPass, ReturnTubePass]
         self.meta_names = [
             "P1 pick spatula + scoop powder + pour into tube (d2s, coords unchanged)",
             "P2 return spatula to rack (d2s)",
             "C open alcohol lamp cap and set it aside (pure-translation cap hold)",
             "L pick up match and light the alcohol lamp (match tip to wick, direct flame reveal)",
+            "T pick test tube (horizontal ORIENT_FWD, same as spatula), lift it out of the rack, flange roll -95° to tilt it horizontal, then move -X so the gripper x aligns with the flame x, then lower -Y to the outer flame",
+            "H1 preheat: y-axis ±2cm reciprocation ×5 (slow), keeping the -95° tilt",
+            "H2 sustain heat 8s at the outer flame (hold 480 frames)",
+            "R return test tube: +Y off the flame, lift, +X over the rack, flange roll back to vertical, lower into rack hole, release, lift away",
         ]
         self.meta_actions = [
             PickSpatula(self.engine),     # home=None → d2s SPAT_XY（B1 复刻 D2S 坐标）
             ReturnSpatula(self.engine),   # home=None → d2s SPAT_XY
             OpenCapPass(self.engine),
             LightFlamePass(self.engine),
+            PickTubePass(self.engine),
+            PreheatTubePass(self.engine),
+            HeatHoldPass(self.engine),
+            ReturnTubePass(self.engine),
         ]
         self._meta_idx = 0
         self._h5_sample = 0
@@ -148,4 +186,10 @@ class B1AlcoholHeatSolidTaskController(TaskBaseController):
     def get_language_instruction(self):
         return ("Scoop the solid powder sample with the spatula and pour it into the "
                 "test tube in the rack, return the spatula, open the alcohol lamp cap "
-                "and set it aside, then pick up the match and light the alcohol lamp")
+                "and set it aside, then pick up the match and light the alcohol lamp, "
+                "then grasp the test tube horizontally, lift it out of the test tube "
+                "rack, tilt it horizontal via a -95° flange roll, and move it above "
+                "the alcohol lamp flame so the gripper x aligns with the flame x, "
+                "then preheat by reciprocating ±2cm in the y direction 5 times, "
+                "then hold at the outer flame for 8 seconds, "
+                "then return the test tube to the rack")

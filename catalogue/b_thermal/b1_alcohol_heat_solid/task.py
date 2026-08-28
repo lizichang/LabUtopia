@@ -12,7 +12,7 @@
   1) 药匙（d3s 同款）：每帧把药匙世界位姿写为 _T_HELD · tool_world（6-DOF 随夹爪旋转）。
      勺尖 = 夹爪 + 0.134·tool+X，挖粉/倒粉判定照 d2s（_scoop_starting/_vertical_over_mouth），
      粉末下落动画（PowderDrop 父 + 14 粒）与 d2s 逐字一致；⑬ 倒粉完成 show TubePowder
-     （/World/TubePowder，白色粉末柱，gen BUILTIN 预摆 rest 中心 0.84）。
+     （/World/TubePowder，白色粉末柱，gen BUILTIN 预摆 rest 中心 0.809）。
   2) 灯帽（新，纯平移持握）：/World/AlcoholLamp/cap 是灯的子 prim（ops=translate+
      rotateXYZ(90)+scale(0.01)，lamp 恒等旋转），帽中心世界 = 灯原心 + local_t +
      (0,0,0.09152)。持握 = 帽中心 = 夹爪（纯平移：task 写帽 local translate =
@@ -24,6 +24,11 @@
      点火检测 _step_match_ignite：火柴头（夹爪 + MATCH_TIP_OFFSET）近灯芯 WICK 连续
      MATCH_IGNITE_NEAR_FRAMES 帧 → flame_lit=True，B1 无温度模型 → 直接 reveal
      flame_outer/flame_inner。
+  4) 试管（2026-08-27 用户新批拿管到火焰上方，矩阵持握）：每帧试管世界位姿 =
+     _T_HELD_TUBE · tool_world（6-DOF 随夹爪旋转，药匙同款；用户逐字「爪子抓的东西
+     应该也倾斜了呀」）——爪子转到朝下、试管跟着转水平，不再纯平移吊着竖立。管内
+     白粉柱（/World/TubePowder）用同一矩阵平移粉柱相对管底偏移 (0,0,TUBE_POWDER_OFFSET_Z)
+     刚性跟随，液体/粉末不再悬在原架里。
 
 驱动 prim（b1_alcohol_heat_solid.usd，scripts/gen_b1_scene.py 生成，2026-08-27 重建含
 PowderDrop 14 粒）：
@@ -40,7 +45,8 @@ from tasks.base_task import BaseTask
 from .meta_actions.constants import (
     GRIP_SPATULA, SPAT_HEAD_DIST,
     POWDER_TOP_Z, POWDER_X, DISH_XY,
-    TUBE_XY, TUBE_MOUTH_Z,
+    TUBE_XY, TUBE_MOUTH_Z, GRIP_TUBE, TUBE_REST_Z, TUBE_GRASP_TCP, TUBE_HELD_X,
+    TUBE_POWDER_OFFSET_Z,
     CAP_GRASP, CAP_CENTER_REST, CAP_ASIDE_TCP, CAP_ASIDE_CENTER,
     MATCH_XY, MATCH_REST_Z, MATCH_GRASP, MATCH_HELD_OFFSET, MATCH_TIP_OFFSET, WICK,
 )
@@ -53,9 +59,32 @@ _T_HELD = Gf.Matrix4d(0.0, 0.0, -1.0, 0.0,
                       -1.0, 0.0, 0.0, 0.0,
                       0.112, 0.0, 0.0, 1.0)
 
-# 试管内粉末柱 rest 中心（gen_b1_scene BUILTIN 预摆：/World/TubePowder translate z=0.84）
-TUBE_POWDER_REST = np.array([TUBE_XY[0], TUBE_XY[1], 0.84])
-TUBE_POWDER_H = 0.012
+# 试管相对夹爪持握矩阵（2026-08-27 用户逐字「爪子抓的东西应该也倾斜了呀」→ 矩阵持握）：
+# 由 ground truth 反解：d2s 药匙 _T_HELD · tool_world(ORIENT_FWD) = 药匙静止（已实证零跳变）
+# → tool_world(ORIENT_FWD) 旋转 = [0 0 -1; 0 1 0; 1 0 0]（toolX→(0,0,-1)）。试管抓点处 held
+# 必须 = 管底静置（恒等旋转 + 原位）→ _T_HELD_TUBE 旋转 = tool_world(ORIENT_FWD)⁻¹ =
+# [0 0 1; 0 1 0; -1 0 0]（toolX→(0,0,1)、toolY→(0,1,0)、toolZ→(-1,0,0)），平移 +TUBE_HELD_X
+# 沿 tool-X（管底吊夹爪下 0.1393m）。合成 = _T_HELD_TUBE · tool_world。
+# 2026-08-27 修「一夹试管直接翻转过来了」：旧矩阵旋转行 toolY→(0,-1,0)、toolZ→(1,0,0) 相对
+# 正确旋转差 180°（约 toolX 翻转），抓点处 held 旋转 = diag(1,-1,-1) → 试管一夹就翻过去；
+# 旧平移 −TUBE_HELD_X 把管底抬到 z=1.0846 而非原位 0.806（pxr 数值验证：旧=翻转+1.085 高位，
+# 新=恒等旋转+原位 0.806 零跳变）。火焰上方（手指朝下）时试管水平、管轴朝 +X。
+_T_HELD_TUBE = Gf.Matrix4d(0.0, 0.0, 1.0, 0.0,
+                           0.0, 1.0, 0.0, 0.0,
+                           -1.0, 0.0, 0.0, 0.0,
+                           TUBE_HELD_X, 0.0, 0.0, 1.0)
+
+# 管内白粉柱相对管底的局部偏移（粉柱中心 = 管底 + TUBE_POWDER_OFFSET_Z，与 gen BUILTIN
+# rest 中心 0.809 一致；2026-08-27 用户「粉末只舀了一勺不可能那么多」→ 粉末坐管底 3mm）
+_TUBE_POWDER_OFFSET = Gf.Matrix4d(1.0, 0.0, 0.0, 0.0,
+                                  0.0, 1.0, 0.0, 0.0,
+                                  0.0, 0.0, 1.0, 0.0,
+                                  0.0, 0.0, TUBE_POWDER_OFFSET_Z, 1.0)
+
+# 试管内粉末柱 rest 中心（gen_b1_scene BUILTIN 预摆：/World/TubePowder translate z=0.809
+# = 管底 0.806 + 3mm；2026-08-27 用户「粉末只舀了一勺不可能那么多」→ 缩小 r0.004 h0.006）
+TUBE_POWDER_REST = np.array([TUBE_XY[0], TUBE_XY[1], 0.809])
+TUBE_POWDER_H = 0.006
 
 
 class _CapLifecycle:
@@ -171,6 +200,74 @@ class _MatchLifecycle:
             print(f"[b1] match released to rest")
 
 
+class _TubeLifecycle:
+    """试管状态机（rest → attached → released → rest，矩阵持握 6-DOF）。
+
+    持握 = 矩阵持握（药匙同款 _T_HELD）：每帧试管世界位姿 = _T_HELD_TUBE · tool_world，
+    试管随夹爪 6-DOF 刚性跟随——爪子转到朝下试管跟着转水平（2026-08-27 用户逐字：
+    「爪子抓的东西应该也倾斜了呀」）。管内白粉柱（TubePowder）用同一矩阵平移粉柱相对
+    管底偏移 (0,0,TUBE_POWDER_OFFSET_Z) 一起刚性跟随（液体/粉末不再悬在原架里）。task._set_tube_world
+    清 op 序写单一 transform op（随矩阵旋转，同 _set_spatula_world）。
+
+    _T_HELD_TUBE 由「抓点处试管=静止」反解（tube_rest · tool_grasp⁻¹），故在抓点
+    held = 管底静置矩阵，即原位不动；被夹起后随夹爪转。
+
+    参考点（gripper/TCP 世界坐标）：
+      grasp  管口下 14mm 抓点（TUBE_GRASP_TCP = (0.659,0.241,0.9453)，ORIENT_FWD 水平横夹）
+      rest   管底静置矩阵（(TUBE_XY, TUBE_REST_Z)，恒等旋转）
+      orig   释放写回矩阵（= rest；本批次没有放回动作，保留判据防误释放）
+    """
+
+    def __init__(self, task, path, powder_path, rest_matrix, grasp):
+        self.task = task
+        self.path = path
+        self.powder_path = powder_path
+        self.rest_matrix = rest_matrix
+        self.grasp = np.array(grasp)
+        self.state = "rest"
+        self._near_frames = 0
+        self.attached = False
+        self.released = False
+
+    def reset(self):
+        self.state = "rest"
+        self._near_frames = 0
+        self.attached = False
+        self.released = False
+        self.task._set_tube_world(self.rest_matrix)
+
+    def _held_matrix(self):
+        """试管世界位姿 = _T_HELD_TUBE · tool_world（6-DOF 随夹爪旋转，同药匙）。"""
+        return _T_HELD_TUBE * self.task._tool_world()
+
+    def step(self, gripper_pos, opening):
+        """每帧推进。gripper_pos = TCP，opening = joint[7]（m）。"""
+        if self.state == "rest":
+            near = self.task._near_grasp(gripper_pos, self.grasp)
+            self._near_frames = self._near_frames + 1 if near else 0
+            # 夹爪开始合拢且已进近窗：先把试管平滑拉向持握矩阵（消除闭合瞬间闪现吸附）
+            if near and opening < self.task.gripper_open_threshold:
+                self.task._ease_tube_to_gripper()
+            if (near and self._near_frames >= self.task.GRASP_NEAR_FRAMES
+                    and opening < self.task.gripper_closed_threshold):
+                self.state = "attached"
+                self.attached = True
+                self.task._set_tube_world(self._held_matrix())
+                print(f"[b1] tube attached (grip={opening:.4f})")
+            return
+
+        # 吸附期：试管 = _T_HELD_TUBE · tool_world（矩阵跟随，随夹爪转，含白粉柱）
+        self.task._set_tube_world(self._held_matrix())
+        # 松爪：须同时「夹爪近抓点」+「开爪」才写回原位（本批次没有放回动作，管在火焰上方
+        # 悬着时远端开爪不误释放；近抓点开爪 = 后续放回批次接续时复位）
+        if (opening > self.task.gripper_open_threshold
+                and self.task._near_grasp(gripper_pos, self.grasp)):
+            self.released = True
+            self.task._set_tube_world(self.rest_matrix)
+            self.state = "rest"
+            print("[b1] tube released to rack -> rest")
+
+
 class B1AlcoholHeatSolidTask(BaseTask):
     """B1 酒精灯加热（固体样品）任务：药匙挖粉倒进试管 → 打开灯帽 → 取火柴点燃酒精灯。"""
 
@@ -187,7 +284,7 @@ class B1AlcoholHeatSolidTask(BaseTask):
     POWDER_STAGGER = 3
     POWDER_HANG = 4
     POWDER_FALL = 14
-    POWDER_LAND_Z = 0.84   # 药粉落点 = 管内白粉柱中心（/World/TubePowder rest 0.84）
+    POWDER_LAND_Z = 0.809   # 药粉落点 = 管内白粉柱中心（/World/TubePowder rest 0.809）
     TUBE_SAMPLE = "/World/TubePowder"   # 管内白色粉末柱（⑬ 倒粉后 reveal）
 
     # 灯帽（纯平移持握）
@@ -199,6 +296,12 @@ class B1AlcoholHeatSolidTask(BaseTask):
     MATCH_IGNITE_NEAR_FRAMES = 15   # 火柴头近灯芯连续帧数阈值（仿 flametest/b2）
     MATCH_IGNITE_DIST = 0.035       # 火柴头距灯芯 < 3.5cm 判定点火接近
 
+    # 试管（加热流第⑤步：水平横夹拿管 → 移到酒精灯火焰上方，矩阵持握随夹爪转）
+    TUBE = "/World/TestTube"
+    TUBE_GRIP_CLOSED = GRIP_TUBE + 0.004   # 夹紧阈值：grip 0.0096 + 4mm 裕量
+    # 持握 = _T_HELD_TUBE · tool_world（模块常量，反解自「抓点处=静止」）；管内白粉柱
+    # TUBE_SAMPLE 随管刚性跟随（同矩阵平移 (0,0,TUBE_POWDER_OFFSET_Z)），不再悬在原架里。
+
     def __init__(self, cfg, world, stage, robot):
         super().__init__(cfg, world, stage, robot)
         self.spatula_path = self.SPATULA_PATH
@@ -207,6 +310,7 @@ class B1AlcoholHeatSolidTask(BaseTask):
         self._disable_collision(self.spatula_path)
         self._disable_collision(self.CAP)
         self._disable_collision(self.MATCH)
+        self._disable_collision(self.TUBE)
 
         # 阈值（config 可调，d2s/B2 同款默认）
         self.grasp_xy_threshold = getattr(cfg, "grasp_xy_threshold", 0.03)
@@ -232,6 +336,11 @@ class B1AlcoholHeatSolidTask(BaseTask):
         self.flame_lit = False         # 火柴触灯芯点燃（点火即 reveal 火焰）
         self.match_ignite_counter = 0  # 火柴头近灯芯连续帧计数
 
+        # 试管生命周期（矩阵持握：试管 = _T_HELD_TUBE · tool_world，随夹爪 6-DOF 转；
+        # 管内白粉柱随管刚性跟随）
+        self.tube = _TubeLifecycle(self, self.TUBE, self.TUBE_SAMPLE,
+                                   _tube_rest_matrix(), TUBE_GRASP_TCP)
+
     # ------------------------------------------------------------------
     def reset(self):
         super().reset()
@@ -256,7 +365,7 @@ class B1AlcoholHeatSolidTask(BaseTask):
             cyl.GetRadiusAttr().Set(0.005)
             cyl.GetHeightAttr().Set(0.005)
         # 试管内白粉柱复位：回 rest、还原尺寸、隐藏（下一集重新倒粉）
-        self._set_tube_column(self.TUBE_SAMPLE, TUBE_POWDER_H, TUBE_POWDER_REST, r=0.006)
+        self._set_tube_column(self.TUBE_SAMPLE, TUBE_POWDER_H, TUBE_POWDER_REST, r=0.004)
         self._set_visibility(self.TUBE_SAMPLE, False)
         # 灯帽复位：回灯口（local_t=0）
         self.cap.reset()
@@ -265,6 +374,8 @@ class B1AlcoholHeatSolidTask(BaseTask):
         self.flame_lit = False
         self.match_ignite_counter = 0
         self._set_visibility(self._flame_paths(), False)
+        # 试管复位：回架内竖插静置矩阵（管底 0.806，含白粉柱）
+        self.tube.reset()
 
     def step(self):
         self.frame_idx += 1
@@ -280,6 +391,7 @@ class B1AlcoholHeatSolidTask(BaseTask):
         self.cap.step(gripper_pos, opening)          # ② 灯帽取放（纯平移）
         self.match.step(gripper_pos, opening)        # ③ 火柴取放（b2）
         self._step_match_ignite(gripper_pos)         # ③ 点火检测（火柴头触灯芯 → flame_lit）
+        self.tube.step(gripper_pos, opening)         # ⑤ 试管取放到火焰上方（矩阵持握随爪转）
         return self.get_basic_state_info(additional_info={
             "spatula_state": self.spatula_state,
             "powder_on_spoon": self.powder_on_spoon,
@@ -288,13 +400,16 @@ class B1AlcoholHeatSolidTask(BaseTask):
             "cap_released": self.cap.released,
             "match_attached": self.match.attached,
             "flame_lit": self.flame_lit,
+            "tube_attached": self.tube.attached,
+            "tube_released": self.tube.released,
         })
 
     def on_task_complete(self, success):
         print(f"[b1] episode done success={success} "
               f"spatula={self.spatula_state} poured={self.poured} "
               f"cap_released={self.cap.released} "
-              f"match={self.match.state} flame_lit={self.flame_lit}")
+              f"match={self.match.state} flame_lit={self.flame_lit} "
+              f"tube={self.tube.state} tube_attached={self.tube.attached}")
         super().on_task_complete(success)
 
     # ------------------------------------------------------------------
@@ -542,6 +657,41 @@ class B1AlcoholHeatSolidTask(BaseTask):
         nxt = cur + (target - cur) * k
         self._set_obj_world(path, nxt)
 
+    # ------------------------------------------------------------------
+    # 试管矩阵持握（药匙同款：清 op 序写单一 transform op，随矩阵旋转）
+    # ------------------------------------------------------------------
+    def _get_obj_world_matrix(self, path):
+        """物体世界 4x4 矩阵；prim 缺失返回 None。"""
+        prim = self.stage.GetPrimAtPath(path)
+        if not prim.IsValid():
+            return None
+        return UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+
+    def _set_obj_world_matrix(self, path, world_matrix):
+        """把物体写到给定世界矩阵（清 op 序 + AddTransformOp，6-DOF 随矩阵旋转）。"""
+        prim = self.stage.GetPrimAtPath(path)
+        if not prim.IsValid():
+            return
+        parent = self.stage.GetPrimAtPath("/World")
+        parent_xf = UsdGeom.Xformable(parent).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        local = world_matrix * parent_xf.GetInverse()
+        xf = UsdGeom.Xformable(prim)
+        xf.ClearXformOpOrder()
+        xf.AddTransformOp().Set(local)
+
+    def _set_tube_world(self, world_matrix):
+        """试管 + 管内白粉柱一起写世界矩阵（粉柱相对管底偏移 (0,0,TUBE_POWDER_OFFSET_Z) 刚性跟随，
+        随管转——不再悬在原架里）。"""
+        self._set_obj_world_matrix(self.TUBE, world_matrix)
+        self._set_obj_world_matrix(self.TUBE_SAMPLE, world_matrix * _TUBE_POWDER_OFFSET)
+
+    def _ease_tube_to_gripper(self, k=0.18):
+        """夹爪合拢期间试管（含白粉柱）逐帧平滑拉向持握矩阵（消除闪现吸附）。"""
+        cur = self._get_obj_world_matrix(self.TUBE)
+        if cur is None:
+            return
+        self._set_tube_world(_blend_world(cur, _T_HELD_TUBE * self._tool_world(), k))
+
     def _near(self, pos, gripper_pos, z_thresh=0.015):
         return (np.linalg.norm(gripper_pos[:2] - pos[:2]) < self.grasp_xy_threshold
                 and abs(gripper_pos[2] - pos[2]) < z_thresh)
@@ -600,6 +750,14 @@ def _spatula_rest_matrix():
                        0.0, -1.0, 0.0, 0.0,
                        0.0, 0.0, 1.0, 0.0,
                        0.6993, 0.3608, 0.828, 1.0)
+
+
+def _tube_rest_matrix():
+    """试管架内竖插位姿：恒等旋转 + 平移 (TUBE_XY, TUBE_REST_Z)。"""
+    return Gf.Matrix4d(1.0, 0.0, 0.0, 0.0,
+                       0.0, 1.0, 0.0, 0.0,
+                       0.0, 0.0, 1.0, 0.0,
+                       TUBE_XY[0], TUBE_XY[1], TUBE_REST_Z, 1.0)
 
 
 def _blend_world(a, b, k):

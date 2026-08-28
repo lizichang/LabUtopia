@@ -5,10 +5,15 @@
   - 本控制器：实例化元动作按序 forward()，全部完成 → 等按钮读数走完 → success。
 
 动作序列（10 元动作）：
-  ① PickWashBottle 拿洗瓶 → ② SqueezeWater 挤水入试管 → ③ ReturnWashBottle 放回洗瓶
-  → ④ TubeShakePass 拿起试管震荡溶解 → ⑤ PickTestTube 再拿试管 → ⑥ PourToTube 倒液进旋光管
-  → ⑦ ReturnTestTube 放回空试管 → ⑧ PickPolarimeterTube 拿旋光管 → ⑨ PlaceOnRails 放导轨
-  → ⑩ PressStartPass 按启动键。
+  ① PrePoseWash 预摆 d2s 洗瓶入口姿势 → ② PickWashBottle 拿洗瓶 → ③ SqueezeWater 挤水入试管
+  → ④ ReturnWashBottle 放回洗瓶 → ⑤ TubeShakePass 拿起试管震荡溶解 → ⑥ DropperTransferPass
+  胶头滴管转移（吸试管内液 3 次、每次挤进旋光管加液口；2026-08-27 替代倒液）
+  → ⑦ PickPolarimeterTube 拿旋光管 → ⑧ PlaceOnRails 放导轨 → ⑨ CloseLidPass 拨回翻盖
+  （2026-08-27 用户「按按钮前伸到翻盖之后拨回盖上」）→ ⑩ PressStartPass 按启动键。
+
+① PrePoseWash（2026-08-27 乱动修复）：d2s 的 PickWashBottle 是第 3 个动作（从药匙架高位
+进入），A2 的是第 1 个（冷启动）→ IK 落不同分支、送红嘴乱动。先预摆到 d2s 同款入臂姿势，
+分支连续照搬 d2s 行为。
 
 动作级契约（grip 每帧发送、到达冻结、dwell、跨元动作 grip_target 传播）沿用
 flametest/d2s/d3s/a1。最后动作（按启动键）完成后不立即结束 episode：仪器测量显示
@@ -27,9 +32,9 @@ from isaacsim.core.utils.extensions import get_extension_path_from_name
 from controllers.base_controller import BaseController as TaskBaseController
 from controllers.atomic_actions.flametest import IkMotionEngine
 from .meta_actions import (
-    PickWashBottle, SqueezeWater, ReturnWashBottle, TubeShakePass,
-    PickTestTube, PourToTube, ReturnTestTube,
-    PickPolarimeterTube, PlaceOnRails, PressStartPass,
+    PrePoseWash, PickWashBottle, SqueezeWater, ReturnWashBottle, TubeShakePass,
+    DropperTransferPass,
+    PickPolarimeterTube, PlaceOnRails, CloseLidPass, PressStartPass,
 )
 from .meta_actions.constants import GRIP_OPEN
 
@@ -37,7 +42,7 @@ from .meta_actions.constants import GRIP_OPEN
 class A2PolarimeterTaskController(TaskBaseController):
     """Composite controller: A2 = 洗瓶注水 + 试管震荡溶解 + 倒液 + 放导轨 + 按测量键读数。"""
 
-    FINISH_HOLD_FRAMES = 60   # 结果屏定格后额外保持帧数（~1s，让旋光角读数清晰可见）
+    FINISH_HOLD_FRAMES = 120  # 结果屏定格后额外保持帧数（2s @60fps，用户「结果显示完 2s 才结束」）
 
     def __init__(self, cfg, robot):
         super().__init__(cfg, robot)
@@ -45,7 +50,7 @@ class A2PolarimeterTaskController(TaskBaseController):
     # ------------------------------------------------------------------
     def _init_collect_mode(self, cfg, robot):
         super()._init_collect_mode(cfg, robot)
-        print("[a2] controller VERSION v1 (10 meta-actions, IK-driven)")
+        print("[a2] controller VERSION v4 (10 meta-actions, dropper-transfer + close-lid + IK-driven)")
         # 引擎默认朝向 = 手指朝下（euler(0,π,0)）：正向持握。
         self.orient = euler_angles_to_quat(np.array([0, np.pi, 0]))
         # Lula IK 求解器（同 flametest/d2s/d3s/a1）：精确关节控制替代 RMP
@@ -59,33 +64,34 @@ class A2PolarimeterTaskController(TaskBaseController):
         ik_home = np.array([0.012, -0.57, 0.0, -2.81, 0.0, 3.037, 0.741])
         self.engine = IkMotionEngine(solver, self.orient, ik_home)
 
-        # 10 元动作（一个流程步骤 = 一个），按序执行；TubeShakePass 带 cycles 参数。
+        # 9 元动作（一个流程步骤 = 一个），按序执行；TubeShakePass/DropperTransferPass 带 cycles。
         shake_cycles = max(1, int(getattr(cfg, "shake_cycles", 3)))
-        self.meta_classes = [PickWashBottle, SqueezeWater, ReturnWashBottle, TubeShakePass,
-                             PickTestTube, PourToTube, ReturnTestTube,
-                             PickPolarimeterTube, PlaceOnRails, PressStartPass]
+        drop_cycles = max(1, int(getattr(cfg, "drop_cycles", 3)))
+        self.meta_classes = [PrePoseWash, PickWashBottle, SqueezeWater, ReturnWashBottle,
+                             TubeShakePass, DropperTransferPass,
+                             PickPolarimeterTube, PlaceOnRails, CloseLidPass, PressStartPass]
         self.meta_names = [
+            "W0 pre-pose to d2s wash-entry branch (fix erratic delivery)",
             "W1 pick wash bottle belly (x-offset descent, horizontal grip, lift)",
             "W2 squeeze wash bottle (water stream into test tube)",
             "W3 return wash bottle",
             "T1 pick test tube + shake to dissolve powder (TubeShakePass)",
-            "T2 pick test tube again (pour cycle)",
-            "T3 pour solution into polarimeter tube (fill port up)",
-            "T4 return empty test tube to rack",
+            "D1 dropper transfer: suck tube liquid 3x, drip into fill port (no pour)",
             "P1 pick polarimeter tube (horizontal grip, lift clear)",
             "P2 place polarimeter tube on rails",
+            "L close the lid (reach behind open lid, flip it back shut)",
             "B press the start button (trigger measurement reading)",
         ]
         self.meta_actions = [
+            PrePoseWash(self.engine),
             PickWashBottle(self.engine),
             SqueezeWater(self.engine),
             ReturnWashBottle(self.engine),
             TubeShakePass(self.engine, cycles=shake_cycles),
-            PickTestTube(self.engine),
-            PourToTube(self.engine),
-            ReturnTestTube(self.engine),
+            DropperTransferPass(self.engine, cycles=drop_cycles),
             PickPolarimeterTube(self.engine),
             PlaceOnRails(self.engine),
+            CloseLidPass(self.engine),
             PressStartPass(self.engine),
         ]
         self._meta_idx = 0
@@ -181,6 +187,7 @@ class A2PolarimeterTaskController(TaskBaseController):
 
     def get_language_instruction(self):
         return ("Pick up the wash bottle, squeeze distilled water into the test tube, "
-                "shake the test tube to dissolve the powder, pour the solution into the "
-                "polarimeter tube, place the tube on the polarimeter rails, and press "
-                "the start button to take the rotation reading")
+                "shake the test tube to dissolve the powder, transfer the solution "
+                "into the polarimeter tube with a dropper, place the tube on the "
+                "polarimeter rails, and press the start button to take the rotation "
+                "reading")

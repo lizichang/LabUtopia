@@ -6,13 +6,20 @@ controller_type: "a2_polarimeter"
 mode: "collect"
 
 # 场景：a2_polarimeter（A2 旋光仪测量，桌面 z=0.80）
-# 布局（2026-08-27 pxr 实测，gen_a2_scene.py verify；机械臂卡死重排后）：
-#   旋光仪 (0.30,0.00) 屏幕朝 +y，红色启动键 (0.30,0.18) 顶 z 1.056
-#   旋光管 1dm (0.70,0.30,0.811) 桌面横放泡朝上（+y 端泡、+z 加液口顶 0.830）
-#   试管架 (0.82,0.55) 架顶 z 0.917；试管 (0.799,0.43,0.806) 管口 z 0.9593，预装白粉
-#   洗瓶 (-0.10,0.60) rotZ-180 红嘴朝 +X（对试管方向），瓶身 z 0.80..0.97
-#   机械臂底座 (0.30,0.50,0.71)：全部路径点 3D ≤0.67m（已证可行包络；
-#   旧 0.65 时洗瓶 0.76m/旋光管 0.82m/放管 0.75m IK 卡死乱动）
+# 布局（2026-08-27 滴管转移改造：倒液 → 胶头滴管吸 3 次挤进加液口；滴管/旋光管重摆）：
+#   d2s 同款三件（跟 d2s 完全一致，复用其已证可行包络）：
+#     机械臂底座 (-0.15,0.05)；试管架 (0.6803,0.3607)；试管 (0.659,0.241,0.806) 预装白粉；
+#     洗瓶 (0.370,0.525) rotZ-180 红嘴朝 +X
+#   A2 专用三件（全在机械臂 +x 侧）：
+#     旋光仪 (0.48,-0.24) rotZ+90° 屏幕朝 -x，红色启动键 (0.30,-0.24) 顶 z 1.056，
+#       导轨 (0.51,-0.24)
+#     滴管 (0.6993,0.4003,0.806) 立插主试管架第二列第5排（抓点 TCP 0.936，3D 0.946m
+#       贴 d2s 已证包络上限，若 IK FAIL 回退列1第5排 (0.659,0.4003)）
+#     旋光管 1dm (0.5265,0.241,0.811) 桌面横放 rotZ-90°（轴 X、泡 +x、加液口 +x 端顶 0.830）
+#       ——加液口 = 滴管滴液点（试管口 0.659 往 -x 10cm → 0.559），管身伸 -x 到 0.4685
+#       清开试管 6.5cm；与试管同 y=0.241
+#   无倒液走廊（不再横移倒液）；达记：滴管抓点 0.946m、按钮 0.64m/导轨 0.78m（+x/−y），
+#   超旧 A2 0.62m 包络，若 IK FAIL 需把旋光仪收回或再旋转
 usd_path: "assets/scenes/a_instrument/a2_polarimeter/a2_polarimeter.usd"
 
 max_episodes: 1
@@ -39,6 +46,10 @@ squeeze_close_threshold: 0.025
 # 试管震荡周期数（TubeShakePass，controller 读 cfg.shake_cycles）
 shake_cycles: 3
 
+# 胶头滴管吸液循环数（DropperTransferPass：吸试管内液 N 次、每次挤进加液口；
+# controller 读 cfg.drop_cycles、task 读同键算液面生长；默认 3 = 用户「吸三次」）
+drop_cycles: 3
+
 # 实验结果输入接口（运行前 --result rotation_angle=+12.5 等；task 读 cfg.rotation_angle →
 # 选对应预烘焙读数屏 ScreenGlow_<key>）。档位须与 meta_actions/constants.py 与
 # scripts/gen_a2_scene.py 的 ROTATION_OPTIONS 三处一致，勿单边改。引号必须保留——
@@ -60,20 +71,21 @@ cameras:
   # camera1：全景（旋光仪 + 试管架 + 洗瓶工作区）
   - prim_path: "/World/Camera1"
     name: "camera_1"
-    translation: [0.75, 0.85, 1.50]
+    translation: [0.95, 1.05, 1.50]
     resolution: [512, 512]
     focal_length: 17
     orientation: [0.2916, 0.1480, 0.4280, 0.8426]
     image_type: "rgb"
 
-  # camera2：直拍旋光仪黑色显示屏（用户要求看读数，同 a1）：机位 (0.30,0.50,1.30)
-  # 朝 -y 前方看屏幕，focal 35 让屏幕占画面 ~48%
+  # camera2：直拍旋光仪黑色显示屏（用户要求看读数，同 a1）：机位 (-0.02,-0.24,1.30)
+  # 屏幕位 (0.185,-0.24,1.10925) 朝 -x（rotZ+90° 后），相机在屏幕 -x 侧、y 对齐、高 0.19m
+  # 俯视屏幕，focal 35。四元数=[w,x,y,z] 标量在前，look-at 计算（up=+Z 保文字竖直）
   - prim_path: "/World/Camera2"
     name: "camera_2"
-    translation: [0.30, 0.50, 1.30]
+    translation: [-0.02, -0.24, 1.30]
     resolution: [512, 512]
     focal_length: 35
-    orientation: [0.0, 0.0, 0.4099, 0.9122]
+    orientation: [-0.6483, -0.2823, 0.2823, 0.6483]
     image_type: "rgb"
 
   - prim_path: "/World/Franka/panda_hand/arm_camera"
@@ -83,9 +95,9 @@ cameras:
 
 robot:
   type: "franka"
-  # 底座 (0.30,0.50)：旋光仪正后方 +y（2026-08-27 布局重排：洗瓶→(-0.10,0.60)、旋光管→(0.70,0.30)，
-  # 全部路径点 3D 距离 ≤0.67m 进入已证可行包络；旧 0.65 时洗瓶 0.76m/管 0.82m/放管 0.75m IK 卡死）
-  position: [0.30, 0.50, 0.71]
+  # 底座 (-0.15,0.05) = d2s 原味（三件 d2s 同款 → 复用其已证包络；A2 旋光仪 (0.48,-0.24)
+  # rotZ+90° 后按钮 (0.30,-0.24) 3D 0.64m、导轨 (0.51,-0.24) 3D 0.78m，均属达记项见头注释）
+  position: [-0.15, 0.05, 0.71]
 
 collector:
   type: "default"
