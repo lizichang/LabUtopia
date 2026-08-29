@@ -1,0 +1,135 @@
+name: Level2_D8LComplexColor
+
+task_type: "d8l_complex_color"
+controller_type: "d8l_complex_color"
+
+mode: "collect"
+
+# 场景：d8l_complex_color（D8-L 络合/显色试剂滴加反应，桌面 z=0.80）
+# 台面（2026-08-28 pxr 实测世界 bbox，gen_d8l_scene.py verify）：
+#   试管架 (0.257,-0.143,0.800)-(0.343,0.143,0.917)、试管前排左孔 (0.2787,0.1193) 口 z 0.9593
+#   3 支滴管（2×2 孔分散）：取样后排左 (0.2815,-0.1187)、试剂1后排右 (0.3202,-0.1187)、
+#     试剂2前排右 (0.3202,0.1193)——试管同排对侧；尖嘴 z 0.806、抓点 z 0.936
+#   3 瓶一排：样品瓶 (0.4045,0.3585)、试剂1瓶 (0.1696,0.361)、试剂2瓶 (0.287,0.361)
+#     （口 rim z 0.870 液面 0.840）
+usd_path: "assets/scenes/d_wetchem/d8l_complex_color/d8l_complex_color.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s/d3l 一致）
+grasp_xy_threshold: 0.03        # 夹爪距滴管抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+# 开合小于此值算"挤胶头"（排空气/滴液）。0.0035：持握开度 0.0055 之上留 0.002 裕量
+# （防手指晃动误判挤），挤胶头 0.002 之下 0.0015（2026-08-14 开度减半后同步）
+squeeze_close_threshold: 0.0035
+
+# 第一步（取样滴管吸样品→滴入试管）重复遍数：每种液体只滴加一次（用户 2026-08-29）
+sample_cycles: 1
+# 第二步（试剂 1 滴管吸试剂 1→滴入试管）重复遍数：第一段变色
+reagent1_cycles: 1
+# 第三步（试剂 2 滴管吸试剂 2→滴入试管）重复遍数：第二段变色 + 触发现象（沉淀/分层）
+reagent2_cycles: 1
+# 第四步（步9 拿起试管震荡混合）来回次数（2026-08-16 用户：3→5 次）
+shake_cycles: 5
+
+# 实验结果输入接口（运行前 --result initial_color=red 等；task 读 cfg.initial_color 等）
+# 6 输入（用户 2026-08-28）：初始色 / 加试剂1后色 / 加试剂2后色 / 是否分层 / 是否沉淀 /
+# 是否产生气泡。默认给一套能直接看到效果的值：初始 clear（样品液本身无色）、加试剂1 变红、
+# 加试剂2 变蓝（3 段嵌套，最后非 clear 段=最终色=蓝），有沉淀有气泡有分层（2026-08-29
+# 用户反馈"没看到琥珀色"→ 默认开分层）。
+# 真实数据采集时按实验结果 --result 覆盖。
+experiment_result:
+  initial_color:
+    label: "最开始滴加（样品）的颜色"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: clear
+  color_after_reagent1:
+    label: "滴加完第一个试剂的颜色"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: red
+  color_after_reagent2:
+    label: "滴加完第二个试剂的颜色"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: blue
+  has_layer:
+    label: "最终是否分层"
+    type: bool
+    default: true
+  has_precipitate:
+    label: "最终是否产生沉淀"
+    type: bool
+    default: true
+  has_bubbles:
+    label: "滴加后是否产生气泡"
+    type: bool
+    default: true
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.initial_color / cfg.color_after_reagent1 / cfg.color_after_reagent2 /
+# cfg.has_layer / cfg.has_precipitate / cfg.has_bubbles。
+initial_color: clear
+color_after_reagent1: red
+color_after_reagent2: blue
+has_layer: true
+has_precipitate: true
+has_bubbles: true
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [0.50, 0.30, 1.15]
+    resolution: [512, 512]
+    focal_length: 17
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.26, -0.06, 1.24]
+    resolution: [512, 512]
+    focal_length: 17
+    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 (0.25, 0.57)：在试管架正前方 +y 方向（架中心 0.30,0.00；架前沿 y=0.143）。
+  # 比旧位 (0.25, 0.32) 再往后 25cm：三瓶/滴管距底座 0.22~0.26m，全部器材仍在
+  # Franka 0.855m 臂展内（最远试剂2滴管 0.50m）。台面 Cube 到 y=1.0，未出桌。
+  position: [0.25, 0.57, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

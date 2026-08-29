@@ -50,7 +50,8 @@ class MoveAction:
     夹爪每帧显式发送 grip_target（v41：杜绝 NaN→applied 替换不可靠）。
     """
 
-    def __init__(self, engine, pos, dwell=0, label="", orient=None, linewalk=True):
+    def __init__(self, engine, pos, dwell=0, label="", orient=None, linewalk=True,
+                 orient_eps=None):
         self.engine = engine
         self.pos = np.asarray(pos, dtype=float)
         self.dwell = int(dwell)
@@ -59,6 +60,10 @@ class MoveAction:
         # 目标朝向 + 冻结需朝向收敛（原地转水平时位置已到、朝向仍在解）
         self.orient = orient
         self._rot_target = None if orient is None else quat_to_rot(orient)
+        # 朝向收敛阈值：默认全局 ORIENT_EPS（8.6°，容忍残余倾斜——插管入孔段
+        # 必须传紧值如 0.01 rad ≈0.57°，否则 ⑤a' 在 8.6° 内即冻、残余倾斜带进下降。
+        # 见 B1 return_tube_pass ⑤a'/⑤b' 与 ik_engine.solve_verified orient_eps。）
+        self._orient_eps = ORIENT_EPS if orient_eps is None else orient_eps
         # linewalk=False：强制单次 IK（解目标一次 + 关节空间钳制逼近），不逐帧重解。
         # 近奇异区（d2s 入粉下降 y≈底座柱 z 低）逐帧重解会分支翻转/漂移、永不到位，
         # 单次 IK 在关节空间直达目标，鲁棒；代价是 TCP 非严格直线，仅用于短距下降。
@@ -91,7 +96,8 @@ class MoveAction:
                 self._goal = float(gp[self._walk_axis])
                 self._ik_target = None
             else:
-                self._ik_target = self.engine.solve_verified(self.pos, cur, self.orient)
+                self._ik_target = self.engine.solve_verified(
+                    self.pos, cur, self.orient, self._orient_eps)
                 if self._ik_target is None:
                     print(f"[flametest] IK FAIL target={np.round(self.pos, 3)} — hold position, will force-done")
 
@@ -112,7 +118,7 @@ class MoveAction:
             # 逐帧落入不同局部最小，joint6 单调漂移（实测 0.15→1.94）、永不到位 force-done；
             # 命令跟踪的 warm start 与 probe 干净走线一致（joint6≈0.07）。钳制仍用实际 cur。
             ws = self._last_cmd if self._last_cmd is not None else cur
-            ik = self.engine.solve_verified(tgt, ws, self.orient)
+            ik = self.engine.solve_verified(tgt, ws, self.orient, self._orient_eps)
             if ik is None:
                 cmd = cur  # 解不出就保持，下一帧再试
             else:
@@ -145,7 +151,7 @@ class MoveAction:
             orient_ok = True
             if self._rot_target is not None:
                 _, fk_rot = self.engine.fk_pose(cur)
-                orient_ok = rot_angle(fk_rot, self._rot_target) < ORIENT_EPS
+                orient_ok = rot_angle(fk_rot, self._rot_target) < self._orient_eps
             if dist3d < 0.010 and orient_ok:
                 self._arrived += 1
             else:

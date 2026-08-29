@@ -38,13 +38,16 @@ x方向的偏移。这是第一步就像我之前说的倾斜加液体的那样�
   ⑧ 同步下探+转垂直  ThermoInsertRotate(APPROACH→HANG, TILT_20→FWD, 180帧)
                                                                       # 位置 lerp+朝向 Slerp 同 t：泡尖入管、挂环套钩
   ⑨ 松爪  grip(GRIP_OPEN, 60)                                        # task: attached→hung，温度计自然下垂
+  ⑩ 收回  mv(THERMO_RETREAT, orient=ORIENT_FWD)                        # 先纯 -X 收离杆身
+  ⑩b 抬高 mv(THERMO_RETREAT_HIGH, orient=ORIENT_FWD)                   # 再竖直抬到 1.35 绕开杆身（2026-08-29 十改）
 """
 from ._base import BaseMetaAction, mv, grip
 from .constants import (H, GRIP_OPEN, GRIP_THERMO, ORIENT_FWD,
                         ORIENT_TILT_20,
                         THERMO_XY, THERMO_GRASP,
                         THERMO_APPROACH_HIGH, THERMO_APPROACH,
-                        THERMO_HANG, THERMO_HANG_FRAMES)
+                        THERMO_HANG, THERMO_HANG_FRAMES, THERMO_RETREAT,
+                        THERMO_RETREAT_HIGH)
 from .thermo_insert import ThermoInsertRotate
 
 
@@ -73,5 +76,7 @@ class HangThermometer(BaseMetaAction):
                                ORIENT_TILT_20, ORIENT_FWD,
                                total=THERMO_HANG_FRAMES),   # ⑧ 边竖直下探边转垂直（泡尖入管、挂环套钩）
             grip(e, GRIP_OPEN, 60),                          # ⑨ 松爪：task 检测 hung → 温度计自然下垂挂钩上
+            mv(e, THERMO_RETREAT, orient=ORIENT_FWD),         # ⑩ 先 -X 收回离温度计杆身
+            mv(e, THERMO_RETREAT_HIGH, orient=ORIENT_FWD),    # ⑩b 再竖直抬到 1.35 绕开杆身（2026-08-29 十改）
         ]
         return actions

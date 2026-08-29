@@ -104,6 +104,7 @@ class A2PolarimeterTask(BaseTask):
     PTUBE_GRASP = np.array(PTUBE_GRASP)
     PTUBE_GRIP_CLOSED = GRIP_PTUBE + 0.004                         # 夹紧阈值 0.0105
     PTUBE_HELD_OFFSET = np.array([0.0, 0.0, PTUBE_HELD_OFFSET_Z])  # 管中心=TCP-0.019
+    PTUBE_DROP_FRAMES = 20         # 松爪后管「落下」导轨的帧数（0.33s @60fps）
     # 旋光管内液柱（TubeLiquid 子 prim：管局部系轴 Y 圆柱，原长 0.10、局部 y=0 → 底 -0.05）
     TUBE_LIQ_LEN = 0.10
     TUBE_LIQ_BOT = -0.05
@@ -163,8 +164,10 @@ class A2PolarimeterTask(BaseTask):
         self._drip_next = 0
 
         # ---- 旋光管状态 ----
-        self.ptube_state = "rest"     # rest / attached / released
+        self.ptube_state = "rest"     # rest / attached / dropping / released
         self._ptube_near_frames = 0
+        self._ptube_drop_from = None  # 松爪瞬间管中心（下落起点）
+        self._ptube_drop_t = 0        # 下落已进行帧数
 
         # ---- 测量键状态（a1 同款）----
         self.button_state = "idle"    # idle / measuring / result / releasing / released
@@ -220,6 +223,8 @@ class A2PolarimeterTask(BaseTask):
         # 旋光管回桌面 + 管内液柱复位（隐藏、长 0.10、局部 y=0）
         self.ptube_state = "rest"
         self._ptube_near_frames = 0
+        self._ptube_drop_from = None
+        self._ptube_drop_t = 0
         self._set_ptube_pos(self.PTUBE_REST)
         self._reset_tube_liquid()
         # 测量键复位
@@ -548,7 +553,7 @@ class A2PolarimeterTask(BaseTask):
 
     # ------------------------------------------------------------------
     # 每帧旋光管持握（纯平移）：rest → 近抓点+合拢 → attached（管中心=TCP+偏移）→
-    #   松开（>0.03）→ released（导轨落座，终态）
+    #   松开（>0.03）→ dropping（PTUBE_DROP_FRAMES 帧落下）→ released（导轨落座，终态）
     # ------------------------------------------------------------------
     def _update_ptube(self, gripper_pos, opening):
         if self.ptube_state == "rest":
@@ -566,9 +571,20 @@ class A2PolarimeterTask(BaseTask):
         if self.ptube_state == "attached":
             self._set_ptube_pos(gripper_pos + self.PTUBE_HELD_OFFSET)
             if opening > self.gripper_open_threshold:
+                self.ptube_state = "dropping"
+                self._ptube_drop_from = self.object_utils.get_object_xform_position(self.PTUBE_PATH)
+                self._ptube_drop_t = 0
+                print(f"[a2] polarimeter tube released, dropping to rails (grip={opening:.4f})")
+
+        if self.ptube_state == "dropping":
+            # 松爪后管从当前高度「落下」导轨（用户 2026-08-28：不再深下探，直接松爪让管落下去）
+            self._ptube_drop_t += 1
+            k = min(1.0, self._ptube_drop_t / self.PTUBE_DROP_FRAMES)
+            start = self.PTUBE_RAILS if self._ptube_drop_from is None else np.asarray(self._ptube_drop_from, dtype=float)
+            self._set_ptube_pos(start + (self.PTUBE_RAILS - start) * k)
+            if k >= 1.0:
                 self.ptube_state = "released"
-                self._set_ptube_pos(self.PTUBE_RAILS)
-                print(f"[a2] polarimeter tube released on rails (grip={opening:.4f})")
+                print("[a2] polarimeter tube landed on rails")
         # released：已落座导轨，不再跟随
 
     def _ease_ptube_to_gripper(self, gripper_pos, k=0.18):
@@ -628,21 +644,22 @@ class A2PolarimeterTask(BaseTask):
     # ------------------------------------------------------------------
     # 拨回翻盖（⑩ CloseLidPass 夹爪在机身近侧 x0.51 向 −y 推板时，按夹爪 y 进度把 lid
     #   从掀开 120° 转到闭合 0°。门控防误闭：须 ptube 已释放（放导轨后）且夹爪 x≈LID_PUSH_X
-    #   且正往 −y 移动（PlaceOnRails 放管后抬升 / CloseLidPass ① 接近段 +y 不锁存）且
-    #   y 进入推盖带 [Y1−0.03, Y0+0.03]（触到板近面）。
+    #   且此刻从上往下越过 Y0（−0.15）——即 CloseLidPass ④ 推盖段首次入带（PlaceOnRails
+    #   放管时 ptube 未释放 / 释放后 y 恒 −0.24 无越界，绝不误锁存）。
     # ------------------------------------------------------------------
     def _update_lid(self, gripper_pos):
         if self.lid_state == "closed":
             return
-        # 门控（防误闭）：夹爪 x 在推盖中线（LID_PUSH_X=0.51；滴管挤液 x0.553/震荡 x0.53
-        # 在带内但 y0.241 不在推盖带 y 不误锁存），ptube 已释放（放导轨后），y 进入推盖带
-        # [Y1−0.03, Y0+0.03]（触到板近面），且正往 −y 移动（moving−y；接近段 +y 不锁存）。
-        # 推盖段 y<Y0 才转闭：y≤Y0 progress=0 → angle 保持 120 全开，y 降到 Y1 → angle 0 全闭。
+        # 门控（防「放管瞬间闪现闭合」）：只在此帧夹爪 y 从上往下第一次越过 LID_PUSH_Y0
+        # （−0.15，触板近面）时锁存 _lid_push_seen。旧「带内 + moving−y」判据在放管后夹爪
+        # 已深在 y−0.24 时可能一帧直接满足 → progress 跳 1 → lid 闪现闭合；越界判据保证
+        # 只从 Y0 起随推盖 −y 逐步合拢（y≤Y0 progress=0 全开 → y≤Y1 全闭），有翻下流程。
+        # x 门控（LID_PUSH_X=0.51）：滴管挤液 x0.553/震荡 x0.53 在带内但 y0.241 不越 Y0 不误锁存。
         if (abs(gripper_pos[0] - LID_PUSH_X) < 0.05
                 and self.ptube_state == "released"
-                and LID_PUSH_Y1 - 0.03 <= gripper_pos[1] <= LID_PUSH_Y0 + 0.03
                 and self._prev_lid_y is not None
-                and gripper_pos[1] < self._prev_lid_y - 0.0002):
+                and self._prev_lid_y > LID_PUSH_Y0
+                and gripper_pos[1] <= LID_PUSH_Y0):
             self._lid_push_seen = True
         self._prev_lid_y = gripper_pos[1]
         if not self._lid_push_seen:

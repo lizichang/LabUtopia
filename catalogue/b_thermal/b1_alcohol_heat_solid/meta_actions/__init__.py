@@ -25,13 +25,19 @@ B1 本批次三个过程（用户 2026-08-27：「先写咬粉末咬进试管里
      慢速），全程保持法兰 -95° 倾斜姿态
   ⑦ HeatHoldPass —— 持续加热 8s（用户逐字「最后持续加热持续8s」）：纯 hold HEAT_HOLD_FRAMES=480
      帧，试管停在火焰上方外焰集中加热；B1 无温度模型 → 无加热现象
-  ⑧ ReturnTubePass —— 放回试管（用户逐字「最后放回试管」）：PickTubePass 逆过程 = +Y 退开火焰 →
-     升 z → +X 回架上方 → 法兰转回竖直（FlangeRollTubeAction(angle=+95°)，joint7 ≈-95°→0）→
-     下降放回抓点 → 松爪（task 近抓点+开爪 → released → 写回静置矩阵）→ 抬走
+  ⑧ ReturnTubePass —— 放回试管（用户逐字「最后放回试管」；2026-08-28 修「现在放回有问题，没有
+     对准试管架的孔，应该对准再竖直插下来」+「你就不能先抬高对准再下降放吗」）：PickTubePass 逆
+     过程 = +Y 退开火焰 → 升 z → +X 回架上方 → 法兰转回竖直（FlangeRollTubeAction(angle=+95°)，
+     joint7 → 抓取值）→ **精确对准孔心 + 强制竖直**（mv((TUBE_XY,TUBE_HIGH), orient=ORIENT_FWD)：
+     不再采样当前朝向——会继承法兰回滚残余倾斜（ORIENT_EPS 8.6°，管底摆幅 2.1cm>孔半径 1.1cm →
+     斜插穿模），直接喂验证过的竖直朝向 ORIENT_FWD（拾管②同款），高 z 安全位先转正对准）→
+     竖直下降放回抓点（mv(TUBE_GRASP_TCP, orient=ORIENT_FWD)，仿 d3l 放回 mv()，linewalk 锁 x-y
+     孔心）→ 松爪（task 近抓点+开爪 → released → 写回静置矩阵）→ 抬走
 """
 from ._base import BaseMetaAction, mv, grip, hold, shake
 from .open_cap import OpenCapPass
 from .light_flame import LightFlamePass
+from .close_cap_pass import CloseCapPass
 from .pick_tube_pass import PickTubePass
 from .preheat_tube import PreheatTubePass
 from .heat_hold import HeatHoldPass
@@ -41,4 +47,4 @@ from catalogue.d_wetchem.d2s_water_solubility.meta_actions import (PickSpatula, 
 
 __all__ = ["BaseMetaAction", "mv", "grip", "hold", "shake",
            "PickSpatula", "ReturnSpatula", "OpenCapPass", "LightFlamePass", "PickTubePass",
-           "PreheatTubePass", "HeatHoldPass", "ReturnTubePass"]
+           "PreheatTubePass", "HeatHoldPass", "ReturnTubePass", "CloseCapPass"]

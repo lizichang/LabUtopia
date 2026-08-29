@@ -120,3 +120,10 @@ HEAT_HOLD_FRAMES = 480         # 持续加热 8s（60fps × 8，预热结束后 
 # ⑦ 横移必须显式传此朝向（mv orient=None 会用引擎默认手指朝下 → 试管又转回竖直，违背用户
 # 「朝向不变」）。算法脚本验证往返误差 ~0。
 FLANGE_HOLD_ORIENT = (0.521334, -0.477714, 0.521334, -0.477714)
+
+# —— 实验结果输入（2026-08-28 用户「加一个输入是表示粉末的颜色参考d2s,d3l」+「根据输入让你有
+# 什么现象就有什么现象」）——
+# 粉末颜色 + 加热现象名（与 config experiment_result.options 同源，task 校验 cfg 输入用）。
+# 粉末颜色照 d2s LIQUID_COLOR_NAMES（白红蓝绿紫）；加热现象 = 持续加热后固体变化三档。
+POWDER_COLOR_NAMES = ("white", "red", "blue", "green", "purple")
+HEAT_PHENOMENON_NAMES = ("disappear", "blacken", "unchanged")

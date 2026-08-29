@@ -62,10 +62,13 @@ class BaseMetaAction:
         return self._done
 
 
-def mv(engine, pos, dwell=0, orient=None, linewalk=True):
+def mv(engine, pos, dwell=0, orient=None, linewalk=True, orient_eps=None):
     """移动到 pos（可带停留/朝向）。orient=None 沿用引擎默认朝向（手指朝下）。
-    linewalk=False 强制单次 IK（近奇异短距下降用，见 MoveAction 注释）。"""
-    return MoveAction(engine, pos, dwell, orient=orient, linewalk=linewalk)
+    linewalk=False 强制单次 IK（近奇异短距下降用，见 MoveAction 注释）。
+    orient_eps：朝向收敛阈值覆盖（None=全局 ORIENT_EPS；插管入孔段传紧值如
+    0.01 rad ≈0.57°，见 B1 试管放回）。"""
+    return MoveAction(engine, pos, dwell, orient=orient, linewalk=linewalk,
+                      orient_eps=orient_eps)
 
 
 def grip(engine, width, dwell=25):

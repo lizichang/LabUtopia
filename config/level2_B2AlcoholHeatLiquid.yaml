@@ -65,13 +65,17 @@ bubble_fade_frames: 240    # 移灯后气泡逐渐熄灭帧数（2026-08-27 用�
                            #   气泡才慢慢减少消失」：240 帧 = 4s @60fps，16 泡逐个熄灭 → done）
 cap_dwell_frames: 15       # 盖帽到位判定的停留帧数（2026-08-28 用户「把灯冒盖上…火焰熄灭」：
                            #   夹爪距 CAP_BURNER < cap_cover_near 连续 15 帧 → cap settled →
-                           #   火焰熄灭、帽锁灯口 → phase→done）
-debug_lamp_move: true     # 调试（用户 2026-08-27「先把前面的动作都隐藏就先做这一个动作」）：
+                           #   火焰熄灭、帽锁灯口）
+cap_result_hold_frames: 120  # 熄火后停留帧数（2026-08-28 四改：cap settled 火灭后再停留
+                           #   120 帧=2s 才 done，视频能看到「盖好+火灭」结果再结束）
+debug_lamp_move: false    # 调试（用户 2026-08-27「先把前面的动作都隐藏就先做这一个动作」）：
                            #   true = 跳过段1全部元动作，任务直进 move_lamp 相只跑 LampMovePass
                            #   抓灯移灯，一运行立即看到新抓法；false = 正常全流程
-debug_cap_lamp: true      # 调试（2026-08-28 盖帽）：true = 跳过段1+移灯，任务直进 cap_lamp 相
+debug_cap_lamp: false     # 调试（2026-08-28 盖帽）：true = 跳过段1+移灯，任务直进 cap_lamp 相
                            #   只跑 CapLampPass 取帽盖灭（task 端把灯预摆移灯位+火焰点亮）；
                            #   false = 正常全流程（move_lamp 之后自然进入 cap_lamp）
+debug_show_bubbles: false # 调试（2026-08-29 气泡排查）：true = 开局即显示全部 40 泡竖直散布管内，
+                           #   用于定位「看不到气泡」是位置/渲染问题还是 reveal/相态逻辑问题；false 正常
 
 # 阶段B 滴加（V7 步骤 2-3）：机械臂抓滴管吸样品瓶液 → 滴入试管出液柱。
 # 夹爪阈值同 d3l（GRIP_DROPPER=0.0055 贴胶头、GRIP_SQUEEZE=0.002 挤胶头），
@@ -82,13 +86,29 @@ gripper_closed_threshold: 0.025   # 夹爪合拢（抓滴管完成 attached）
 gripper_open_threshold: 0.03      # 夹爪松开（放回滴管 released）
 squeeze_close_threshold: 0.0035   # 挤胶头（排空气/滴液瞬间，开度 < 此值）
 
-# 实验结果输入接口（运行前 --result boiling_point=97 等覆盖；task 读 cfg.boiling_point 顶层镜像）
+# 实验结果输入接口（运行前 --result boiling_point=97 等覆盖；task 读各字段顶层镜像）
+# 2026-08-28 用户「加两个参数一个加热前液体颜色，一个是加热后液体颜色。可以参考d3l」：
+#   before_color=加热前液体颜色（滴加后、沸腾前，d3l 输入色同款）/ liquid_color=加热后液体颜色
+#   （沸腾变色后）。参数名与渲染方式均对齐 d3l（liquid_color 即 d3l 原字段名；变色柱顶贴液面
+#   向下扩散）。enum 项同 d3l：[clear, red, blue, green, purple]，clear=无色水柱。
 experiment_result:
   boiling_point:
     label: "测得液体沸点（°C）"
     type: number
     default: 100.0
+  before_color:
+    label: "加热前液体颜色"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: clear
+  liquid_color:
+    label: "加热沸腾后液体颜色（目标色）"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: clear
 boiling_point: 100.0    # 顶层镜像键（main.py 无条件写回 cfg.boiling_point，缺则 ConfigKeyError）
+before_color: clear     # 顶层镜像键（加热前液体颜色，task 读 cfg.before_color）
+liquid_color: clear   # 顶层镜像键（加热后液体颜色=沸腾变色目标色，task 读 cfg.liquid_color）
 
 task:
   max_steps: 30000

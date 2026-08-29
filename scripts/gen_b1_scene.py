@@ -19,10 +19,11 @@
                   「位置全部调整回去」→ 回退 0.50；灯帽留在灯上，火焰初始隐藏）
   Match         (0.40, -0.06, 0.813)  灯前下方，火柴头(+X 端)朝灯芯（同 B2）
 
-效果 prim（初始隐藏，task 动画驱动）：
-  PowderOnSpoon  药匙尖粉末（挖粉后随药匙，D2S 同款）
-  TubePowder     试管内白色粉末柱（⑬ 倒粉后显示；D2S TubeSample_white 同款）
-  PowderDrop     药粉下落父 + 14 粉粒（⑬ 倒粉时错帧坠落，D2S/D3-S 同款）
+效果 prim（初始隐藏，task 动画驱动）—— 粉末按 POWDER_COLORS 烘焙颜色变体（2026-08-28）：
+  PowderOnSpoon_<色>  药匙尖粉末（挖粉后随药匙，D2S 同款；task 按 cfg.powder_color show 对应变体）
+  TubePowder_<色>     试管内粉末柱（⑬ 倒粉后显示；D2S TubeSample_<色> 同款）
+  TubePowderBlack     焦黑粉末柱（blacken 现象切换显示）
+  PowderDrop_<色>     药粉下落父 + 14 粉粒（⑬ 倒粉时错帧坠落，D2S/D3-S 同款）
   火焰 flame_outer/flame_inner（alcohol_lamp.usd 自带，点火后 reveal）
 
 用法：python scripts/gen_b1_scene.py   （运行环境：labutopia conda env 有 pxr）
@@ -66,24 +67,41 @@ EQUIP = [
     ("Match", "match.usd", (MATCH_XY[0], MATCH_XY[1], MATCH_T), None, None),
 ]
 
-# 内建效果 prim: (name, radius, height, translate, color, opacity)
-# PowderOnSpoon 在药匙尖端（spatula tip world z=0.828+0.135=0.963，xy 随药匙新坐标，D2S 同款）
-BUILTIN = [
-    ("PowderOnSpoon", 0.005, 0.005, (SPATULA_T[0], SPATULA_T[1], SPATULA_T[2] + 0.135),
-     (0.93, 0.93, 0.94), 1.0),
-]
+# 药匙尖粉末位置（spatula tip world z=0.828+0.135=0.963，xy 随药匙新坐标，D2S 同款）。
+# PowderOnSpoon_<色> 变体按 POWDER_COLORS 烘焙（task 按 cfg.powder_color 只 show 对应那个）。
+SPOON_POWDER_T = (SPATULA_T[0], SPATULA_T[1], SPATULA_T[2] + 0.135)
+SPOON_POWDER_R = 0.005
+SPOON_POWDER_H = 0.005
 
-# 试管内粉末柱（⑬ 倒粉后显示）：D2S TubeSample_white 同款（白色粉末，透明真玻璃下可见）
+# 试管内粉末柱（⑬ 倒粉后显示）：D2S TubeSample 同款（透明真玻璃下可见）
 TUBE_POWDER_R = 0.004             # 2026-08-27 用户「粉末只舀了一勺不可能那么多」→ 缩小（8mm 直径）
 TUBE_POWDER_H = 0.006             # 6mm 高（一勺粉量，不再 12mm）
 TUBE_POWDER_CZ = 0.809            # 粉末柱中心 = 管底 0.806 + 3mm（坐管底，不再悬 34mm 高）
-TUBE_POWDER_COLOR = (0.93, 0.93, 0.94)
 
-# 药粉下落（task._step_powder_anim 驱动，D2S/D3-S 同款）：父 PowderDrop + N 颗粉粒。
-# ⑬ 药匙回卷倒粉时粉粒从勺尖错帧坠落进试管（r=0.003 小粒成细粉流），落定后 show TubePowder。
+# 粉末颜色（2026-08-28 用户「加一个输入是表示粉末的颜色参考d2s,d3l」）——照 d2s
+# SOLUBILITY_COLORS 配方：白 = 近白 diffuse；红蓝绿紫 = 近黑 diffuse + 单通道 emissive 主导
+# （饱和色，CylinderLight 12000 下不被洗白，见 flametest-yellow-recipe）。变体按
+# `_<色>` 后缀烘焙（PowderOnSpoon_<色>/PowderDrop_<色>/TubePowder_<色>），task 按
+# cfg.powder_color 只 show 对应那个。皿上粉丘 SamplePowder 保持白色面粉堆（d2s 惯例）。
+POWDER_COLORS = {
+    "white":  dict(diffuse=(0.93, 0.93, 0.94), opacity=1.0, roughness=0.5),
+    "red":    dict(diffuse=(0.10, 0.03, 0.03), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(2.2, 0.12, 0.12)),
+    "blue":   dict(diffuse=(0.03, 0.05, 0.12), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(0.12, 0.30, 2.2)),
+    "green":  dict(diffuse=(0.03, 0.10, 0.04), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(0.12, 2.0, 0.12)),
+    "purple": dict(diffuse=(0.12, 0.03, 0.12), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(2.0, 0.15, 2.2)),
+}
+# 焦黑粉末柱（blacken 现象用：加热碳化 → 管内粉末变焦黑，近黑 diffuse + 微弱暗红 emissive 余热）
+BLACK_RECIPE = dict(diffuse=(0.02, 0.02, 0.03), opacity=0.95, roughness=0.5,
+                    emissive=(0.20, 0.05, 0.03))
+
+# 药粉下落（task._step_powder_anim 驱动，D2S/D3-S 同款）：父 PowderDrop_<色> + N 颗粉粒。
+# ⑬ 药匙回卷倒粉时粉粒从勺尖错帧坠落进试管（r=0.003 小粒成细粉流），落定后 show TubePowder_<色>。
 POWDER_DROPS = 14                 # 粉粒数（连续细粉流观感）
 POWDER_DROP_R = 0.003             # 粉粒半径（同 D2L 滴球 r=0.003）
-POWDER_DROP_COLOR = (0.93, 0.93, 0.94)
 
 
 def asset_local_min_z(asset_file):
@@ -132,38 +150,62 @@ def add_material(stage, prim, diffuse, opacity, roughness=0.5, ior=None, emissiv
 
 
 def add_effects(stage):
-    """内建效果 prim（全部初始隐藏，task 动画驱动）：
-      PowderOnSpoon  药匙尖粉末（挖粉后随药匙）
-      TubePowder     试管内白色粉末柱（⑬ 倒粉后显示）
+    """内建效果 prim（全部初始隐藏，task 动画驱动）—— 粉末按颜色烘焙变体：
+      PowderOnSpoon_<色>  药匙尖粉末（挖粉后随药匙）
+      PowderDrop_<色>      药粉下落父 + N 粉粒（⑬ 倒粉时错帧坠落）
+      TubePowder_<色>      试管内粉末柱（⑬ 倒粉后显示）
+      TubePowderBlack      焦黑粉末柱（blacken 现象切换）
+    task 按 cfg.powder_color 只 show 对应 `_<色>` 变体；皿上粉丘 SamplePowder 保持白（d2s 惯例）。
     """
-    for name, r, h, t, color, opacity in BUILTIN:
-        geom = UsdGeom.Cylinder.Define(stage, f"/World/{name}")
-        geom.CreateRadiusAttr(r)
-        geom.CreateHeightAttr(h)
+    # PowderOnSpoon_<色>：药匙尖粉末（挖粉后随药匙），半径/高 = 药匙尖小粉堆
+    for color_name in POWDER_COLORS:
+        geom = UsdGeom.Cylinder.Define(stage, f"/World/PowderOnSpoon_{color_name}")
+        geom.CreateRadiusAttr(SPOON_POWDER_R)
+        geom.CreateHeightAttr(SPOON_POWDER_H)
         geom.CreateAxisAttr("Z")
-        geom.AddTranslateOp().Set(Gf.Vec3d(*t))
-        add_material(stage, geom.GetPrim(), color, opacity)
+        geom.AddTranslateOp().Set(Gf.Vec3d(*SPOON_POWDER_T))
+        recipe = POWDER_COLORS[color_name]
+        add_material(stage, geom.GetPrim(), recipe["diffuse"], recipe["opacity"],
+                     roughness=recipe.get("roughness", 0.5), ior=recipe.get("ior"),
+                     emissive=recipe.get("emissive"))
         UsdGeom.Imageable(geom).MakeInvisible()
-        print(f"[effect] {name} hidden at {t}")
-    # 试管内粉末柱（TubePowder）：白色粉末，初始隐藏，⑬ 倒粉后 task reveal
-    pw = UsdGeom.Cylinder.Define(stage, "/World/TubePowder")
+    # TubePowder_<色>：试管内粉末柱（⑬ 倒粉后显示），坐管底
+    for color_name in POWDER_COLORS:
+        pw = UsdGeom.Cylinder.Define(stage, f"/World/TubePowder_{color_name}")
+        pw.CreateRadiusAttr(TUBE_POWDER_R)
+        pw.CreateHeightAttr(TUBE_POWDER_H)
+        pw.CreateAxisAttr("Z")
+        pw.AddTranslateOp().Set(Gf.Vec3d(TUBE[0], TUBE[1], TUBE_POWDER_CZ))
+        recipe = POWDER_COLORS[color_name]
+        add_material(stage, pw.GetPrim(), recipe["diffuse"], recipe["opacity"],
+                     roughness=recipe.get("roughness", 0.5), ior=recipe.get("ior"),
+                     emissive=recipe.get("emissive"))
+        UsdGeom.Imageable(pw).MakeInvisible()
+    # TubePowderBlack：焦黑粉末柱（blacken 现象切换显示），几何与 TubePowder_<色> 相同
+    pw = UsdGeom.Cylinder.Define(stage, "/World/TubePowderBlack")
     pw.CreateRadiusAttr(TUBE_POWDER_R)
     pw.CreateHeightAttr(TUBE_POWDER_H)
     pw.CreateAxisAttr("Z")
     pw.AddTranslateOp().Set(Gf.Vec3d(TUBE[0], TUBE[1], TUBE_POWDER_CZ))
-    add_material(stage, pw.GetPrim(), TUBE_POWDER_COLOR, 1.0)
+    add_material(stage, pw.GetPrim(), BLACK_RECIPE["diffuse"], BLACK_RECIPE["opacity"],
+                 roughness=BLACK_RECIPE.get("roughness", 0.5),
+                 emissive=BLACK_RECIPE.get("emissive"))
     UsdGeom.Imageable(pw).MakeInvisible()
-    print(f"[effect] TubePowder hidden at ({TUBE[0]}, {TUBE[1]}, {TUBE_POWDER_CZ})")
-    # 药粉下落：父 PowderDrop + N 颗粉粒（父+单粒全隐藏，task 下落动画逐颗驱动，D2S/D3-S 同款）
-    drop = UsdGeom.Xform.Define(stage, "/World/PowderDrop")
-    for i in range(POWDER_DROPS):
-        sph = UsdGeom.Sphere.Define(stage, f"/World/PowderDrop/Drop_{i}")
-        sph.CreateRadiusAttr(POWDER_DROP_R)
-        sph.AddTranslateOp().Set(Gf.Vec3d(TUBE[0], TUBE[1], TUBE[2] + 0.1533))   # 管口 0.9593
-        add_material(stage, sph.GetPrim(), POWDER_DROP_COLOR, 1.0)
-        UsdGeom.Imageable(sph).MakeInvisible()
-    UsdGeom.Imageable(drop).MakeInvisible()
-    print(f"[effect] PowderDrop hidden ({POWDER_DROPS} powder grains)")
+    # PowderDrop_<色>：药粉下落父 + N 颗粉粒（父+单粒全隐藏，task 下落动画逐颗驱动，D2S/D3-S 同款）
+    for color_name in POWDER_COLORS:
+        drop = UsdGeom.Xform.Define(stage, f"/World/PowderDrop_{color_name}")
+        recipe = POWDER_COLORS[color_name]
+        for i in range(POWDER_DROPS):
+            sph = UsdGeom.Sphere.Define(stage, f"/World/PowderDrop_{color_name}/Drop_{i}")
+            sph.CreateRadiusAttr(POWDER_DROP_R)
+            sph.AddTranslateOp().Set(Gf.Vec3d(TUBE[0], TUBE[1], TUBE[2] + 0.1533))   # 管口 0.9593
+            add_material(stage, sph.GetPrim(), recipe["diffuse"], recipe["opacity"],
+                         roughness=recipe.get("roughness", 0.5), ior=recipe.get("ior"),
+                         emissive=recipe.get("emissive"))
+            UsdGeom.Imageable(sph).MakeInvisible()
+        UsdGeom.Imageable(drop).MakeInvisible()
+    print(f"[effect] baked {len(POWDER_COLORS)}-color PowderOnSpoon/TubePowder/PowderDrop variants "
+          f"({POWDER_DROPS} grains each) + TubePowderBlack, all hidden")
 
 
 def add_env_light(stage):
@@ -412,21 +454,29 @@ def verify(st2):
     domes = [str(p.GetPath()) for p in Usd.PrimRange(st2.GetPseudoRoot())
              if p.IsA(UsdLux.DomeLight) and str(p.GetPath()) != "/World/env_light"]
     assert not domes, f"stray DomeLight: {domes}"
-    # 效果 prim 存在且隐藏
-    for fx in ("PowderOnSpoon", "TubePowder"):
-        p = st2.GetPrimAtPath(f"/World/{fx}")
-        assert p.IsValid(), f"{fx} missing"
-        assert UsdGeom.Imageable(p).ComputeVisibility() == "invisible", f"{fx} should be hidden"
-    # PowderDrop 父 + 14 粉粒全存在且隐藏
-    dp = st2.GetPrimAtPath("/World/PowderDrop")
-    assert dp.IsValid(), "PowderDrop missing"
-    assert UsdGeom.Imageable(dp).ComputeVisibility() == "invisible", "PowderDrop should be hidden"
-    for i in range(POWDER_DROPS):
-        s = st2.GetPrimAtPath(f"/World/PowderDrop/Drop_{i}")
-        assert s.IsValid(), f"PowderDrop/Drop_{i} missing"
-        assert UsdGeom.Imageable(s).ComputeVisibility() == "invisible", f"Drop_{i} should be hidden"
+    # 粉末效果 prim（按颜色变体）：PowderOnSpoon_<色>/TubePowder_<色>/PowderDrop_<色> 全存在且隐藏
+    for color_name in POWDER_COLORS:
+        for fx in ("PowderOnSpoon", "TubePowder"):
+            p = st2.GetPrimAtPath(f"/World/{fx}_{color_name}")
+            assert p.IsValid(), f"{fx}_{color_name} missing"
+            assert UsdGeom.Imageable(p).ComputeVisibility() == "invisible", \
+                f"{fx}_{color_name} should be hidden"
+        dp = st2.GetPrimAtPath(f"/World/PowderDrop_{color_name}")
+        assert dp.IsValid(), f"PowderDrop_{color_name} missing"
+        assert UsdGeom.Imageable(dp).ComputeVisibility() == "invisible", \
+            f"PowderDrop_{color_name} should be hidden"
+        for i in range(POWDER_DROPS):
+            s = st2.GetPrimAtPath(f"/World/PowderDrop_{color_name}/Drop_{i}")
+            assert s.IsValid(), f"PowderDrop_{color_name}/Drop_{i} missing"
+            assert UsdGeom.Imageable(s).ComputeVisibility() == "invisible", \
+                f"PowderDrop_{color_name}/Drop_{i} should be hidden"
+    # TubePowderBlack（blacken 现象）存在且隐藏
+    pblk = st2.GetPrimAtPath("/World/TubePowderBlack")
+    assert pblk.IsValid(), "TubePowderBlack missing"
+    assert UsdGeom.Imageable(pblk).ComputeVisibility() == "invisible", "TubePowderBlack should be hidden"
     print("[verify] OK: D2S 五件坐标一致(架贴台/管底0.806/口0.9593/药匙尖0.963/皿贴台/粉在皿上) "
-          f"+ 灯贴台/灯帽在灯上 + 火柴抬高12mm + 火焰隐藏 + 无残留DomeLight + 效果prim隐藏")
+          f"+ 灯贴台/灯帽在灯上 + 火柴抬高12mm + 火焰隐藏 + 无残留DomeLight + "
+          f"{len(POWDER_COLORS)}色粉末效果prim隐藏 + TubePowderBlack隐藏")
 
 
 def main():

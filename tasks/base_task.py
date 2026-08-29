@@ -8,6 +8,15 @@ from utils.camera_utils import process_camera_image
 from isaacsim.core.utils.prims import set_prim_visibility
 from pxr import UsdShade
 
+
+def _mirror_horizontal(data):
+    """水平镜像（左右翻转宽度轴）。rgb 为 (C,H,W) 数组、组合类型（rgb+…）为 dict。"""
+    if data is None:
+        return data
+    if isinstance(data, dict):
+        return {k: _mirror_horizontal(v) for k, v in data.items()}
+    return np.asarray(data)[..., ::-1]
+
 class BaseTask(ABC):
     """
     Base class for all simulation tasks.
@@ -201,6 +210,10 @@ class BaseTask(ABC):
         display_data = {}
         for camera, cam_cfg in zip(self.cameras, self.cfg.cameras):
             record, display = process_camera_image(camera, cam_cfg.image_type)
+            # 水平镜像（用户 A2 2026-08-28「camera2 需要镜像」：画面左右反着 → 翻转宽度轴）
+            if getattr(cam_cfg, "flip_horizontal", False):
+                record = _mirror_horizontal(record)
+                display = _mirror_horizontal(display)
             if record is not None:
                 if isinstance(record, dict):
                     for k, v in record.items():

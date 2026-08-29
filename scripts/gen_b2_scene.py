@@ -22,6 +22,7 @@
 """
 import math
 import os
+import random
 import shutil
 from pxr import Usd, UsdGeom, UsdShade, UsdLux, Sdf, Gf
 
@@ -125,29 +126,26 @@ def add_equip(stage, name, asset, t, scale, rot180=False):
 # 几何按 TestTube 世界 bbox 推导：管 (TUBE_X, TUBE_Y) 底 z0.9206 顶 z1.0739，Ø19.2 内 Ø~17。
 LIQUID_TOP = TUBE_BOTTOM_Z + 0.052     # 液面高 5.2cm（约 1/3 管）
 LIQUID_R = 0.008                       # 水柱半径 < 管内径 ~0.0085
-BUBBLE_R = 0.0025                      # 气泡半径（2026-08-27 加大：原 1.5mm 在 512px 下不可见）
-# 气泡基础位（液体内，task 上升动画的复位点；以试管中心 (TUBE_X,TUBE_Y) 为基准）。
-# 沸石在管底（成核点）→ 气泡基础位聚在底部附近，沸腾时从底部冒出成串上升。
-# 2026-08-27 用户「逐渐出现气泡…沸腾的时候有很多气泡」→ 8→16 泡（加热 8s 逐个 reveal，
-# 沸腾全亮 16 泡），基础位在液面下 0.042 内交错分布（x/y 距心 <0.006，管内径 Ø~17）。
-BUBBLE_BASE = [
-    (TUBE_X + 0.0000, TUBE_Y + 0.0000, TUBE_BOTTOM_Z + 0.012),
-    (TUBE_X - 0.0035, TUBE_Y + 0.0025, TUBE_BOTTOM_Z + 0.020),
-    (TUBE_X + 0.0035, TUBE_Y - 0.0025, TUBE_BOTTOM_Z + 0.030),
-    (TUBE_X - 0.0030, TUBE_Y - 0.0035, TUBE_BOTTOM_Z + 0.016),
-    (TUBE_X + 0.0030, TUBE_Y + 0.0035, TUBE_BOTTOM_Z + 0.026),
-    (TUBE_X + 0.0000, TUBE_Y + 0.0010, TUBE_BOTTOM_Z + 0.038),
-    (TUBE_X - 0.0025, TUBE_Y + 0.0000, TUBE_BOTTOM_Z + 0.024),
-    (TUBE_X + 0.0025, TUBE_Y + 0.0010, TUBE_BOTTOM_Z + 0.032),
-    (TUBE_X - 0.0018, TUBE_Y - 0.0018, TUBE_BOTTOM_Z + 0.014),
-    (TUBE_X + 0.0020, TUBE_Y + 0.0020, TUBE_BOTTOM_Z + 0.022),
-    (TUBE_X - 0.0040, TUBE_Y - 0.0010, TUBE_BOTTOM_Z + 0.028),
-    (TUBE_X + 0.0040, TUBE_Y + 0.0000, TUBE_BOTTOM_Z + 0.036),
-    (TUBE_X + 0.0000, TUBE_Y - 0.0020, TUBE_BOTTOM_Z + 0.040),
-    (TUBE_X - 0.0022, TUBE_Y + 0.0032, TUBE_BOTTOM_Z + 0.018),
-    (TUBE_X + 0.0022, TUBE_Y - 0.0032, TUBE_BOTTOM_Z + 0.034),
-    (TUBE_X + 0.0008, TUBE_Y + 0.0028, TUBE_BOTTOM_Z + 0.042),
-]
+COLOR_R = LIQUID_R - 0.0004            # 变色柱半径（d3l 同款：略小于液柱防 z-fight，叠在原液上染下去）
+BUBBLE_R = 0.006                        # 气泡半径（Ø12mm；2026-08-29 调试放大，鲜艳红，排查是否显示问题）
+# 气泡基准位（2026-08-28 照搬 d3l 真实感改造「中等档」）：40 颗离散小泡，中心盘状区 30 +
+# 近管壁环 10（模拟壁面成核），固定种子可复现。上升动画由 task 动态池驱动（连续生成 +
+# 速度差异 + 蛇形摆动 + 到液面破灭复用），z 全写管底上方 0.012（task 每帧覆盖 z）。
+# 不变量：len(BUBBLE_BASE) == task.N_BUBBLES(40)，verify() 断言。
+def _gen_bubbles(n_center=30, n_wall=10, seed=42):
+    rng = random.Random(seed)
+    out = []
+    for _ in range(n_center):
+        r = 0.0030 * math.sqrt(rng.random())          # 均匀圆盘（sqrt 面积均匀）
+        a = 2.0 * math.pi * rng.random()
+        out.append((TUBE_X + r * math.cos(a), TUBE_Y + r * math.sin(a), TUBE_BOTTOM_Z + 0.012))
+    for _ in range(n_wall):
+        r = 0.0045 + 0.0010 * rng.random()            # 0.0045~0.0055 近壁一圈
+        a = 2.0 * math.pi * rng.random()
+        out.append((TUBE_X + r * math.cos(a), TUBE_Y + r * math.sin(a), TUBE_BOTTOM_Z + 0.012))
+    return out
+
+BUBBLE_BASE = _gen_bubbles()
 
 # 2026-08-27 用户「整体去掉蒸汽的显示」→ 蒸汽两段式（steam_inner/steam_plume）已删，
 # 沸腾只留气泡动画（task 驱动）。
@@ -158,6 +156,21 @@ BUBBLE_BASE = [
 # 浅色轨迹」→ 参考 d2l 无液柱，滴管空管移动、只在挤胶头瞬间 DropperDrop 成串坠落。
 WATER = dict(color=(0.72, 0.85, 1.0), opacity=0.50, roughness=0.05, ior=1.33)   # 样品瓶内半瓶液 / 试管内水柱
 DROP = dict(color=(0.35, 0.75, 1.0), opacity=0.90, roughness=0.05, ior=1.33)    # 挤胶头滴落的液滴
+
+# 2026-08-28 用户「加两个参数一个加热前液体颜色，一个是加热后液体颜色。可以参考d3l」：
+# 候选色液柱配方（d3l 同款：近黑 diffuse + 单通道主导 emissive，防被 CylinderLight 12000 洗白
+# 成透明，见 d2l-liquid-color-recipe）。task 按 cfg.before_color 显主液柱一根、cfg.liquid_color
+# 显变色柱一根（d3l 字段名同款）。
+LIQUID_COLORS = {
+    "red":    dict(color=(0.10, 0.03, 0.03), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(2.2, 0.12, 0.12)),
+    "blue":   dict(color=(0.03, 0.05, 0.12), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(0.12, 0.30, 2.2)),
+    "green":  dict(color=(0.03, 0.10, 0.04), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(0.12, 2.0, 0.12)),
+    "purple": dict(color=(0.12, 0.03, 0.12), opacity=0.95, roughness=0.05, ior=1.33,
+                   emissive=(2.0, 0.15, 2.2)),
+}
 # 瓶/管/滴管玻璃配方：assets 自带 bottle_mat op0.8/rough0.33 磨砂玻璃，隔它看不清液体 → 真玻璃
 GLASS = dict(diffuseColor=(0.85, 0.90, 0.95), opacity=0.25, roughness=0.10, ior=1.5)
 
@@ -263,9 +276,31 @@ def add_b2_effects(stage):
         UsdGeom.Imageable(sp).MakeInvisible()
         bub_prims.append(sp.GetPrim())
     add_shared_material(stage, "/World/TestTubeBubbles/bubble_mat",
-                        (0.95, 0.97, 1.0), 0.90, bub_prims, roughness=0.1,
-                        emissive=(0.55, 0.62, 0.75))
+                        (0.10, 0.01, 0.01), 1.0, bub_prims, roughness=0.3,
+                        emissive=(2.8, 0.05, 0.05))
     print(f"[effect] {len(BUBBLE_BASE)} bubbles hidden")
+
+
+def add_color_liquid(stage):
+    """加热前/后候选色液柱（2026-08-28 用户参考 d3l）：/World/TubeLiquidBefore_<色>（加热前色 =
+    主液柱，滴加逐滴长高）+ /World/TubeLiquidColor_<色>（加热后色 = d3l 同款变色柱，顶贴液面
+    向下扩散，细一圈 COLOR_R 叠在主液上）。初始全隐藏、height 0；task 按 cfg.before_color 显
+    主液柱一根（"clear" 回退 TestTubeLiquid 水柱）、cfg.liquid_color 显变色柱一根（沸腾时
+    _step_color_transition 顶贴液面向下扩散染过去）。"""
+    for prefix, r in (("TubeLiquidBefore", LIQUID_R), ("TubeLiquidColor", COLOR_R)):
+        for name, m in LIQUID_COLORS.items():
+            geom = UsdGeom.Cylinder.Define(stage, f"/World/{prefix}_{name}")
+            geom.CreateRadiusAttr(r)
+            geom.CreateHeightAttr(0.0)
+            geom.CreateAxisAttr("Z")
+            # 底面 = 管底 TUBE_BOTTOM_Z（task 逐滴/逐帧把 center 设到 TUBE_BOTTOM_Z + h/2）
+            geom.AddTranslateOp().Set(Gf.Vec3d(TUBE_X, TUBE_Y, TUBE_BOTTOM_Z))
+            translucent = m.get("opacity", 1.0) < 1.0
+            add_material(stage, geom.GetPrim(), m["color"], m["opacity"],
+                         roughness=m.get("roughness", 0.5), ior=m.get("ior"),
+                         emissive=m.get("emissive"), double_sided=translucent)
+            UsdGeom.Imageable(geom).MakeInvisible()
+            print(f"[effect] {prefix}_{name} hidden (r={r})")
 
 
 def add_env_light(stage):
@@ -319,22 +354,29 @@ def remove_asset_env_lights(st2):
 
 
 def move_lamp_cap(st2):
-    """灯帽从灯顶挪到桌边（闭口朝下贴台面），位置 2026-08-28 从 y-0.467 改到 y-0.103。
+    """灯帽从灯顶挪到桌边（闭口朝下贴台面）静止位 CAP_REST=(0.42,-0.01,0.8155)。
 
-    旧位（ty 0.467）帽世界中心在灯 −Y 侧 46.7cm：灯移到 y=-0.0971 后帽中心落在
-    (0.5286,-0.5645) —— 机械臂底座 y=-0.08，帽在底座后方 48cm，Lula IK 无解，机械臂
-    卡住不动。新位 ty 0.103：移灯后帽中心落在 (0.5286,-0.20)（底座前方 0.55m 可达），
-    盖帽运输 10cm，全在 −Y 侧不跨试管堆叠。与灯体/火柴/架/铁架台均无碰撞（pxr 实测）。
+    2026-08-28 二次可达性修复：帽是灯子 prim，随灯滑移。旧位 ty 0.103 移灯后帽中心
+    (0.5286,-0.20) 在机械臂底座(y=-0.08)后方 12cm 低 z，Lula IK 无解 → 下去夹卡死。
+    新位让帽静止在灯前 -X 侧桌面 (0.42,-0.01)（3D 距底座 0.44m、y 在底座前 3cm，同
+    火柴夹点可达性，pxr 实测与灯体/火柴无碰撞）。移灯期间 task
+    逐帧 _set_cap_world(CAP_REST) 把帽钉在静止位（不随灯滑），盖帽动作在此夹帽。
+    盖灭时帽中心 0.8917 盖严实（同资产原始帽位，2026-08-28 六改；CAP_BURNER 见 constants）。
+    2026-08-28 九改（机械臂夹帽擦石棉网）：石棉网 x[0.4726,0.5853] 左边缘 0.4726，旧
+    CAP_REST x=0.45 → 帽右边缘 0.4686 离石棉网仅 4mm，机械臂手腕擦进石棉网。往 -X 移
+    3cm 到 x=0.42（手腕右边缘 ~0.45 避开；往 -Y 移碰火柴 y=-0.06 不可行，见 constants）。
 
     资产 cap xform = [Translate(0,0,0) rotateX90 scale0.01]，mesh 在局部 z[0.076,0.107]，
     故 translate z=-0.076 让帽底(z=0.076)落回台面 0.80。
-    酒精灯整组已 R180，cap 局部 y 会被旋 180° 取反，故 y 用 +0.103 才能落到桌边 −Y。"""
+    酒精灯整组已 R180，cap 局部 y 会被旋 180° 取反。换算（pxr 实测）：cx=灯x−tx、
+    cy=灯y−ty、cz=灯z+tz+CAP_CENTER_DZ(0.0915) → tx=0.5286−0.42=0.1086、
+    ty=0.0029−(−0.01)=0.0129、tz=0.8155−0.80−0.0915=−0.076。"""
     cap = st2.GetPrimAtPath("/World/AlcoholLamp/cap")
     if not cap.IsValid():
         print("[clean] /World/AlcoholLamp/cap not found, skip")
         return
     xf = UsdGeom.Xformable(cap)
-    tgt = Gf.Vec3d(0.0, 0.103, -0.076)
+    tgt = Gf.Vec3d(0.1086, 0.0129, -0.076)
     ops = xf.GetOrderedXformOps()
     for op in ops:
         if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
@@ -658,14 +700,18 @@ def verify(st2):
         f"hook top {hr.GetMax()[2]:+.4f} != {hook_top:+.4f}"
     assert hr.GetMax()[2] < smx[2] - 0.01, \
         f"hook top {hr.GetMax()[2]:+.4f} not below pole top {smx[2]:+.4f}"
-    # 灯帽在桌边（y 偏移 -0.467），帽底贴台面
+    # 灯帽静止位 CAP_REST(0.42,-0.01)：灯前 -X 侧桌面，帽底贴台面、中心 0.8157
+    #   （2026-08-28 九改：往 -X 移 3cm 避石棉网左边缘 0.4726，见 constants）
     cap = st2.GetPrimAtPath("/World/AlcoholLamp/cap")
     r = bc.ComputeWorldBound(cap).ComputeAlignedRange()
     cmn, cmx = r.GetMin(), r.GetMax()
     print(f"[verify] cap     min({cmn[0]:+.4f},{cmn[1]:+.4f},{cmn[2]:+.4f}) "
           f"max({cmx[0]:+.4f},{cmx[1]:+.4f},{cmx[2]:+.4f})")
     assert abs(cmn[2] - TABLE_TOP) < 0.002, f"cap bottom {cmn[2]} not on table"
-    assert cmx[1] < TUBE_Y, f"cap y {cmx[1]} not on -y side"
+    # 帽中心在 CAP_REST（±5mm 容差）；不在堆叠中心线下方
+    cx, cy = 0.5 * (cmn[0] + cmx[0]), 0.5 * (cmn[1] + cmx[1])
+    assert abs(cx - 0.42) < 0.005, f"cap center x {cx:+.4f} != 0.42"
+    assert abs(cy + 0.01) < 0.005, f"cap center y {cy:+.4f} != -0.01"
     # 试管架：底座贴台面（0.80）
     rmn, rmx = boxes["TestTubeRack"]
     assert abs(rmn[2] - TABLE_TOP) < 0.002, f"rack bottom {rmn[2]} not on table"
@@ -718,11 +764,26 @@ def verify(st2):
     bub = st2.GetPrimAtPath("/World/TestTubeBubbles")
     assert bub.IsValid(), "bubbles group missing"
     nb = sum(1 for c in bub.GetChildren() if c.GetTypeName() == "Sphere")
-    assert nb >= 4, f"bubbles count {nb}"
+    assert nb == len(BUBBLE_BASE), f"bubbles count {nb} != {len(BUBBLE_BASE)}"
     for i in range(nb):   # 2026-08-27 加大提亮：半径须为 BUBBLE_R
         bs = st2.GetPrimAtPath(f"/World/TestTubeBubbles/bubble_{i}")
         assert abs(UsdGeom.Sphere(bs).GetRadiusAttr().Get() - BUBBLE_R) < 0.0005, \
             f"bubble_{i} radius {UsdGeom.Sphere(bs).GetRadiusAttr().Get()} != {BUBBLE_R}"
+    # 加热前/后候选色液柱：2×len(LIQUID_COLORS) 根，h0、隐藏、底面贴管底；
+    # Before（主液柱）r=LIQUID_R、Color（变色柱）r=COLOR_R（d3l 同款细一圈）
+    for prefix, r in (("TubeLiquidBefore", LIQUID_R), ("TubeLiquidColor", COLOR_R)):
+        for name in LIQUID_COLORS:
+            lp = st2.GetPrimAtPath(f"/World/{prefix}_{name}")
+            assert lp.IsValid(), f"{prefix}_{name} missing"
+            assert abs(UsdGeom.Cylinder(lp).GetRadiusAttr().Get() - r) < 1e-9, \
+                f"{prefix}_{name} r != {r}"
+            assert UsdGeom.Cylinder(lp).GetHeightAttr().Get() == 0.0, f"{prefix}_{name} height should be 0"
+            assert UsdGeom.Imageable(lp).ComputeVisibility() == "invisible", \
+                f"{prefix}_{name} should be hidden"
+            tz = UsdGeom.Xformable(lp).GetOrderedXformOps()[0].Get()[2]
+            assert abs(tz - TUBE_BOTTOM_Z) < 0.001, f"{prefix}_{name} base z {tz} != TUBE_BOTTOM_Z"
+    print(f"[verify] LiquidColor OK: 2x{len(LIQUID_COLORS)} tubes "
+          f"(Before r={LIQUID_R} + Color r={COLOR_R}) all hidden")
     # 火焰迁到 /World 顶层（灯下子 prim 已删；顶层 prim 默认可见，任务 reset 再熄）
     # 2026-08-27 二改：水滴形 = 每焰 /World/{name} Cone(收尖) + /World/{name}_sphere
     # Sphere(圆底)。底在灯芯根部 FLAME_BASE_Z(0.891)；外焰 apex FLAME_APEX_Z 须刚好碰
@@ -788,6 +849,7 @@ def main():
     for name, asset, t, scale, rot180 in EQUIP:
         add_equip(stage, name, asset, t, scale, rot180)
     add_b2_effects(stage)
+    add_color_liquid(stage)      # 加热前/后候选色液柱（初始隐藏，task 按 cfg 各 show 一根）
     add_dropper_drops(stage)     # 挤胶头滴落串（初始隐藏，task 动画驱动）
     add_env_light(stage)
     stage.Export(OUT)  # 烘平：单层自包含，带 lab_clean 的 defaultPrim=/World

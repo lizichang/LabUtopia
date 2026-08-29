@@ -137,13 +137,20 @@ class B2AlcoholHeatLiquidTaskController(TaskBaseController):
         jp = state.get("joint_positions")
 
         # 段 2：滴加完成，机械臂回显保持，等 task 相态（加热/沸腾）推到 move_lamp →
-        # 跑 LampMovePass 移灯；phase=="done"（灯移到位松爪）→ 上报成功。
+        # 跑 LampMovePass 移灯（一次），气泡渐熄 240 帧期间 phase 仍停 move_lamp；
+        # 之后 cap_lamp → 跑 CapLampPass 盖帽（一次），熄火停 120 帧期间 phase 仍停
+        # cap_lamp。两个 pass 都以 task 的完成信号门控创建（lamp_moved / cap_settled）：
+        # 一完成即不重建，否则 phase 停留期内每帧 `_pass is None` 会无限重跑该动作
+        # （2026-08-28 串联修复：完整流程下 arm 会在渐熄/结果停留期反复重做动作）。
+        # phase=="done"（盖帽完成）→ 上报成功。
         if self._meta_idx >= len(self.meta_actions):
-            if state.get("phase") == "move_lamp" and self._lamp_pass is None:
+            if (state.get("phase") == "move_lamp" and self._lamp_pass is None
+                    and not state.get("lamp_moved")):
                 self._lamp_pass = LampMovePass(self.engine)
                 self._lamp_pass.reset()
                 print("[b2] 段2: phase move_lamp -> run LampMovePass (grab lamp -y 10cm)")
-            if state.get("phase") == "cap_lamp" and self._cap_pass is None:
+            if (state.get("phase") == "cap_lamp" and self._cap_pass is None
+                    and not state.get("cap_settled")):
                 self._cap_pass = CapLampPass(self.engine)
                 self._cap_pass.reset()
                 print("[b2] 段2: phase cap_lamp -> run CapLampPass (grab cap, cover lamp)")

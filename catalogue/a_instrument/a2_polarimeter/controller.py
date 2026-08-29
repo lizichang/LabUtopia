@@ -95,6 +95,13 @@ class A2PolarimeterTaskController(TaskBaseController):
             PressStartPass(self.engine),
         ]
         self._meta_idx = 0
+        # 调试（用户 2026-08-28「把前面隐藏直接到移动旋光管的部分」）：跳过 ①②③④⑤⑥
+        # （洗瓶注水/震荡溶解/滴管转移），直接进 PickPolarimeterTube 夹取+放导轨。
+        # 旋光管/洗瓶/试管/滴管全从 rest 开始，无需 task 侧预摆位。
+        self.debug_ptube_move = bool(getattr(cfg, "debug_ptube_move", False))
+        if self.debug_ptube_move:
+            self._meta_idx = self.meta_classes.index(PickPolarimeterTube)
+            print("[a2] debug_ptube_move: skip to pick+place polarimeter tube")
         self._h5_sample = 0
         self._start = True
         self._finish_hold = 0   # 结果屏定格后的额外保持帧计数（FINISH_HOLD_FRAMES）

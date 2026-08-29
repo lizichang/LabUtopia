@@ -17,10 +17,11 @@ GRIP_SQUEEZE=0.002，随后松回 0.0055 再移动。抓点 = 架孔底 0.806 + 
   0.855（口上 25mm）→ 液滴坠落可见。
 
 轨迹（TCP 世界坐标，全程 orient=ORIENT_FWD；[ ] 为 cycle，整体重复 cycles 遍）：
-  ① 高位接近滴管架   mv((dx,dy,H))
+  ① 高位接近滴管架   mv((dx,ty,H)) + mv((dx,dy,H))     # 拆 x-then-y 单轴（旧两轴弧线甩动穿架）
   ② 水平下探抓点     mv(DROP_GRASP)                    # 横着夹竖直管身（夹胶头 z 0.936）
   ③ 合爪夹紧         grip(GRIP_DROPPER, 60)            # task 检测 attached（零跳变）
   ④ 竖直提出         mv((dx,dy,H), 5)
+  ④b 高位 y 对齐试管 mv((dx,ty,H))                     # 此后 A 恒 x-only
   [ A 高位平移试管上  mv((tx,ty,H))
     B 下探到管口     mv(DROPPER_SQUEEZE_TCP)            # 尖嘴贴管口上 5mm（z 0.9643）
     C 挤胶头排空气   grip(GRIP_SQUEEZE, 30)             # task: squeezed（首遍排空气/再遍再吸）
@@ -32,7 +33,7 @@ GRIP_SQUEEZE=0.002，随后松回 0.0055 再移动。抓点 = 架孔底 0.806 + 
     I 挤胶头滴液     grip(GRIP_SQUEEZE, 40)             # task: dropped → 液滴坠落 + TubeLiquid 长
     J 松回持握宽     grip(GRIP_DROPPER, 20)             # 提口/移动全程=胶头直径
     K 垂直提出       mv((fx,fy,H)) ]
-  ⑮ 高位回架         mv((dx,dy,H))
+  ⑮ 高位回架         mv((dx,fy,H)) + mv((dx,dy,H))     # 拆 x-then-y 单轴（旧两轴弧线甩动穿架）
   ⑯ 下探放回         mv(DROP_GRASP)
   ⑰ 松开释放         grip(GRIP_OPEN, 25)               # task: released → rest（末遍滴完才回架松）
   ⑱ 垂直归位         mv((dx,dy,H))
@@ -60,30 +61,35 @@ class DropperTransferPass(BaseMetaAction):
         fx, fy = FILL_XY
         actions = [
             # —— 抓滴管（主试管架第二列第5排，尖嘴已在孔内；只抓这一次；手指朝前水平横夹）——
-            mv(e, (dx, dy, H), orient=ORIENT_FWD),      # ① 高位接近滴管架上方
+            # ①/⑮ 拆成 x-then-y 两段单轴高位平移（旧两轴一步 = 单次 IK 弧线摆动，
+            # 放回/接近时中段下降甩动穿试管架 = 用户报障）
+            mv(e, (dx, ty, H), orient=ORIENT_FWD),      # ①a 高位 x 对齐滴管列（y 仍试管行）
+            mv(e, (dx, dy, H), orient=ORIENT_FWD),      # ①b 高位 y 到滴管行
             mv(e, DROP_GRASP, orient=ORIENT_FWD),       # ② 水平下探到胶头（z 0.936）
             grip(e, GRIP_DROPPER, 60),                  # ③ 合爪横着夹住竖直管身（开合=胶头直径）
             mv(e, (dx, dy, H), 5, orient=ORIENT_FWD),   # ④ 竖直提出试管架
+            mv(e, (dx, ty, H), orient=ORIENT_FWD),      # ④b 高位 y 对齐试管行（此后 A 恒 x-only）
         ]
         cycle = [
             # —— 上提到试管口：挤胶头（首遍排空气/再遍再吸）→ 浸液吸液 ——
-            mv(e, (tx, ty, H), orient=ORIENT_FWD),      # A 高位平移到试管上方
+            mv(e, (tx, ty, H), orient=ORIENT_FWD),      # A 高位平移到试管上方（x-only）
             mv(e, DROPPER_SQUEEZE_TCP, orient=ORIENT_FWD),  # B 下探到管口（尖嘴贴口上 5mm）
             grip(e, GRIP_SQUEEZE, 30),                  # C 挤胶头（首遍排空气/再遍再吸）
             mv(e, DROPPER_DIP_TCP, orient=ORIENT_FWD),  # D 下探浸液（尖嘴 0.8525 入液面下）
             grip(e, GRIP_ASPIRATE, 40),                 # E 松胶头吸液（回胶头直径=持握宽）
             mv(e, (tx, ty, H), orient=ORIENT_FWD),      # F 垂直提出液面
             # —— 移到加液口滴液（水平 −x 10cm，y,z 不变）——
-            mv(e, (fx, fy, H), orient=ORIENT_FWD),      # G 高位平移到加液口上方（0.659→0.559）
+            mv(e, (fx, fy, H), orient=ORIENT_FWD),      # G 高位平移到加液口上方（0.659→0.559，x-only）
             mv(e, DROPPER_DROP_TCP, orient=ORIENT_FWD),  # H 下探到加液口上方 25mm（尖嘴 0.855）
             grip(e, GRIP_SQUEEZE, 40),                  # I 挤胶头滴液（task: dropped → 现象）
             grip(e, GRIP_DROPPER, 20),                  # J 松回持握宽（提口/移动全程=胶头直径）
             mv(e, (fx, fy, H), orient=ORIENT_FWD),      # K 垂直提出
         ]
         actions += cycle * self.cycles
-        # —— 末遍滴完才放回滴管架 ——
+        # —— 末遍滴完才放回滴管架（⑮ 拆 x-then-y 单轴高位回架，不再下降甩动穿架）——
         actions += [
-            mv(e, (dx, dy, H), orient=ORIENT_FWD),      # ⑮ 高位回架上方
+            mv(e, (dx, fy, H), orient=ORIENT_FWD),      # ⑮a 高位 x 对齐滴管列（y 仍加液口行）
+            mv(e, (dx, dy, H), orient=ORIENT_FWD),      # ⑮b 高位 y 到滴管行
             mv(e, DROP_GRASP, orient=ORIENT_FWD),       # ⑯ 下探放回
             grip(e, GRIP_OPEN, 25),                     # ⑰ 松开释放（task: released → rest）
             mv(e, (dx, dy, H), orient=ORIENT_FWD),      # ⑱ 垂直归位

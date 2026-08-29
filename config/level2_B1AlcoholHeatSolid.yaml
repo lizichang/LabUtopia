@@ -37,6 +37,26 @@ usd_path: "assets/scenes/b_thermal/b1_alcohol_heat_solid/b1_alcohol_heat_solid.u
 
 max_episodes: 1
 
+# 实验结果输入（有现象的实验必加）：运行前输入「粉末颜色」+「加热后固体现象」，镜像写回
+# 顶层 cfg.powder_color / cfg.heat_phenomenon，task 直接读（参考 d2s/d3l experiment_result
+# 框架）。粉末颜色 = 管内粉末柱/勺上粉/下落粉的初始颜色；加热现象 = 持续加热后固体的可见
+# 变化（消失=分解升华 / 变黑=碳化 / 不变=无现象）。
+experiment_result:
+  powder_color:
+    label: "粉末颜色"
+    type: enum
+    options: [white, red, blue, green, purple]
+    default: white
+  heat_phenomenon:
+    label: "加热后固体现象"
+    type: enum
+    options: [disappear, blacken, unchanged]
+    default: disappear
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+powder_color: white
+heat_phenomenon: disappear
+
 infer:
   type: "local"
   obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}

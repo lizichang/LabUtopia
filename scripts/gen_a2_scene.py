@@ -97,19 +97,21 @@ WATER_COLOR = (0.90, 0.95, 1.0)      # 蒸馏水（无色透明）
 DRIP_COLOR = (0.85, 0.80, 0.55)      # 糖水（旋光液，同 TubeLiquid；滴管滴入加液口）
 
 # 屏幕读数（Polarimeter 资产自带 screen_glass/screen_bezel，局部系烘焙进 mesh、无 xform；
-#   前表面局部 bbox x ±0.089 / y 0.2752..0.2942 / z 0.2789..0.3396：屏幕玻璃是竖直平板
-#   （局部 y 面，前表面 rotZ+90 后 = 世界 x=0.1858 竖直面），上方向 = 局部 +z。
-#   rotZ+90° 后：前表面世界法线朝 −x、宽轴世界 +y、上方向 = 世界 +z（竖直，无倾斜）。
-#   （2026-08-27 五改：旧 SCREEN_UP=(0.2588,0,0.9659) 把 quad 倾斜 15°，但玻璃是竖直的
-#   → quad 顶缘突出机外 5mm/底缘嵌入机内 7mm = 用户报「悬空的模糊矩形」；改竖直贴合。）
-#   贴图发光 quad 竖直贴合前表面（a1 同款，见 a1 add_screen_tex_quad）：
-#   宽沿 W=(0,1,0)、高沿 UP=(0,0,1)。世界（Polarimeter 平移 (0.48,-0.24,0.80) rotZ+90）：
-#   玻璃前表面世界 x=0.1858；quad 中心 x 向相机 −x 再偏 2mm = 0.1838（2026-08-28：旧版 quad
-#   与玻璃前表面完全共面 x0.1858 → z-fighting → 用户报「悬空的模糊矩形」不是数字；偏 2mm 脱离
-#   共面 + winding 反向使法线朝 −x 相机（[0,3,2,1]）→ 数字不镜像，见 add_screen_tex_quad）。
-SCREEN_C = (0.48 - 0.2942 - 0.002, -0.24, 0.80 + (0.2789 + 0.3396) / 2)   # (0.1838, -0.24, 1.10925)
+#   屏幕玻璃是 **15° 倾斜板**（boxes_tilt 绕局部 X 轴倾 15°，非竖直）。mesh 8 点 y/z 四角联动：
+#   前表面（朝相机 = 局部 −y 面，世界 x=0.48−y）底 local(y=0.2942,z=0.2797)→世界(0.1858,1.0797)、
+#   顶 local(y=0.2781,z=0.3396)→世界(0.2019,1.1396)：顶缘比底缘后退 16mm、向 +x 后仰 15°。
+#   （2026-08-27 五改曾把 quad 竖直 SCREEN_UP=(0,0,1)：误判玻璃为竖直平板，但 mesh 实为 15° 倾斜
+#   板 → quad 只贴底缘 x0.1858，顶缘处玻璃退到 x0.2019，顶 18mm 悬空 = 用户 2026-08-28「屏幕
+#   还是悬空的矩形」。修正=quad 同倾 15° 贴合前表面。）
+#   贴图发光 quad 同倾贴合前表面（a1 同款，见 a1 add_screen_tex_quad）：
+#   宽沿 W=(0,1,0)、高沿 UP=(0.2588,0,0.9659)（sin/cos 15°，顶向 +x 后仰）。世界（Polarimeter
+#   平移 (0.48,-0.24,0.80) rotZ+90）：玻璃前表面中点 x=(0.1858+0.2019)/2=0.19385；quad 中心 x
+#   向相机 −x 偏 2mm = 0.19185 脱离共面防 z-fighting（2026-08-28：旧版 quad 与玻璃前表面完全
+#   共面 x0.1858 → z-fighting → 用户报「模糊矩形」不是数字；winding 反向 [0,3,2,1] 使法线朝 −x
+#   相机 → 数字不镜像，见 add_screen_tex_quad）。
+SCREEN_C = (0.48 - (0.2942 + 0.2781) / 2 - 0.002, -0.24, 0.80 + (0.2797 + 0.3396) / 2)  # (0.19185,-0.24,1.10965)
 SCREEN_W = (0.0, 1.0, 0.0)          # 宽轴：rotZ+90 后局部 +x（宽）→ 世界 +y
-SCREEN_UP = (0.0, 0.0, 1.0)         # 上方向：屏幕玻璃竖直，quad 竖直贴合（勿倾斜=悬空）
+SCREEN_UP = (0.2588, 0.0, 0.9659)   # 上方向：玻璃 15° 倾斜，quad 同倾贴合（勿竖直=顶悬空）
 SCREEN_HW = 0.050         # 半宽 5cm（显示区 10cm 居中；勿铺满整块玻璃=贴平板，a1 同款比例）
 SCREEN_HH = 0.022         # 半高 2.2cm（显示区 4.4cm ~73% 玻璃高；宽高比 2.27:1 ≈ 贴图 640×256）
 # 测量进度条帧数（红条 0%→100%，task 测量期逐帧切显；须与 constants.py PROGRESS_STEPS 一致）
@@ -252,7 +254,7 @@ def make_screen_textures(tex_dir):
         return ImageFont.truetype(SCREEN_TEX_FONT, size)
 
     W, H = 640, 256
-    BG = (10, 14, 24)          # 近黑蓝屏底（不发光，仅亮字/进度条自发光）
+    BG = (0, 0, 0)             # 纯黑屏底（用户：只显数字不显背景面板——emissive 贴图黑底=背景不发光）
     BAR_OUT = (95, 100, 115)   # 进度条边框（仪器灰）
     GREEN = (46, 220, 90)      # 完成绿（result 满进度条，a1 同款）
     RED = (238, 72, 60)        # 测量红（measuring 进度条）
@@ -302,7 +304,7 @@ def add_screen_tex_quad(stage, name, tex_path):
     wx, wy, wz = SCREEN_W     # 宽轴单位向量（rotZ+90 后 = 世界 +y）
     upx, upy, upz = SCREEN_UP  # 上方向单位向量（世界 +z，竖直贴合屏幕玻璃）
     hw, hh = SCREEN_HW, SCREEN_HH
-    # 四角 = 中心 ± hw·W ± hh·UP（顶点序 0..3 = 左下/右下/右上/左上 → 贴图直立不翻转）
+    # 四角 = 中心 ± hw·W ± hh·UP（顶点序 0..3 = 左下/右下/右上/左上；直立靠 st 按绕序配值，见下）
     pts = [
         Gf.Vec3f(cx - hw * wx - hh * upx, cy - hw * wy - hh * upy, cz - hw * wz - hh * upz),
         Gf.Vec3f(cx + hw * wx - hh * upx, cy + hw * wy - hh * upy, cz + hw * wz - hh * upz),
@@ -316,15 +318,17 @@ def add_screen_tex_quad(stage, name, tex_path):
     # 见的是背面 → 数字镜像（用户报「模糊矩形」另一因）。反向绕序后 front face 朝相机，贴图直立。
     gl.CreateFaceVertexIndicesAttr([0, 3, 2, 1])
     gl.CreateSubdivisionSchemeAttr("none")
-    # st UV（每顶点，顶点序 0..3 = 左下/右下/右上/左上 → 贴图直立不翻转）
+    # st UV 按 face-vertex（绕序 [0,3,2,1] = 左下/左上/右上/右下）配值：faceVarying 按绕序
+    # 索引，故左下→(0,0)、左上→(0,1)、右上→(1,1)、右下→(1,0) 贴图才直立；旧按顶点序
+    # (0,0)/(1,0)/(1,1)/(0,1) 配到绕序= u 沿竖直 → 用户报「顺时针旋转 90°」。
     pv = UsdGeom.PrimvarsAPI(gl).CreatePrimvar("st", Sdf.ValueTypeNames.Float2Array,
                                                UsdGeom.Tokens.faceVarying)
-    pv.Set(Vt.Vec2fArray([Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]))
-    # 材质：近黑 diffuse + 贴图 emissive（UsdUVTexture 读 st → emissiveColor）
+    pv.Set(Vt.Vec2fArray([Gf.Vec2f(0, 0), Gf.Vec2f(0, 1), Gf.Vec2f(1, 1), Gf.Vec2f(1, 0)]))
+    # 材质：纯黑 diffuse + 贴图 emissive（UsdUVTexture 读 st → emissiveColor）
     mat = UsdShade.Material.Define(stage, f"/World/{name}_mat")
     sh = UsdShade.Shader.Define(stage, f"/World/{name}_mat/Shader")
     sh.CreateIdAttr("UsdPreviewSurface")
-    sh.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.03, 0.04, 0.06))
+    sh.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.0, 0.0, 0.0))
     sh.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.6)
     reader = UsdShade.Shader.Define(stage, f"/World/{name}_mat/Reader")
     reader.CreateIdAttr("UsdPrimvarReader_float2")

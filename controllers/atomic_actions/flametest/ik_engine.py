@@ -65,14 +65,15 @@ class IkMotionEngine:
         p, r = self.solver.compute_forward_kinematics("right_gripper", joints)
         return np.asarray(p, dtype=float), np.asarray(r, dtype=float)
 
-    def solve_verified(self, target, cur7, orient=None):
+    def solve_verified(self, target, cur7, orient=None, orient_eps=None):
         """解 IK 并 FK 验证：TCP 真的到达目标（位置+可选朝向）才接受解。
 
         近奇异抓点（match/cap/stopper 低 z）用固定 home 作回退 warm start 时，
         Lula 偶发选出"FK 位置摆到目标 17cm 外"的坏分支（v34b 注释），臂朝错误
         方向猛甩后 force-done。这里依次尝试当前关节（连续性→段间平滑、消除分支
         跳变）与固定 home，并拒绝 FK 距目标 >6mm 的解。显式传 orient 时再拒绝
-        朝向夹角 >ORIENT_EPS 的解（D2-S 转水平/倾倒用）。
+        朝向夹角 >orient_eps 的解（默认 ORIENT_EPS；插管等"入孔要求 <1mm 精度"
+        的段传更紧的值，如 0.01 rad ≈0.57°，见 B1 试管放回 ⑤a'/⑤b'）。
         """
         if orient is None:
             orient = self.orient
@@ -80,6 +81,8 @@ class IkMotionEngine:
         else:
             orient = np.asarray(orient, dtype=float)
             check_orient = True
+        if orient_eps is None:
+            orient_eps = ORIENT_EPS
         rot_t = quat_to_rot(orient)
         for ws in (np.asarray(cur7, dtype=float), self.ik_home):
             try:
@@ -97,7 +100,7 @@ class IkMotionEngine:
             fk_pos, fk_rot = self.solver.compute_forward_kinematics("right_gripper", ik)
             fk_pos = np.asarray(fk_pos, dtype=float)
             err = float(np.linalg.norm(fk_pos - target))
-            if check_orient and rot_angle(fk_rot, rot_t) > ORIENT_EPS:
+            if check_orient and rot_angle(fk_rot, rot_t) > orient_eps:
                 continue
             if err < 0.006:
                 return ik

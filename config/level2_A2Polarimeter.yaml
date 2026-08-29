@@ -50,6 +50,11 @@ shake_cycles: 3
 # controller 读 cfg.drop_cycles、task 读同键算液面生长；默认 3 = 用户「吸三次」）
 drop_cycles: 3
 
+# 调试（用户 2026-08-28「把前面隐藏直接到移动旋光管的部分」）：true = 跳过洗瓶注水/震荡
+# 溶解/滴管转移，controller 直进 PickPolarimeterTube 夹取+放导轨（只跑旋光管这一段）。
+# 2026-08-28 看整体流程 → false（跑完整 10 元动作：洗瓶注水→震荡→滴管转移→放管→翻盖→按按钮）
+debug_ptube_move: false
+
 # 实验结果输入接口（运行前 --result rotation_angle=+12.5 等；task 读 cfg.rotation_angle →
 # 选对应预烘焙读数屏 ScreenGlow_<key>）。档位须与 meta_actions/constants.py 与
 # scripts/gen_a2_scene.py 的 ROTATION_OPTIONS 三处一致，勿单边改。引号必须保留——
@@ -87,6 +92,9 @@ cameras:
     focal_length: 35
     orientation: [-0.6483, -0.2823, 0.2823, 0.6483]
     image_type: "rgb"
+    # 水平镜像（用户 2026-08-28「camera2 需要镜像不是旋转 180」）：读数屏文字左右反着
+    # → base_task.get_camera_data 翻转宽度轴（只作用于 camera2，勿加到 camera1）
+    flip_horizontal: true
 
   - prim_path: "/World/Franka/panda_hand/arm_camera"
     name: "camera_3"

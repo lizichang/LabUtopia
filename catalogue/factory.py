@@ -24,12 +24,16 @@ from catalogue.d_wetchem.d4s_alkali_reagent.task import D4SAlkaliReagentTask
 from catalogue.d_wetchem.d4s_alkali_reagent.controller import D4SAlkaliReagentTaskController
 from catalogue.d_wetchem.d4l_alkali_reagent.task import D4LAlkaliReagentTask
 from catalogue.d_wetchem.d4l_alkali_reagent.controller import D4LAlkaliReagentTaskController
+from catalogue.d_wetchem.d8l_complex_color.task import D8LComplexColorTask
+from catalogue.d_wetchem.d8l_complex_color.controller import D8LComplexColorTaskController
 from catalogue.d_wetchem.d2l_water_solubility.task import D2LWaterSolubilityTask
 from catalogue.d_wetchem.d2l_water_solubility.controller import D2LWaterSolubilityTaskController
 from catalogue.b_thermal.b1_alcohol_heat_solid.task import B1AlcoholHeatSolidTask
 from catalogue.b_thermal.b1_alcohol_heat_solid.controller import B1AlcoholHeatSolidTaskController
 from catalogue.b_thermal.b2_alcohol_heat_liquid.task import B2AlcoholHeatLiquidTask
 from catalogue.b_thermal.b2_alcohol_heat_liquid.controller import B2AlcoholHeatLiquidTaskController
+from catalogue.b_thermal.b3_water_bath.task import B3WaterBathTask
+from catalogue.b_thermal.b3_water_bath.controller import B3WaterBathTaskController
 from catalogue.e_physical.e1_ph_testpaper.task import E1PhTestpaperTask
 from catalogue.e_physical.e1_ph_testpaper.controller import E1PhTestpaperTaskController
 from catalogue.e_physical.e2_magnetic.task import E2MagneticTask
@@ -91,6 +95,10 @@ def register_catalogue_actions() -> None:
     register_task("d4l_alkali_reagent", D4LAlkaliReagentTask)
     register_controller("d4l_alkali_reagent", D4LAlkaliReagentTaskController)
 
+    # D8-L 络合/显色试剂滴加反应（复刻 d3l 模板扩为 3 滴管 + 3 瓶；3 段变色 + 沉淀 + 分层 + 气泡）
+    register_task("d8l_complex_color", D8LComplexColorTask)
+    register_controller("d8l_complex_color", D8LComplexColorTaskController)
+
     # D2-L 液体样品水溶性测试（取样滴管吸样→滴入试管；v1 先做第一步，注水/震荡后续补）
     register_task("d2l_water_solubility", D2LWaterSolubilityTask)
     register_controller("d2l_water_solubility", D2LWaterSolubilityTaskController)
@@ -103,6 +111,11 @@ def register_catalogue_actions() -> None:
     # B2 沸点测定（酒精灯加热试管液体 → 温度计读数 → 沸腾 → 记录沸点；v1 自动观测，无机械臂元动作）
     register_task("b2_alcohol_heat_liquid", B2AlcoholHeatLiquidTask)
     register_controller("b2_alcohol_heat_liquid", B2AlcoholHeatLiquidTaskController)
+
+    # B3 水浴加热（酒精灯加热烧杯水浴 → 试管内固体熔化/不熔化；无温度计/滴管/移灯，
+    # 机械臂只做三件事：放固体入试管→点燃→原位盖帽灭火）
+    register_task("b3_water_bath", B3WaterBathTask)
+    register_controller("b3_water_bath", B3WaterBathTaskController)
 
     # E1 pH 试纸检测（catalogue 内原生：Lula IK + 平移跟随元动作 + pH 色斑变色接口）
     register_task("e1_ph_testpaper", E1PhTestpaperTask)

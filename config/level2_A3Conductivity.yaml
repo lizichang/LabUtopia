@@ -1,25 +1,27 @@
 name: Level2_A3Conductivity
 
-# A3 task/controller 已实现并注册（v1 = 竖直夹住玻璃皿提起来，PickSurfaceDish）；
-# 场景布局见下方注释。运行：python main.py --config-name level2_A3Conductivity
+# A3 task/controller 已实现并注册（v3 = ①竖直夹住玻璃皿提起来 PickSurfaceDish →
+# ②夹着皿水平移动到烧杯口正上方 MoveDishAboveBeaker → ③倾斜皿倒粉 PourDishIntoBeaker）；
+# 场景布局见下方注释。
+# 运行：python main.py --config-name level2_A3Conductivity
 task_type: "a3_conductivity"
 controller_type: "a3_conductivity"
 
 mode: "collect"
 
 # 场景：a3_conductivity（A3 电导率测量，桌面 z=0.80，2m×2m 台面中心为原点）
-# 布局（2026-08-27 二改 = 用户 Isaac 重摆后 scene-realign，tmp=a3_conductivity_tmp.usd 为真相，
-# 全部器材围绕机械臂底座 (0.37,0.16) 环形摆放；gen verify 全绿，站间净距 ≥0.02m）：
-#   电导率仪 (0.3982,-0.1054) 屏幕朝 +y，电极(+x 侧)朝 +x；z 0.80..1.032
-#   样品烧杯 (0.6469,0.0880,0.8857) rotX(-135) 烧杯111——**完全复刻 tmp**（用户明确 tmp 才
-#     对）：T(0.6469,0.0880,0.8857)+rotateXYZ(-135,0,0)，bbox 0.609..0.685/0.049..0.209/
-#     0.765..0.925 与 tmp 逐位一致；距电极插座 ~0.32m（动态线缆 0.8m 内安全）
+# 布局（2026-08-28 三改 = 用户 Isaac 重摆后 scene-realign，tmp=a3_tmp.usd 为真相；
+# 机械臂底座改 (0,0.12)，右区器材整体左移靠拢底座；gen verify 全绿，站间净距 ≥0.02m）：
+#   电导率仪 (0.4349,-0.2130) rotZ+90 电极朝 +y/烧杯方向（机身 y 变长→-y 挪 6cm）；z 0.80..1.032
+#   样品烧杯 (0.3520,0.0807,0.8857) rotX(-135) 烧杯111——**完全复刻 tmp**（用户明确 tmp 才
+#     对）：T(0.3520,0.0807,0.8857)+rotateXYZ(-135,0,0)，bbox 0.314..0.390/0.041..0.202/
+#     0.765..0.925 与 tmp 逐位一致
 #   分析天平 (0.3442,0.5550) 盘顶 z 0.8475；表面皿 Ø60 贴盘顶（底 0.8474 顶 0.854）；
-#   粉堆 scale0.5 落皿内（底 0.854）；无药匙/称量纸/洗杯
-#   洗瓶 (0.64,0.36) rotZ180（tmp 里被翻转：红嘴朝 +X，对试管架方向），z 0.80..0.987
-#   试管架 (0.8537,0.1763) z 0.80..0.917；玻璃棒 Ø6×261 立架内（底 0.80 顶 1.061）
-#   机械臂底座 (0.37,0.16,0.71)：用户指定中央底座，全器材围绕；最远抓点=玻璃棒顶 3D 0.58m
-#   （最紧站距 Meter~SampleBeaker ~0.03m，若手臂下探撞 meter 需把烧杯再外挪）
+#   粉堆 scale0.25 落皿内（底 0.854）；无药匙/称量纸/洗杯
+#   洗瓶 (0.3536,0.3062) rotZ180（tmp 里被翻转：红嘴朝 +X，对试管架方向），z 0.80..0.987
+#   试管架 (0.5630,0.1989) z 0.80..0.917；玻璃棒 Ø6×261 立架内（底 0.80 顶 1.061）
+#   机械臂底座 (-0.10,0.12,0.71)：2026-08-29 洗瓶横夹卡住→-X 挪 10cm；最远抓点=玻璃棒顶 3D 0.75m
+#   （最紧站距 Meter~SampleBeaker ~0.022m）
 usd_path: "assets/scenes/a_instrument/a3_conductivity/a3_conductivity.usd"
 
 max_episodes: 1
@@ -73,8 +75,10 @@ cameras:
 
 robot:
   type: "franka"
-  # 底座 (0.37,0.16,0.71)：用户指定中央底座，全器材围绕（最远抓点 玻璃棒顶 3D 0.58m ≤ 0.855m 臂展）
-  position: [0.37, 0.16, 0.71]
+  # 底座 (-0.10,0.12,0.71)：2026-08-29 洗瓶 ORIENT_FWD 水平横夹在 z=0.88 卡住
+  # （②③⑥⑦ force-done、⑦ IK FAIL）→ 底座往 -X 挪 10cm 给臂更多前伸空间。
+  # 挪后最远抓点 玻璃棒顶 3D 0.75m ≤ 0.855m 臂展，仍够得着。
+  position: [-0.10, 0.12, 0.71]
 
 collector:
   type: "default"

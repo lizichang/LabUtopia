@@ -35,7 +35,8 @@ PowderDrop 14 粒）：
   /World/Spatula / SurfaceDish / SamplePowder / TestTubeRack / TestTube  挖粉同 d2s
   /World/AlcoholLamp/cap  灯帽（纯平移持握）/ flame_outer|flame_inner 火焰（初始隐藏）
   /World/Match  火柴（头朝灯芯，抬高 12mm）
-  /World/PowderOnSpoon / PowderDrop / TubePowder  药匙上粉堆 / 药粉下落 / 管内白粉柱
+  /World/PowderOnSpoon_<色> / PowderDrop_<色> / TubePowder_<色> / TubePowderBlack
+      药匙上粉堆 / 药粉下落 / 管内粉末柱 / 焦黑柱（2026-08-28 粉末颜色+现象输入驱动）
 """
 import numpy as np
 from pxr import Usd, UsdGeom, UsdPhysics, Gf
@@ -49,6 +50,7 @@ from .meta_actions.constants import (
     TUBE_POWDER_OFFSET_Z,
     CAP_GRASP, CAP_CENTER_REST, CAP_ASIDE_TCP, CAP_ASIDE_CENTER,
     MATCH_XY, MATCH_REST_Z, MATCH_GRASP, MATCH_HELD_OFFSET, MATCH_TIP_OFFSET, WICK,
+    POWDER_COLOR_NAMES, HEAT_PHENOMENON_NAMES,
 )
 
 # 药匙相对夹爪持握矩阵（d3s/d2s 同款）：平移 (0.112,0,0) + 旋转（toolX→(0,0,-1)、toolY→(0,-1,0)、
@@ -93,7 +95,11 @@ class _CapLifecycle:
     持握 = 纯平移：帽中心 = 夹爪（task._set_cap_center 写帽 local translate =
     center − CAP_CENTER_REST，只动 translate op，姿态恒等不随夹爪旋转）。这与药匙的
     矩阵持握不同——帽是盖在灯口的钟罩，从灯口竖直端起再横移到放一边，全程帽姿态不变。
-    释放时写回放一边静止中心（帽底贴台面 0.80），之后不再跟手。
+    对称抓取（2026-08-28 加 CloseCapPass 合盖熄火）：rest 检测「夹爪近灯口 CAP_GRASP
+    或近放一边 CAP_ASIDE_TCP」任一都吸附——开盖（OpenCapPass）从灯口端起、合盖
+    （CloseCapPass）从放一边端起。吸附期帽中心近灯口即熄火（盖住即隔氧）；松爪按
+    夹爪所在位置写回：近灯口 → 盖回灯口（local_t=0）+ 熄灭火焰；近放一边 → 写回
+    放一边静止中心（帽底贴台面 0.80，OpenCapPass 原行为）。
     参考点（gripper/TCP 世界坐标）：
       grasp        灯口帽中心抓点（CAP_GRASP，TCP=帽中心，两指夹帽壁）
       rest_center  帽盖在灯上的静止中心（CAP_CENTER_REST，local_t=0）
@@ -122,7 +128,10 @@ class _CapLifecycle:
     def step(self, gripper_pos, opening):
         """每帧推进。gripper_pos = TCP，opening = joint[7]（m）。"""
         if self.state == "rest":
-            near = self.task._near(self.grasp, gripper_pos)
+            # 对称抓取：近灯口（开盖 OpenCapPass）或近放一边（合盖 CloseCapPass）任一吸附
+            near_lamp = self.task._near(self.grasp, gripper_pos)
+            near_aside = self.task._near(self.aside_tcp, gripper_pos)
+            near = near_lamp or near_aside
             self._near_frames = self._near_frames + 1 if near else 0
             # 夹爪开始合拢且已进近窗：先把帽中心平滑拉向持握位（消除闭合瞬间闪现吸附）
             if near and opening < self.task.gripper_open_threshold:
@@ -137,13 +146,26 @@ class _CapLifecycle:
 
         # 吸附期：帽中心 = 夹爪（纯平移跟随）
         self.task._set_cap_center(gripper_pos)
-        # 松爪判定：夹爪到放一边下探位且 grip 打开（⑧）→ 帽写回 aside 静止中心，复位 rest
-        if (opening > self.task.gripper_open_threshold
-                and self.task._near(self.aside_tcp, gripper_pos)):
-            self.released = True
-            self.task._set_cap_center(self.task._cap_aside_center())
-            self.state = "rest"
-            print(f"[b1] cap released to aside -> rest")
+        # 盖回灯口（夹爪近 CAP_GRASP、帽中心回到灯口）即熄灭火焰——物理上盖住即隔氧，
+        # B1 无温度模型直接隐藏 flame_outer/flame_inner（flame_lit 作 guard 只灭一次；
+        # 开盖吸附后朝远离灯口方向走、吸附前 flame_lit 未置位，都不会误触发）。
+        if self.task.flame_lit and self.task._near(self.grasp, gripper_pos):
+            self.task._extinguish_flame()
+        # 松爪双条件（防下探未到位提前释放帽悬空）：近目标位 + grip 打开。按所在位置写回：
+        if opening > self.task.gripper_open_threshold:
+            if self.task._near(self.grasp, gripper_pos):
+                # 盖回灯口：写回 CAP_CENTER_REST（local_t=0）+ 熄灭火焰
+                self.released = True
+                self.task._set_cap_center(self.rest_center)
+                self.state = "rest"
+                self.task._extinguish_flame()
+                print("[b1] cap released to lamp -> rest (flame off)")
+            elif self.task._near(self.aside_tcp, gripper_pos):
+                # 放回台面放一边（OpenCapPass 原行为）
+                self.released = True
+                self.task._set_cap_center(self.task._cap_aside_center())
+                self.state = "rest"
+                print("[b1] cap released to aside -> rest")
 
 
 class _MatchLifecycle:
@@ -278,14 +300,18 @@ class B1AlcoholHeatSolidTask(BaseTask):
     SPATULA_PATH = "/World/Spatula"
     SPAT_GRASP = np.array([0.6993, 0.3608, 0.94])   # d2s 家用（B1 场景逐字）
     SPAT_GRIP_CLOSED = GRIP_SPATULA + 0.004   # 夹紧阈值：grip 0.008 + 4mm 裕量
-    POWDER_EFFECT = "/World/PowderOnSpoon"
-    POWDER_DROP = "/World/PowderDrop"
+    # 粉末效果 prim 路径现在按颜色变体动态算（__init__ 里 f"/World/PowderOnSpoon_{色}" 等），
+    # 不再作类常量（2026-08-28 用户「加一个输入是表示粉末的颜色参考d2s,d3l」）。
     POWDER_DROPS = 14
     POWDER_STAGGER = 3
     POWDER_HANG = 4
     POWDER_FALL = 14
-    POWDER_LAND_Z = 0.809   # 药粉落点 = 管内白粉柱中心（/World/TubePowder rest 0.809）
-    TUBE_SAMPLE = "/World/TubePowder"   # 管内白色粉末柱（⑬ 倒粉后 reveal）
+    POWDER_LAND_Z = 0.809   # 药粉落点 = 管内粉末柱中心（rest 0.809）
+
+    # 加热现象（2026-08-28 用户「根据输入让你有什么现象就有什么现象」）
+    HEAT_ZONE_Y = 0.20              # 夹爪 y < 0.20 = 试管进火焰加热区（⑨ 后 y=0.131，预热 y∈[0.111,0.151]）
+    HEAT_PHENOMENON_FRAMES = 240    # 连续加热 4s（60fps）触发现象
+    PHENOMENON_FADE_FRAMES = 180    # disappear 缩小消失动画 3s
 
     # 灯帽（纯平移持握）
     CAP = "/World/AlcoholLamp/cap"
@@ -316,6 +342,27 @@ class B1AlcoholHeatSolidTask(BaseTask):
         self.grasp_xy_threshold = getattr(cfg, "grasp_xy_threshold", 0.03)
         self.gripper_open_threshold = getattr(cfg, "gripper_open_threshold", 0.03)
         self.gripper_closed_threshold = getattr(cfg, "gripper_closed_threshold", 0.025)
+
+        # 粉末颜色 + 加热现象（2026-08-28 用户「根据输入让你有什么现象就有什么现象，同时加一个
+        # 输入是表示粉末的颜色参考d2s,d3l」）：config experiment_result 镜像写回顶层
+        # cfg.powder_color / cfg.heat_phenomenon，task 读入并校验兜底。
+        self.powder_color = getattr(cfg, "powder_color", "white")
+        if self.powder_color not in POWDER_COLOR_NAMES:
+            print(f"[b1] WARN unknown powder_color {self.powder_color!r} -> white")
+            self.powder_color = "white"
+        self.heat_phenomenon = getattr(cfg, "heat_phenomenon", "disappear")
+        if self.heat_phenomenon not in HEAT_PHENOMENON_NAMES:
+            print(f"[b1] WARN unknown heat_phenomenon {self.heat_phenomenon!r} -> disappear")
+            self.heat_phenomenon = "disappear"
+        # 粉末效果 prim 路径（颜色变体；gen 烘焙 PowderOnSpoon_<色>/PowderDrop_<色>/TubePowder_<色>）
+        self.POWDER_EFFECT = f"/World/PowderOnSpoon_{self.powder_color}"
+        self.POWDER_DROP = f"/World/PowderDrop_{self.powder_color}"
+        self.TUBE_SAMPLE = f"/World/TubePowder_{self.powder_color}"
+        self.TUBE_BLACK = "/World/TubePowderBlack"
+        # 加热现象状态（reset 复位，现象只触发一次）
+        self._heat_frames = 0
+        self._phenomenon_done = False
+        self._phenomenon_frames = 0
 
         # 药匙状态（d2s/d3s 同款）
         self._near_frames = 0
@@ -367,6 +414,12 @@ class B1AlcoholHeatSolidTask(BaseTask):
         # 试管内白粉柱复位：回 rest、还原尺寸、隐藏（下一集重新倒粉）
         self._set_tube_column(self.TUBE_SAMPLE, TUBE_POWDER_H, TUBE_POWDER_REST, r=0.004)
         self._set_visibility(self.TUBE_SAMPLE, False)
+        # 焦黑粉柱 + 加热现象状态复位（下一集重新出）
+        self._set_tube_column(self.TUBE_BLACK, TUBE_POWDER_H, TUBE_POWDER_REST, r=0.004)
+        self._set_visibility(self.TUBE_BLACK, False)
+        self._heat_frames = 0
+        self._phenomenon_done = False
+        self._phenomenon_frames = 0
         # 灯帽复位：回灯口（local_t=0）
         self.cap.reset()
         # 火柴复位：回台面静止位
@@ -392,6 +445,7 @@ class B1AlcoholHeatSolidTask(BaseTask):
         self.match.step(gripper_pos, opening)        # ③ 火柴取放（b2）
         self._step_match_ignite(gripper_pos)         # ③ 点火检测（火柴头触灯芯 → flame_lit）
         self.tube.step(gripper_pos, opening)         # ⑤ 试管取放到火焰上方（矩阵持握随爪转）
+        self._step_heat_phenomenon(gripper_pos)      # ⑥ 加热现象（输入驱动：disappear/blacken/unchanged）
         return self.get_basic_state_info(additional_info={
             "spatula_state": self.spatula_state,
             "powder_on_spoon": self.powder_on_spoon,
@@ -631,6 +685,61 @@ class B1AlcoholHeatSolidTask(BaseTask):
         else:
             self.match_ignite_counter = 0
 
+    def _extinguish_flame(self):
+        """帽盖回灯口 → 熄灭火焰（B1 无温度模型：直接隐藏 flame_outer/flame_inner）。
+
+        幂等：flame_lit 已 False 则 no-op（_CapLifecycle 吸附期每帧检近灯口，且松爪
+        到灯口再调一次保险；同一次合盖只打印一次熄灭）。
+        """
+        if not self.flame_lit:
+            return
+        self.flame_lit = False
+        self._set_visibility(self._flame_paths(), False)
+        print(f"[b1] flame extinguished by cap @ frame {self.frame_idx}")
+
+    def _step_heat_phenomenon(self, gripper_pos):
+        """加热现象（2026-08-28 用户「根据输入让你有什么现象就有什么现象」）：
+        火焰点燃 + 试管 attached + 夹爪进火焰加热区（y < HEAT_ZONE_Y）连续
+        HEAT_PHENOMENON_FRAMES 帧后，按 cfg.heat_phenomenon 出效果：
+          disappear = 管内粉末柱逐帧缩小至消失（分解/升华）
+          blacken   = 粉末柱切换焦黑变体 TubePowderBlack（碳化）
+          unchanged = 不变（无视觉变化）
+        现象只触发一次（_phenomenon_done），reset 还原。"""
+        if not self._phenomenon_done:
+            if not (self.flame_lit and self.tube.attached):
+                self._heat_frames = 0
+                return
+            if gripper_pos[1] >= self.HEAT_ZONE_Y:
+                return
+            self._heat_frames += 1
+            if self._heat_frames < self.HEAT_PHENOMENON_FRAMES:
+                return
+            self._phenomenon_done = True
+            if self.heat_phenomenon == "blacken":
+                self._set_visibility(self.TUBE_SAMPLE, False)
+                self._set_visibility(self.TUBE_BLACK, True)
+                print(f"[b1] heat phenomenon: powder blackened (carbonized) @ frame {self.frame_idx}")
+            elif self.heat_phenomenon == "disappear":
+                print(f"[b1] heat phenomenon: powder disappearing (decompose) @ frame {self.frame_idx}")
+            # unchanged：无视觉变化，仅置位停止累积
+            return
+
+        # 已触发：disappear 逐帧缩小（半径/高按剩余比例缩，0 → 隐藏）
+        if self.heat_phenomenon != "disappear":
+            return
+        self._phenomenon_frames += 1
+        if self._phenomenon_frames > self.PHENOMENON_FADE_FRAMES:
+            return
+        frac = self._phenomenon_frames / self.PHENOMENON_FADE_FRAMES
+        remain = max(0.0, 1.0 - frac)
+        prim = self.stage.GetPrimAtPath(self.TUBE_SAMPLE)
+        if prim.IsValid():
+            cyl = UsdGeom.Cylinder(prim)
+            cyl.GetRadiusAttr().Set(0.004 * remain)
+            cyl.GetHeightAttr().Set(TUBE_POWDER_H * remain)
+        if self._phenomenon_frames >= self.PHENOMENON_FADE_FRAMES:
+            self._set_visibility(self.TUBE_SAMPLE, False)
+
     # ------------------------------------------------------------------
     # 辅助（d2s/d3s/b2 同款）
     # ------------------------------------------------------------------
@@ -680,10 +789,12 @@ class B1AlcoholHeatSolidTask(BaseTask):
         xf.AddTransformOp().Set(local)
 
     def _set_tube_world(self, world_matrix):
-        """试管 + 管内白粉柱一起写世界矩阵（粉柱相对管底偏移 (0,0,TUBE_POWDER_OFFSET_Z) 刚性跟随，
-        随管转——不再悬在原架里）。"""
+        """试管 + 管内粉末柱（彩色 + 焦黑变体）一起写世界矩阵（粉柱相对管底偏移
+        (0,0,TUBE_POWDER_OFFSET_Z) 刚性跟随，随管转——不再悬在原架里）。焦黑柱平时隐藏，
+        位置同步只占一次写 op，开销可忽略。"""
         self._set_obj_world_matrix(self.TUBE, world_matrix)
         self._set_obj_world_matrix(self.TUBE_SAMPLE, world_matrix * _TUBE_POWDER_OFFSET)
+        self._set_obj_world_matrix(self.TUBE_BLACK, world_matrix * _TUBE_POWDER_OFFSET)
 
     def _ease_tube_to_gripper(self, k=0.18):
         """夹爪合拢期间试管（含白粉柱）逐帧平滑拉向持握矩阵（消除闪现吸附）。"""

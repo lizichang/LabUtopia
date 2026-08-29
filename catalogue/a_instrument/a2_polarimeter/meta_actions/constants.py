@@ -34,6 +34,9 @@ SETTLE = 12                  # 到位稳定帧
 GRIP_OPEN = 0.04             # 夹爪满开
 # 引擎四元数约定 [x,y,z,w]（scipy 序）；R_y(±90°)
 ORIENT_FWD = (0.0, 0.7071068, 0.0, 0.7071068)          # 手指朝 +X（夹药匙/横夹洗瓶/试管/滴管）
+# 夹旋光管（横放轴 X）**不用显式 orient**：引擎默认朝向（手指朝下、指隙沿 X）就是正确朝向
+# （用户 2026-08-28 拍板：原方向对，只是点位有偏差）。曾误改 ORIENT_PTUBE=(0.7071,0.7071,0,0)
+# 让指隙沿 ±Y =「从侧边夹」，用户判「完全改错、根本加不起来」，已回退。
 
 # ---- 试管（d2s 同款 Ø19.2×153mm，立插架近侧孔；d2s 坐标）----
 TUBE_XY = (0.659, 0.241)
@@ -45,7 +48,7 @@ TUBE_HELD_OFFSET_Z = TUBE_ORIG_Z - (TUBE_MOUTH_Z - 0.014)  # 管底吊夹爪下 
 SHAKE_CENTER_TCP = (0.659, 0.241, 1.09)                 # 提出架顶 17cm 震荡
 SHAKE_AMPLITUDE = 0.04
 SHAKE_PERIOD = 60
-SHAKE_HOLD_FRAMES = 300
+SHAKE_HOLD_FRAMES = 30
 
 # ---- 洗瓶（d2s 同款 6.4×6.4×16.8cm，rotZ-180 红嘴朝 +X；d2s 坐标）----
 WASH_XY = (0.370, 0.525)
@@ -84,13 +87,14 @@ PTUBE_REST = (0.5265, 0.241, 0.811)     # 管中心（加液口 0.559 泡在此�
 PTUBE_GRASP_Z = 0.83                   # 手指下探到管身 0.83（管径 Ø13，指端 0.803 贴台面余 3mm）
 PTUBE_GRASP = (PTUBE_REST[0], PTUBE_REST[1], PTUBE_GRASP_Z)
 PTUBE_APPROACH = (PTUBE_REST[0], PTUBE_REST[1], 0.95)    # 高位接近
-PTUBE_LIFT = (PTUBE_REST[0], PTUBE_REST[1], H)           # 提出 32cm 净空横移
+PTUBE_LIFT = (PTUBE_REST[0], PTUBE_REST[1], 1.20)        # 提出到 1.20（管底 1.1745 清掀开翻盖自由边 1.1475）
 GRIP_PTUBE = 0.0065                    # Ø13/2
 PTUBE_HELD_OFFSET_Z = PTUBE_REST[2] - PTUBE_GRASP_Z   # 管中心=TCP-0.019
 # 导轨：tube_rails 顶 1.001、中心 x=+0.03（仪局部，rotZ+90 后）；管搭槽上中心 z=1.001+0.0065
 PTUBE_PLACE_CENTER = (0.51, -0.24, 1.0075)   # 仪 (0.48,-0.24) rotZ+90 + 局部 (+0.03,0)
 PTUBE_PLACE_TCP = (0.51, -0.24, PTUBE_PLACE_CENTER[2] - PTUBE_HELD_OFFSET_Z)  # 1.0265
-PTUBE_PLACE_ABOVE = (0.51, -0.24, 1.10)   # 接近高度 1.10（管 1.081 仍清机身顶 1.05；3D 0.78m 达记）
+PTUBE_PLACE_ABOVE = (0.51, -0.24, 1.18)   # 接近/松爪高度 1.18（-y 横移越过掀开翻盖自由边 1.1475，不穿模；
+                                          #   旧 1.20 在深 -y 近奇异 Lula 解不出 → IK FAIL/force-done；1.18 可达）
 
 # ---- 加液口（滴管滴液点：试管口 0.659 往 -x 10cm → (0.559,0.241)，加液口顶 0.830）----
 FILL_XY = (PTUBE_REST[0] + 0.0325, PTUBE_REST[1])  # 加液口中心（泡 +x 端顶，随 PTUBE_REST；
@@ -153,10 +157,13 @@ LID_PATH = "/World/Polarimeter/lid"
 LID_PUSH_X = 0.51                # 推盖 x（机身中线；task 联动 x 门控、夹爪路径都用它）
 LID_PUSH_Y0 = -0.15              # task 联动：y ≤ −0.15 lid 开始转闭（推盖起点，触板近面）
 LID_PUSH_Y1 = -0.22              # task 联动：y ≤ −0.22 lid 完全闭合（freeze y≤−0.23<Y1 必闭）
-LID_APPROACH = (0.51, -0.15, 1.10)    # ① 接近推盖起点（近侧 +y 触掀开板近面；3D 0.79m）
-LID_PUSH_END = (0.51, -0.24, 1.10)    # ③ 水平向 −y 折叠拨回（手指 1.08 高于闭盖顶 1.0595；
-                                      #   目标 −0.24，freeze 3D y≤−0.23<Y1 必闭；3D 0.82m）
-GRIP_LID = 0.005                       # 推盖时爪近闭（指端贴板面作推面）
+LID_APPROACH_HIGH = (0.51, -0.11, 1.20)   # ① 高位接近（越过掀开翻盖自由边 y−0.128/z1.1475，不再穿模）
+LID_PUSH_START = (0.51, -0.11, 1.18)      # ② 下探到推盖高度（手指 1.153 清自由边 1.1475，贴板近面）
+LID_PUSH_END = (0.51, -0.24, 1.18)        # ③ 水平向 −y 折叠拨回（task 按 y 过 −0.15 联动闭合；
+                                           #   目标 −0.24，freeze 3D y≤−0.23<Y1 必闭；3D 0.82m）
+LID_LIFT = (0.51, -0.11, 1.20)            # ⑥ 抬离（退回近侧 LID_APPROACH_HIGH，交回 PressStartPass；
+                                          #   旧深 -y (0.51,-0.24,1.20) 近奇异 IK FAIL → 退浅侧同高）
+GRIP_LID = 0.005                          # 推盖时爪近闭（指端贴板面作推面）
 LID_OPEN_DEG = 120.0                   # 掀开角（asset 烘焙 rotateXYZ.Y）
 
 # ---- 屏幕读数（旋转角度 enum，引号字符串防 YAML 浮点）----
