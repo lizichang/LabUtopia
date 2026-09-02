@@ -1,0 +1,133 @@
+name: Level2_B3SWaterBath
+
+task_type: "b3s_water_bath"
+controller_type: "b3s_water_bath"
+
+mode: "collect"
+
+# 场景：b3s_water_bath（B3 水浴加热，桌面 z=0.80）
+# 台面（2026-08-29 布局复刻 D2-S + 加热堆叠 -Y 平移，pxr 实测）：
+#   样品区＝D2-S 复刻（挖粉动作坐标与 d2s 完全一致）：
+#     试管架 (0.6803,0.3607) z[0.80,0.917]、试管 (0.659,0.241,0.806) 架近侧左孔 z[0.806,0.959]、
+#     药匙 (0.6993,0.3608,0.828) 架中心孔竖插、皿 (0.5365,0.105,0.80) z[0.800,0.807]、
+#     粉丘 (0.5383,0.0992,0.7988,scale0.4) 贴皿顶 z[0.802,0.814]（B3 无洗涤步骤，不摆洗瓶）。
+#   加热堆叠＝B2 相对几何，整组 -Y 平移 25cm（用户「还是这样相对位置，随便放个位置后面我来调整」）：
+#     铁架台 (0.6286,-0.25)、石棉网 (0.5286,-0.25) 顶 0.9205、酒精灯 (0.5286,-0.25)
+#     （火焰初始隐藏，水滴形两焰迁 /World 顶层）、烧杯 250mL (0.5286,-0.25) 底 0.9205 顶 1.0109
+#     （坐石棉网上）——烧杯内盛水 60mm 高（水面 0.9805，水柱 /World/BeakerWater r0.031 可见）=
+#     **水浴**；试管未来由机械臂从架孔取出浸入烧杯水（熔区 = 烧杯水中央 0.9505）。
+#     火柴 (0.40,-0.3129) 头朝灯芯、灯帽静止位 (0.42,-0.2629)（均随灯 -Y 平移）。
+#     无试管夹、铁架台挂钩隐藏。
+#   效果 prim：BeakerWater（烧杯内水柱，可见）、BeakerBubbles/bubble_{0..29}（水浴气泡×30
+#     r2mm 初始隐藏，环带采样避中心试管+避烧杯壁，加热随温度逐个 reveal、沸腾全亮）、
+#     TubeMelt_{clear,red,blue,green,purple}（试管内熔化液柱 r8mm h20mm 贴管底，初始隐藏，
+#     sample_phase=melted 时揭示一根+隐藏固体）——task 动画驱动。
+usd_path: "assets/scenes/b_thermal/b3s_water_bath/b3s_water_bath.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 温度模型（B3 水浴加热）：点火后烧杯水从室温按 heat_rate 升温（8s，气泡随进度逐个出现），
+# 到达沸点后保持并沸腾（气泡全亮 30 泡）→ sample_phase=melted 时揭示熔化液柱+隐藏固体，
+# 沸腾保持 boil_dwell 5s → cap_lamp（机械臂原位盖帽不移灯；盖帽期间气泡继续沸腾，帽盖到位
+# 火焰熄灭后气泡逐个渐熄）→ done
+# debug_cap_lamp=true：跳过段1（放固体/点火），任务直进 cap_lamp 相，只跑 CapLampPass 盖帽
+room_temp: 25.0            # 室温起始温度（°C）
+heat_rate: 0.15625         # 加热速率（°C/帧；25→100°C 差 75，/0.15625 = 480 帧 = 8s @60fps）
+idle_dwell_frames: 20      # 点火前停留帧数（火焰未亮、温度=室温）
+ignite_dwell_frames: 30    # 点火后停留帧数（火焰亮起到开始升温）
+boil_dwell_frames: 300     # 沸腾保持帧数（300 帧 = 5s @60fps，之后进入 cap_lamp 相盖帽；
+                           #   沸腾期间气泡不熄）
+bubble_fade_frames: 240    # 盖帽灭火后气泡逐渐熄灭帧数（240 帧 = 4s @60fps，30 泡逐个熄灭 → done）
+cap_dwell_frames: 15       # 盖帽到位判定的停留帧数（夹爪距 CAP_BURNER < cap_cover_near 连续
+                           #   15 帧 → cap settled → 火焰熄灭、帽锁灯口）
+cap_result_hold_frames: 120  # 熄火后停留帧数（cap settled 火灭后再停留 120 帧=2s 才 done，
+                           #   视频能看到「盖好+火灭」结果再结束）
+debug_cap_lamp: false     # 调试（2026-08-29 盖帽）：true = 跳过段1放固体+点火，任务直进
+                           #   cap_lamp 相只跑 CapLampPass 原位盖帽（task 端把固体预置管底+
+                           #   火焰点亮）；false = 正常全流程（放固体→点火→加热→盖帽）
+
+# 阶段A 放固体 / 阶段B 点火：夹爪阈值同 B2（GRIP_SOLID=0.0055 贴颗粒、GRIP_MATCH=0.0015 贴杆，
+# 均在 constants.py；config 只暴露判定阈值）。
+grasp_xy_threshold: 0.03      # 进近判定：TCP 距目标点 xy 水平距 < 3cm 视为到达
+gripper_closed_threshold: 0.025   # 夹爪合拢（抓固体/火柴完成 attached）
+gripper_open_threshold: 0.03      # 夹爪松开（放固体/火柴 released）
+
+# 实验结果输入接口（运行前 --result sample_phase=melted --result melt_color=red 等覆盖；
+# task 读各字段顶层镜像）。B3 结果 = 固体加热后是否熔化 + 熔化液色：
+#   sample_phase=melted（熔化，揭示 TubeMelt_<melt_color> 液柱+隐藏固体）/ unchanged（不熔化，
+#   固体保持白颗粒）。melt_color=熔化液色 enum 同 d3l：[clear, red, blue, green, purple]。
+experiment_result:
+  sample_phase:
+    label: "固体加热后是否熔化"
+    type: enum
+    options: [melted, unchanged]
+    default: melted
+  melt_color:
+    label: "熔化后液体颜色"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: clear
+sample_phase: melted   # 顶层镜像键（main.py 无条件写回 cfg.sample_phase，缺则 ConfigKeyError）
+melt_color: clear      # 顶层镜像键（熔化液色，task 读 cfg.melt_color）
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 常规侧视机位（同 B2，加热堆叠中心线 x=0.5286 未变，侧视框住整台）。
+    translation: [0.80, 0.50, 1.35]
+    resolution: [1024, 1024]
+    focal_length: 10
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 特写镜头（从 -Y 朝 +Y 水平拍烧杯水浴+试管熔区：烧杯堆叠现 y=-0.25，camera2 在 -0.75
+    #   = 前方 0.5m 正对，框住烧杯水柱 (0.92-1.01)+未来试管熔区；z=1.00 居中）。
+    # 朝向 [w,x,y,z]=[0.7071,0.7071,0,0]（scipy 验证：前向 R@(0,0,-1)=(0,1,0)=+Y、
+    # 图像上 R@(0,1,0)=(0,0,1)=世界+Z 直立、右向 +X）。用户可后续再调机位。
+    translation: [0.5286, -0.75, 1.00]
+    resolution: [1024, 1024]
+    focal_length: 30
+    orientation: [0.7071, 0.7071, 0.0, 0.0]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    # 仅显示/视频（不在 obs_names，controller._cache_h5 过滤后不进 h5），分辨率不攒缓存
+    resolution: [1024, 1024]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 2026-08-29 复刻 D2-S 机械臂底座 [-0.15, 0.05, 0.71]（用户「把 d2s 所有物品包含机械臂的位置
+  # 复刻过来，这样子挖粉末才不会出错」；D2-S 判据：关键终点相对底座 y ≥0.15 才稳，勿动）。
+  # 挖粉 = D2-S 同款（药匙/皿/粉/试管全 d2s 坐标）。横越走低空 TRANSIT_Z=1.15。
+  position: [-0.15, 0.05, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

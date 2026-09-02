@@ -127,7 +127,7 @@ def add_equip(stage, name, asset, t, scale, rot180=False):
 LIQUID_TOP = TUBE_BOTTOM_Z + 0.052     # 液面高 5.2cm（约 1/3 管）
 LIQUID_R = 0.008                       # 水柱半径 < 管内径 ~0.0085
 COLOR_R = LIQUID_R - 0.0004            # 变色柱半径（d3l 同款：略小于液柱防 z-fight，叠在原液上染下去）
-BUBBLE_R = 0.006                        # 气泡半径（Ø12mm；2026-08-29 调试放大，鲜艳红，排查是否显示问题）
+BUBBLE_R = 0.0025                      # 气泡半径（Ø5mm；正常值，2026-08-29 从调试 Ø12mm 回退）
 # 气泡基准位（2026-08-28 照搬 d3l 真实感改造「中等档」）：40 颗离散小泡，中心盘状区 30 +
 # 近管壁环 10（模拟壁面成核），固定种子可复现。上升动画由 task 动态池驱动（连续生成 +
 # 速度差异 + 蛇形摆动 + 到液面破灭复用），z 全写管底上方 0.012（task 每帧覆盖 z）。
@@ -276,8 +276,8 @@ def add_b2_effects(stage):
         UsdGeom.Imageable(sp).MakeInvisible()
         bub_prims.append(sp.GetPrim())
     add_shared_material(stage, "/World/TestTubeBubbles/bubble_mat",
-                        (0.10, 0.01, 0.01), 1.0, bub_prims, roughness=0.3,
-                        emissive=(2.8, 0.05, 0.05))
+                        (0.72, 0.85, 1.0), 1.0, bub_prims, roughness=0.3,
+                        emissive=(0.7, 1.0, 1.8))
     print(f"[effect] {len(BUBBLE_BASE)} bubbles hidden")
 
 
@@ -645,6 +645,35 @@ def fix_tube_material(st2):
             print(f"[mat] tube glass {c.GetPath()} -> op 0.12 / ior 1.5 / rough 0.25 / doubleSided")
 
 
+def fix_thermo_material(st2):
+    """温度计红液去反光：RedLiquid 材质是亮红 diffuse(0.85) + 强镜面 specular(0.8) +
+    roughness 0.25 光面 —— CylinderLight 12000 下反光成亮斑，camera_2 看不清红色读数
+    （用户 2026-08-29）。照 d2l/flametest 液色配方改：近黑 diffuse + 红单通道主导
+    emissive + 糙面（roughness 1.0）+ 去镜面 specular。红柱自发光透过玻璃管清晰可见、
+    无高光斑。capillary_liquid/bulb_liquid 共用此材质，一改两柱同修。"""
+    mat = st2.GetPrimAtPath("/World/Thermometer/Looks/RedLiquid")
+    if not mat.IsValid():
+        print("[mat] Thermometer RedLiquid not found, skip")
+        return
+    specs = (  # (输入名, 类型, 值)
+        ("diffuseColor", Sdf.ValueTypeNames.Color3f, Gf.Vec3f(0.02, 0.005, 0.005)),
+        ("emissiveColor", Sdf.ValueTypeNames.Color3f, Gf.Vec3f(1.6, 0.40, 0.40)),
+        ("roughness", Sdf.ValueTypeNames.Float, 1.0),
+        ("specularColor", Sdf.ValueTypeNames.Color3f, Gf.Vec3f(0.0, 0.0, 0.0)),
+        ("metallic", Sdf.ValueTypeNames.Float, 0.0),
+    )
+    for c in mat.GetChildren():
+        if c.GetTypeName() != "Shader":
+            continue
+        sh = UsdShade.Shader(c)
+        for n, vt, val in specs:
+            inp = sh.GetInput(n)
+            if not inp:
+                inp = sh.CreateInput(n, vt)
+            inp.Set(val)
+        print(f"[mat] Thermometer RedLiquid -> matte+emissive red ({sh.GetPath()})")
+
+
 def verify(st2):
     """自检：打印各器材世界 bbox，断言垂直堆叠关系：
     铁架台底座贴台面、石棉网坐铁环上（0.4mm 间隙）、试管底坐石棉网上（≤1mm）、
@@ -864,6 +893,7 @@ def main():
     fix_bottle_materials(st2)    # 瓶玻璃透明化（SampleLiquid 液面透出）
     fix_dropper_materials(st2)   # 滴管玻璃透明化（吸起的液体/滴落效果透出）
     fix_tube_material(st2)       # 试管玻璃透明化（滴加液柱/气泡看得清）
+    fix_thermo_material(st2)     # 温度计红液去反光（matte+emissive 红，camera_2 看清读数）
     raise_stand_ring_hook(st2)   # 2026-08-27 铁环/挂钩上移 2cm + 挂钩额外 1cm（网/管/夹已在 EQUIP 常量+RING_RAISE）
     raise_stand_pole(st2)        # 柱加高 POLE_RAISE（挂钩上移后钩卡箍顶逼近柱顶）
     rotate_thermo_stem(st2)      # 2026-08-27 温度计玻璃管绕竖轴 -90°（刻度面转朝 camera_2，挂环不动）

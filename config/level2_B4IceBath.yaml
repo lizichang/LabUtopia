@@ -1,0 +1,105 @@
+name: Level2_B4IceBath
+
+# catalogue 键：b4_ice_bath（工厂注册；task/controller 已实现：
+# 取试管→浸冰浴→归管+洗瓶注水）。运行看 snapshot：
+#   python main.py --config-name level2_B4IceBath --backend gpu --headless --snapshot 2
+task_type: "b4_ice_bath"
+controller_type: "b4_ice_bath"
+
+mode: "collect"
+
+# 场景：b4_ice_bath（B4 冰浴/冷却，桌面 z=0.80，gen_b4_scene.py 生成，2026-08-29 用户定稿）
+# 布局（pxr verify 实测）：
+#   烧杯 beaker.usd (0.45,0.10,0.80) 直立 Ø75×90mm，内装 6 块冰块 ice_cube.usd(1.5cm)
+#     底 0.802 底层 4 块错开 + 二层 0.8135 两块；杯顶 0.8904。
+#   洗瓶 wash_bottle.usd (0.20,0.10,0.80) rot180 红嘴朝 +X 正对烧杯（烧杯正 -X 同 y）。
+#   试管架 test_tube_rack.usd (0.30,0.36,0.8965)；试管 test_tube.usd 近侧左孔
+#     (0.279,0.241,0.806) 口 0.9593，管内预装药品液柱 /World/TubeDrug
+#     (r0.0086 h0.040 中心 0.826，模仿 d3l)。近侧孔=最靠 -Y 机器人侧（2026-08-30
+#     用户「够不到→放 -y 侧」，原 +y 远孔 0.476 夹取 IK FAIL）。
+#   无温度计/试管夹/加热堆叠。玻璃透明化 op0.12（冰块/药品透出）。
+usd_path: "assets/scenes/b_thermal/b4_ice_bath/b4_ice_bath.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+# 实验现象终端接口（experiment_result 框架，main.py resolve_experiment_results：
+# CLI --result 字段=值 > 交互询问 > default，写回顶层镜像字段）。B4 冷却两输入：
+#   liquid_color  溶液颜色（冷却前澄清液 / 冷却后浑浊液都取此色）
+#   crystal_color 晶体颜色（none=不析出晶体，只浑浊）
+experiment_result:
+  liquid_color:
+    label: "溶液颜色（clear=无色/白/红/蓝/绿/紫）"
+    type: enum
+    options: [clear, white, red, blue, green, purple]
+    default: clear
+  crystal_color:
+    label: "晶体颜色（none=不析出晶体，只浑浊）"
+    type: enum
+    options: [none, white, red, blue, green, purple]
+    default: white
+
+liquid_color: clear
+crystal_color: white
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 中景侧视，沿用 d3s/d3l 同款取景四元数 [0.38519,...]（d2/d3/b1 共享），位置取
+    # d3l (0.50,0.30,1.15)：光轴落表高 (0.33,0.20)≈B4 工作区中心（烧杯 0.45,0.10 +
+    # 洗瓶 0.20,0.10 + 试管架 0.30,0.36），focal 17 框住散布。勿用 B3 机位
+    # (0.80,0.50,1.35)——黑桌+透明烧杯 122° 鱼眼全黑。
+    translation: [0.80, 0.60, 1.55]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 俯视总览，学 d3l（用户 08-29 定稿）：照抄 d3l 的 camera_2
+    # (0.26,-0.06,1.24) f17 [0.9425,...]——宽视野俯视看整个场景布局。
+    # 若黑桌曝光黑，按用户反馈再调位置/角度。
+    translation: [0.26, -0.06, 1.84]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    # 仅显示/视频（不在 obs_names，controller._cache_h5 过滤后不进 h5），分辨率不攒缓存
+    resolution: [1024, 1024]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 [-0.25, -0.10, 0.71] = 原 [-0.15, 0.05, 0.71] 往 -y 移 15cm、往 -x 移 10cm
+  # （用户 08-29 定稿，为取试管→插冰浴留操作空间）。
+  position: [-0.10, -0.40, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

@@ -3,7 +3,7 @@
 MoveAction 带 dwell：移到 FLAME_APPROACH/FLAME_HOLD 后冻结停留，贴合物理
 （火焰灼烧不是掠过，需持续停留）。
 """
-from ._base import BaseMetaAction, mv
+from controllers.flametest_meta_actions._base import BaseMetaAction, mv
 from .constants import FLAME_APPROACH, FLAME_HOLD, COOL_POS
 
 

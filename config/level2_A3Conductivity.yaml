@@ -43,29 +43,49 @@ grasp_xy_threshold: 0.03        # 夹爪距抓点多近算"到位"
 gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
 gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
 
+# 实验结果输入接口（运行前 --result conductivity=1.413 等；task 读 cfg.conductivity → 选对应
+# 预烘焙读数屏）。屏幕读数由输入决定（A1 nD 同款：headless 下运行时改材质不渲染 → gen 预烘焙
+# 每档一张贴图 + 一个 ScreenGlow_<key> prim，task 按 cfg.conductivity 只 show 一个）。档位须与
+# meta_actions/constants.py 与 scripts/gen_a3_scene.py 的 CONDUCTIVITY_OPTIONS 三处一致，勿单边改。
+experiment_result:
+  conductivity:
+    label: "电导率读数（mS/cm，显示屏显示值）"
+    type: enum
+    options: ["0.012", "0.250", "1.413", "12.88"]
+    default: "1.413"
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# 引号必须保留——"0.012"/"1.413" 是字符串 key 前缀；YAML 浮点 0.012 会变 0.012，str() 对不上档位。
+conductivity: "1.413"
+
 task:
   max_steps: 30000
   obj_paths: []   # 器材静态摆放，无需随机化
 
 cameras:
-  # camera1：俯视全景——器材跨 x[-0.76,0.78] y[-0.63,0.46]，高位俯拍看全站间距
-  #（复用 d3s camera2 的近俯视朝向；机位/朝向待用户目检微调）
+  # camera1：顶部斜视（同 d3l camera1，2026-08-30 用户「像 d3l 中 camera1 一样的顶部斜视视角」）：
+  # 机位 (0.50,0.30,1.15) 朝桌面工作区俯看（pitch≈52°），focal 17 框住站区
   - prim_path: "/World/Camera1"
     name: "camera_1"
-    translation: [0.10, 0.05, 2.10]
+    translation: [0.80, 0.50, 1.55]
     resolution: [512, 512]
-    focal_length: 12
-    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    focal_length: 17
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
     image_type: "rgb"
 
-  # camera2：直拍电导率仪显示屏（用户要看读数，同 a1/a2）：机位 (0.05,0.75,1.25) 在
-  # +y 屏前朝 -y，focal 35 让屏幕占画面
+  # camera2：正对导电率仪屏幕（2026-08-30 用户「调整到正对设备屏幕，能看到结果」+「逆时针
+  # 旋转90度」）：屏幕中心 (0.3355,-0.265,0.858) 朝 -X（front 面，世界 y[-0.338,-0.192]
+  # z[0.828,0.888]），机位放 -X 侧 0.35m、同一 y/z 水平正对（look +X）。orientation [w,x,y,z]
+  # scalar-first、camera_axes="usd" 直接写 prim（同 A1 camera2）。首版 [0.7071,0,-0.7071,0]=
+  # 绕Y -90°→相机 -Z 朝 +X 但 up=+Y（世界 up 是 +Z，故画面横躺90°）；改 [0.5,0.5,-0.5,-0.5]
+  # = up 换 +Z（绕视轴 +X 逆时针滚90°），屏幕宽(Y)横、高(Z)竖、文字直立不镜像。focal 12→35
+  # 让屏幕占画面 ~70%（水平 FOV 33.3°、0.35m 视场宽 0.21m、屏宽 0.146m）。
   - prim_path: "/World/Camera2"
     name: "camera_2"
-    translation: [0.05, 0.75, 1.25]
+    translation: [-0.0145, -0.265, 0.858]
     resolution: [512, 512]
     focal_length: 35
-    orientation: [0.0, 0.0, 0.4099, 0.9122]
+    orientation: [0.5, 0.5, -0.5, -0.5]
     image_type: "rgb"
 
   - prim_path: "/World/Franka/panda_hand/arm_camera"
@@ -75,10 +95,10 @@ cameras:
 
 robot:
   type: "franka"
-  # 底座 (-0.10,0.12,0.71)：2026-08-29 洗瓶 ORIENT_FWD 水平横夹在 z=0.88 卡住
-  # （②③⑥⑦ force-done、⑦ IK FAIL）→ 底座往 -X 挪 10cm 给臂更多前伸空间。
+  # 底座 (-0.10,-0.03,0.71)：2026-08-29 洗瓶 ORIENT_FWD 水平横夹在 z=0.88 卡住
+  # （②③⑥⑦ force-done、⑦ IK FAIL）→ 底座往 -X 挪 10cm、再往 -Y 挪 15cm 给臂更多前伸空间。
   # 挪后最远抓点 玻璃棒顶 3D 0.75m ≤ 0.855m 臂展，仍够得着。
-  position: [-0.10, 0.12, 0.71]
+  position: [-0.10, -0.03, 0.71]
 
 collector:
   type: "default"

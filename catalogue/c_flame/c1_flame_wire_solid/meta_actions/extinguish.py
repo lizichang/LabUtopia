@@ -3,7 +3,7 @@
 修 bug3：灯帽从桌面 rest（CAP_GRASP 0.824）取，不是在空中比划；
 盖灭在 CAP_BURNER 扣灯口后开爪释放，task 灭焰 + cap 锁灯口。
 """
-from ._base import BaseMetaAction, mv, grip, hold
+from controllers.flametest_meta_actions._base import BaseMetaAction, mv, grip, hold
 from .constants import (H, SETTLE, GRIP_OPEN, GRIP_CAP,
                         WIRE_GRASP, WIRE_XY, WIRE_LIFT,
                         CAP_GRASP, CAP_HIGH, CAP_BURNER)

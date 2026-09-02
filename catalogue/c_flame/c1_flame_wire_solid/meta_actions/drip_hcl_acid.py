@@ -3,7 +3,7 @@
 修 bug2：滴管取走后先垂直提出架再平移。
 修 bug5：E 段从桌面真实塞位(STO_DESK 0.810)再抓起，不再空爪回瓶口瞬移。
 """
-from ._base import BaseMetaAction, mv, grip, hold
+from controllers.flametest_meta_actions._base import BaseMetaAction, mv, grip, hold
 from .constants import (H, SETTLE, GRIP_OPEN, GRIP_STOPPER, GRIP_DROPPER,
                         STO_GRASP, STO_DESK, DROP_GRASP, DROP_LIFT,
                         HCL_DIP, DISH_DRIP)

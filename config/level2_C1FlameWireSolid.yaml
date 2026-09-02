@@ -1,7 +1,7 @@
-name: Level2_FlameTest
+name: Level2_C1FlameWireSolid
 
-task_type: "flametest"
-controller_type: "flametest"
+task_type: "c1_flame_wire_solid"
+controller_type: "c1_flame_wire_solid"
 
 mode: "collect"
 
@@ -25,7 +25,7 @@ infer:
   timeout: 30
   max_retries: 3
 
-# ---- 器材路径（FlameTestTask 使用，均为 /World 下顶层 prim）----
+# ---- 器材路径（C1FlameWireSolidTask 使用，均为 /World 下顶层 prim）----
 dish_path: "/World/SampleDish"          # 表面皿（v24：固定于 (0.20,0.02,0.80)）
 hcl_path: "/World/HClBottle"            # 稀盐酸瓶（P2 旋塞 / P5 蘸酸）
 dropper_path: "/World/Dropper"          # 胶头滴管（P3 吸酸滴 2-3 滴）
@@ -69,7 +69,7 @@ cameras:
     # v30.2 中景+广角：用户反馈"视野调大"。focal 40->28（FOV ~48°->~66°），
     # 眼位/朝向不变，同框容纳灯+皿+试管架更多全局上下文。原 focal40 太窄、
     # 只能看到灯+皿；原 (0.75,0.3,1.35)@focal14 灯仅 ~16px 又太小。
-    translation: [0.50, 0.30, 1.15]
+    translation: [0.80, 0.50, 1.55]
     resolution: [512, 512]
     focal_length: 10
     orientation: [0.38519, 0.13095, 0.29403, 0.86489]

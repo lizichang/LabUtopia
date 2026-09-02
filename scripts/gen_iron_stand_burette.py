@@ -8,8 +8,10 @@
 - 源：assets/equipment/iron_stand.usd（共享资产，勿改）→ 复制到新文件再编辑
 - 删除：/root/root/ring（大铁环总成）、/root/root/hook（挂钩）、/root/env_light
   （DomeLight，深灰 1×1 贴图会压黑）、孤儿材质（ring/arm/clamp/hook_*）
+- 竖杆加高：源 iron_stand 竖杆仅 450mm，滴定场景须夹住整支滴定管（颈 local z≈0.53）
+  且管尖落在锥形瓶口上方 3cm → extend_pole() 把竖杆顶端从 0.46 拉到 POLE_TOP=0.78
 - 内联箍环：用 gen_burette_ring_clamp 的 build() 生成网格，写入
-  /root/root/BuretteRingClamp/{collar,arm,ring} + 各材质，组 translate z=0.15
+  /root/root/BuretteRingClamp/{collar,arm,ring} + 各材质，组 translate z=MOUNT_Z=0.725
   （甜甜圈套竖杆，环在 +X 侧 x=0.113）
 
 用法: python gen_iron_stand_burette.py
@@ -23,7 +25,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "assets", "equipment", "iron_stand.usd")
 DST = os.path.join(REPO, "assets", "equipment", "iron_stand_burette.usd")
 
-MOUNT_Z = 0.15   # 箍环安装高度（竖杆 z 0.01..0.46）
+POLE_TOP = 0.78    # 竖杆加高后的顶端 z（原 0.46m 太短，夹不住整支滴定管、管尖够不到锥形瓶）
+MOUNT_Z = 0.725   # 箍环安装高度（25mL 滴定管颈 local z≈0.53 对齐箍环 → 管尖落 ~0.995）
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from obj_gen import MeshBuilder          # noqa: E402
@@ -58,6 +61,36 @@ def add_clamp_meshes(stage, obj_path):
         UsdShade.MaterialBindingAPI(mesh).Bind(mat)
 
 
+def extend_pole(stage, pole_path="/root/root/pole/pole_002", bottom=0.010, top=POLE_TOP):
+    """竖杆（12×12 方杆）沿 z 拉伸到底=bottom、顶=top：底端贴底座不动，顶端抬升。
+
+    源 iron_stand 竖杆 450mm（z 0.010..0.460）对滴定场景太短——滴定管须夹在颈部
+    （local z≈0.53）而管尖还要落在锥形瓶口上方 3cm，箍环得装到 ~0.725m，竖杆须 ≥0.78m。
+    统一 z 拉伸（z_new = bottom + (z-bottom)*k）只拉长、不变截面，方杆顶部平移到 top。
+    """
+    from pxr import UsdGeom, Vt, Gf
+    mesh = stage.GetPrimAtPath(pole_path)
+    assert mesh and mesh.IsA(UsdGeom.Mesh), f"{pole_path} 缺失"
+    attr = mesh.GetAttribute("points")
+    pts = attr.Get()
+    zs = [p[2] for p in pts]
+    z_min, z_max = min(zs), max(zs)
+    assert abs(z_min - bottom) < 1e-3, f"竖杆底 {z_min} 与预期 {bottom} 不符"
+    k = (top - bottom) / (z_max - bottom)
+    is_double = isinstance(pts[0], Gf.Vec3d)
+    new_pts = [Gf.Vec3d(p[0], p[1], bottom + (p[2] - bottom) * k) for p in pts]
+    attr.Set(new_pts if is_double else Vt.Vec3fArray(
+        [Gf.Vec3f(p[0], p[1], p[2]) for p in new_pts]))
+    # 同步 extent：BBoxCache 读 extent 而非 points（stale extent 会让 bound 仍是旧高 0.46）
+    xs = [p[0] for p in new_pts]
+    ys = [p[1] for p in new_pts]
+    zs_new = [p[2] for p in new_pts]
+    UsdGeom.Mesh(mesh).CreateExtentAttr().Set(Vt.Vec3fArray([
+        Gf.Vec3f(min(xs), min(ys), min(zs_new)),
+        Gf.Vec3f(max(xs), max(ys), max(zs_new)),
+    ]))
+
+
 def main():
     shutil.copy(SRC, DST)
     stage = None
@@ -69,6 +102,7 @@ def main():
     for path in DEL_MATS:
         if stage.GetPrimAtPath(path):
             stage.RemovePrim(path)
+    extend_pole(stage)   # 竖杆加高到 POLE_TOP（滴定场景须夹住整支滴定管）
     # 生成箍环网格（内联，不走引用）
     mb = MeshBuilder()
     clamp_mod.build(mb)
@@ -88,6 +122,11 @@ def verify(dst):
     stage = Usd.Stage.Open(dst)
     assert stage.GetPrimAtPath("/root/root/base/base_002").IsA(UsdGeom.Mesh)
     assert stage.GetPrimAtPath("/root/root/pole/pole_002").IsA(UsdGeom.Mesh)
+    # 竖杆加高校验（顶端须到 POLE_TOP、底端贴底座 0.010）
+    _bbox = UsdGeom.BBoxCache(Gf.TimeCode(0.0), [UsdGeom.Tokens.default_])
+    p_rng = _bbox.ComputeWorldBound(stage.GetPrimAtPath("/root/root/pole/pole_002")).ComputeAlignedRange()
+    assert abs(p_rng.GetMin()[2] - 0.010) < 1e-3, f"竖杆底 {p_rng.GetMin()[2]} 偏离 0.010"
+    assert abs(p_rng.GetMax()[2] - POLE_TOP) < 1e-3, f"竖杆顶 {p_rng.GetMax()[2]} 未到 {POLE_TOP}"
     for path in DEL_PRIMS:
         assert not stage.GetPrimAtPath(path), f"未删除 {path}"
     # 箍环内联（无引用）且已到位

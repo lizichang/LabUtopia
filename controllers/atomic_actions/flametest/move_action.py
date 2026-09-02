@@ -51,11 +51,17 @@ class MoveAction:
     """
 
     def __init__(self, engine, pos, dwell=0, label="", orient=None, linewalk=True,
-                 orient_eps=None):
+                 orient_eps=None, freeze_dist=0.010, timeout=None):
         self.engine = engine
         self.pos = np.asarray(pos, dtype=float)
         self.dwell = int(dwell)
         self.label = label
+        # 冻结距离阈值（m，默认 1cm）：吸附式抓取（试管/火柴/灯帽低 z IK 死区）传 0.03，
+        # 与 task 侧 near 判定一致——机械臂到 near 范围即 freeze，不 force-done 25 秒。
+        # 超时预算（帧）：None=全局 FORCE_DONE_BUDGET(1500)；近奇异低 z 下探/横移传
+        # 更小值（如 240=4s）快速放弃到位，靠 near 吸附兜底，避免「卡住不动」。
+        self._freeze_dist = float(freeze_dist)
+        self._timeout = None if timeout is None else int(timeout)
         # 可选朝向（w,x,y,z）：None 沿用引擎默认（手指朝下）；显式传时解 IK
         # 目标朝向 + 冻结需朝向收敛（原地转水平时位置已到、朝向仍在解）
         self.orient = orient
@@ -152,7 +158,7 @@ class MoveAction:
             if self._rot_target is not None:
                 _, fk_rot = self.engine.fk_pose(cur)
                 orient_ok = rot_angle(fk_rot, self._rot_target) < self._orient_eps
-            if dist3d < 0.010 and orient_ok:
+            if dist3d < self._freeze_dist and orient_ok:
                 self._arrived += 1
             else:
                 self._arrived = 0
@@ -161,9 +167,11 @@ class MoveAction:
                 print(f"[flametest] freeze at tgt={np.round(self.pos, 3)} "
                       f"gripper={np.round(gripper_pos, 3)} dist3d={dist3d:.4f}")
                 self._hold = 0
-        if not self._done and self._frame >= self.dwell + FORCE_DONE_BUDGET:
+        budget = self._timeout if self._timeout is not None else FORCE_DONE_BUDGET
+        if not self._done and self._frame >= self.dwell + budget:
             print(f"[flametest] move force-done t={self._frame} (dwell={self.dwell}) "
-                  f"target={np.round(self.pos, 3)}")
+                  f"target={np.round(self.pos, 3)} gripper={np.round(gripper_pos, 3)} "
+                  f"dist={dist3d:.4f}")
             self._done = True
         return ArticulationAction(joint_positions=target)
 

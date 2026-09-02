@@ -3,7 +3,7 @@
 在 _build_actions 里展开成固定原子动作列表——序列是确定的，不是运行时循环，
 因此 reset() 语义与其它元动作一致（从头重跑整串）。
 """
-from ._base import BaseMetaAction, mv
+from controllers.flametest_meta_actions._base import BaseMetaAction, mv
 from .constants import (H, ACID_DIP, FLAME_APPROACH, FLAME_HOLD, COOL_POS)
 
 

@@ -2,7 +2,7 @@
 
 修 bug1：取火柴用原地 GripAction，避免低 z 抓点驱动 IK 追位置。
 """
-from ._base import BaseMetaAction, mv, grip, hold
+from controllers.flametest_meta_actions._base import BaseMetaAction, mv, grip, hold
 from .constants import (H, SETTLE, GRIP_OPEN, GRIP_MATCH,
                         MATCH_GRASP, MATCH_HIGH, IGNITE)
 

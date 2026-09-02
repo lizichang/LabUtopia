@@ -9,7 +9,7 @@ v44 分层重构（贴合物理规律：无瞬移、无空抓、无悬空、无�
 
 保留 v21-v43 已验证的行为契约：Lula IK 求解 + FK 验证 + 关节钳制 + 到达冻结 +
 dwell 停留 + 夹爪每帧显式发送（v41）；_step_infer / is_success / get_language_instruction
-/data_collector 接口不变，factory 注册名 "flametest" 不变。
+/data_collector 接口不变，factory 注册名改为 "c1_flame_wire_solid"（本次统一命名）。
 """
 import os
 import numpy as np
@@ -19,16 +19,16 @@ from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.rotations import euler_angles_to_quat
 from isaacsim.core.utils.extensions import get_extension_path_from_name
 
-from .base_controller import BaseController as TaskBaseController
-from .atomic_actions.flametest import IkMotionEngine
-from .flametest_meta_actions import (
+from controllers.base_controller import BaseController as TaskBaseController
+from controllers.atomic_actions.flametest import IkMotionEngine
+from .meta_actions import (
     OpenHclStopper, DripHclAcid, IgniteLamp, DipWireAcid, BurnClean,
     RepeatDipBurn, Cool, DipPowder, BurnStain, Extinguish,
 )
-from .flametest_meta_actions.constants import GRIP_OPEN
+from .meta_actions.constants import GRIP_OPEN
 
 
-class FlameTestTaskController(TaskBaseController):
+class C1FlameWireSolidTaskController(TaskBaseController):
     """Composite controller: 整个实验 = 10 个元动作的顺序执行。"""
 
     def __init__(self, cfg, robot):

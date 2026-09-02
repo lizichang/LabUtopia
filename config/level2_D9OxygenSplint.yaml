@@ -1,0 +1,97 @@
+name: Level2_D9OxygenSplint
+
+task_type: "d9_oxygen_splint"
+controller_type: "d9_oxygen_splint"
+
+mode: "collect"
+
+# 场景：d9_oxygen_splint（D9 氧气检验·带火星木条复燃，桌面 z=0.80）
+# 台面（2026-09-01 pxr 实测世界 bbox，gen_d9_oxygen_splint_scene.py verify；复用 B2 点火/摘帽
+# 坐标，机器人底座同 B2 [0.0,-0.08,0.71]）：
+#   酒精灯 (0.5286,0.0029) 灯芯顶 0.9005 火焰底 0.891（帽在灯上，运行时摘）
+#   火柴   (0.40,-0.06,0.813) 头 +X 朝灯芯
+#   木条   (0.27,0.25,0.813) Ø6mm×150mm 轴 +X，点燃端 0.42
+#   试管架 (0.50,0.35) 顶板 0.917
+#   氧气试管 (0.519,0.389) 竖立插右列中排孔，底 0.806 口 0.959（氧气预收集、无色）
+#   最远抓点：悬停夹爪 (0.409,0.389,0.974) → 距底座 √(0.409²+0.469²+0.264²)≈0.68m，0.855m 臂展内
+usd_path: "assets/scenes/d_wetchem/d9_oxygen_splint/d9_oxygen_splint.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s/d3l/d6/d7 一致）
+grasp_xy_threshold: 0.03        # 夹爪距抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+
+# 实验结果输入接口（运行前 --result oxygen_result=reignite；task 读 cfg.oxygen_result）
+# 氧气检验结果：reignite=木条余烬复燃（检出氧气）；negative=不复燃（非氧气）。
+experiment_result:
+  oxygen_result:
+    label: "木条是否复燃（氧气检验结果）"
+    type: enum
+    options: [reignite, negative]
+    default: reignite
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.oxygen_result。
+oxygen_result: reignite
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 前侧拉远俯拍整个工作区（工作区中心 ≈(0.45,0.15,0.85)，复用 D7 相机朝向，平移对中 D9）。
+    translation: [0.45, 0.95, 1.40]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.0, 0.0, 0.46726, 0.88412]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 顶部俯视，对中工作区中心，up=+Y（复用 D7）。
+    translation: [0.45, -0.05, 1.30]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.98374, 0.17962, 0.0, 0.0]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [1024, 1024]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 (0.0,-0.08)：D9 复用 B2 点火/摘帽坐标（酒精灯 0.5286,0.0029、火柴 0.40,-0.06、
+  # 灯帽 0.42,-0.01），故底座必须照 B2 的 [0.0,-0.08,0.71]（不是 D2-S 的 [-0.15,0.05,0.71]）。
+  # 用 [-0.15,0.05] 时火柴 y=-0.06 落在底座 y=0.05 之后 11cm（臂后盲区）→ IK FAIL 磨 1500 帧
+  # （"卡很久"根因）。B2 底座 y=-0.08 使火柴在底座前 2cm，全部抓点可达（最远悬停夹爪 0.676m、
+  # 火柴高位 0.777m < 臂展 0.855m）。
+  position: [0.0, -0.08, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

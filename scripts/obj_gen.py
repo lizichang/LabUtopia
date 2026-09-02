@@ -177,6 +177,49 @@ class MeshBuilder:
                 d = v0 + (i + 1) * segments + j
                 self._add_quad(a, b, c, d, group)
 
+    # -- 扫掠管（沿折线扫半径 r 的圆截面，玻璃弯管/侧管用）
+    def sweep_tube(self, pts, r, segments, group, close_start=False, close_end=False):
+        """沿折线 pts（3D 点列）扫掠半径 r 的圆截面管。
+        每个中心线点一个圆环（环面法向=该点切向），环间连四边形，弯头平滑无裂缝。
+        平面 XZ 曲线（y=0）参考轴取 Y，环不会扭转；close_start/close_end 给端盖。"""
+        pts = [np.array(p, dtype=float) for p in pts]
+        n = len(pts)
+        tans = []
+        for i in range(n):
+            a = pts[max(i - 1, 0)]
+            b = pts[min(i + 1, n - 1)]
+            t = b - a
+            ln = np.linalg.norm(t)
+            tans.append(t / ln if ln > 1e-12 else np.array([0.0, 0.0, 1.0]))
+        rings = []
+        for i in range(n):
+            t = tans[i]
+            ref = np.array([0.0, 1.0, 0.0]) if abs(np.dot(t, (0.0, 1.0, 0.0))) < 0.98 \
+                else np.array([0.0, 0.0, 1.0])
+            u = np.cross(t, ref)
+            u = u / (np.linalg.norm(u) + 1e-12)
+            w = np.cross(t, u)
+            w = w / (np.linalg.norm(w) + 1e-12)
+            ring = []
+            for j in range(segments):
+                th = 2 * np.pi * j / segments
+                nrm = np.cos(th) * u + np.sin(th) * w
+                ring.append(self._add_vert(pts[i] + r * nrm, nrm))
+            rings.append(ring)
+        for i in range(n - 1):
+            for j in range(segments):
+                j2 = (j + 1) % segments
+                self._add_quad(rings[i][j], rings[i][j2], rings[i + 1][j2], rings[i + 1][j], group)
+        def _disc(idx):
+            c = self._add_vert(tuple(pts[idx]), tuple(tans[idx]))
+            for j in range(segments):
+                j2 = (j + 1) % segments
+                self._add_tri(rings[idx][j], rings[idx][j2], c, group)
+        if close_start:
+            _disc(0)
+        if close_end:
+            _disc(n - 1)
+
     # -- 输出 OBJ
     def to_obj(self, groups_order):
         lines = []

@@ -103,6 +103,10 @@ def parse_args():
                        help='焰色反应现象火焰颜色（= --result flame_color=<值> 的快捷写法）')
     parser.add_argument('--snapshot', type=int, default=0,
                        help='Save N frames as PNG images and exit (quick visual check, no video)')
+    parser.add_argument('--snapshot-warmup', type=int, default=12,
+                       help='Snapshot 模式抓帧前预热的 render step 数：静态相机（非臂相机）在 '
+                            'task.reset() 末尾才 initialize，首个 render step 时 RTX 传感器尚未产出 '
+                            '首帧 → get_rgb() 全零 → 空帧（曾导致 camera_1/2 快照时好时坏全黑）。')
     return parser.parse_args()
 
 # Get command line arguments
@@ -260,7 +264,15 @@ def main():
     
     video_writer = None
     task.reset()
-    
+
+    # --snapshot 模式：静态相机（camera_1/2）在 task.reset() 末尾才 initialize，首个
+    # world.step(render=True) 时 RTX 传感器尚未渲染出帧 → get_rgb() 返回全零 → 空帧 PNG
+    # （B4 快照 camera_1/2 偶发全黑根因；臂相机 camera_3 在机器人设置期已渲染多帧所以总正常）。
+    # 预热 N 个 render step 让所有相机传感器都产出至少一帧后再抓帧。视频模式不受影响。
+    if args.snapshot > 0:
+        for _ in range(args.snapshot_warmup):
+            world.step(render=True)
+
     # --snapshot 模式：只抓 N 帧 PNG 就退出，不生成视频
     snapshot_count = 0
     snapshot_dir = None

@@ -42,7 +42,8 @@ catalogue/
 |---|---|---|---|---|
 | B1 | `b_thermal/b1_alcohol_heat_solid/` | 酒精灯加热（固体样品） | 单动作 | 待开发 |
 | B2 | `b_thermal/b2_alcohol_heat_liquid/` | 酒精灯加热（液体/沸点测定） | 单动作 | 待开发 |
-| B3 | `b_thermal/b3_water_bath/` | 水浴加热 | 单动作 | 待开发 |
+| B3S | `b_thermal/b3s_water_bath/` | 水浴加热（固体熔化） | 单动作 | 已填（B3 改名，挖粉→水浴加热→熔化） |
+| B3L | `b_thermal/b3l_water_bath/` | 水浴加热（液体变色） | 单动作 | 已填（滴加溶液→水浴加热→渐变变色） |
 | B4 | `b_thermal/b4_ice_bath/` | 冰浴/冷却 | 单动作 | 待开发 |
 | B5 | `b_thermal/b5_melting_point/` | 熔点测定（毛细管法） | 单动作 | 待开发 |
 
@@ -50,12 +51,12 @@ catalogue/
 
 | 编号 | 目录 | 名称 | 类型 | 状态 |
 |---|---|---|---|---|
-| C1 | `c_flame/c1_flame_wire_solid/` | 焰色反应（铂丝蘸取固体） | 单动作 | 已填（复用 flametest） |
+| C1 | `c_flame/c1_flame_wire_solid/` | 焰色反应（铂丝蘸取固体） | 单动作 | 已填 |
 | C2 | `c_flame/c2_cobalt_glass/` | 焰色反应（隔钴玻璃观察） | 单动作 | 待开发（需钴玻璃场景，现有 flametest 不含） |
 | C3 | `c_flame/c3_combustion_solid/` | 燃烧试验（固体） | 单动作 | 待开发 |
 | C4 | `c_flame/c4_combustion_liquid/` | 燃烧试验（液体） | 单动作 | 待开发 |
 
-### D 湿化学 (23) —— 无 D1
+### D 湿化学 (20) —— 无 D1
 
 | 编号 | 目录 | 名称 | 类型 | 状态 |
 |---|---|---|---|---|
@@ -65,8 +66,6 @@ catalogue/
 | D3-L | `d_wetchem/d3l_acid_reagent/` | 酸性试剂滴加反应（液） | 单动作 | 模板 → dropperdrip |
 | D4-S | `d_wetchem/d4s_alkali_reagent/` | 碱性试剂滴加反应（固） | 单动作 | 模板 → dropperdrip |
 | D4-L | `d_wetchem/d4l_alkali_reagent/` | 碱性试剂滴加反应（液） | 单动作 | 模板 → dropperdrip |
-| D5-S | `d_wetchem/d5s_precipitation/` | 沉淀检测试剂滴加（固） | 单动作 | 模板 → dropperdrip |
-| D5-L | `d_wetchem/d5l_precipitation/` | 沉淀检测试剂滴加（液） | 单动作 | 模板 → dropperdrip |
 | D6-S | `d_wetchem/d6s_redox/` | 氧化还原试剂滴加（固） | 单动作 | 模板 → dropperdrip |
 | D6-L | `d_wetchem/d6l_redox/` | 氧化还原试剂滴加（液） | 单动作 | 模板 → dropperdrip |
 | D7-S | `d_wetchem/d7s_organic_qual/` | 有机定性试剂滴加（固） | 单动作 | 模板 → dropperdrip |
@@ -75,13 +74,12 @@ catalogue/
 | D8-L | `d_wetchem/d8l_complex_color/` | 络合/显色试剂滴加（液） | 单动作 | 模板 → dropperdrip |
 | D9-S | `d_wetchem/d9s_gas_indicator/` | 气体检测/指示剂滴加（固） | 单动作 | 模板 → dropperdrip |
 | D9-L | `d_wetchem/d9l_gas_indicator/` | 气体检测/指示剂滴加（液） | 单动作 | 模板 → dropperdrip |
-| D10 | `d_wetchem/d10_solid_reagent_add/` | 固体试剂添加反应（液） | 单动作 | 待开发 |
 | D6 | `d_wetchem/d6_testpaper_gas/` | 试纸气体检测 | 单动作 | 待开发 |
 | D12 | `d_wetchem/d12_testpaper_gas2/` | 试纸气体检测（另一类型） | 单动作 | 待开发 |
 | D13 | `d_wetchem/d13_multi_drip/` | 多步试剂连续滴加反应 | 复合 | 待开发 |
 | D14 | `d_wetchem/d14_virtual_tube/` | 同管多试剂串联（VirtualTube） | 链式宏 | 待开发 |
-| D15 | `d_wetchem/d15_acid_base_titration/` | 酸碱滴定 | 双臂协同 | 待开发 |
-| D16 | `d_wetchem/d16_distillation/` | 蒸馏分离 | 低优先级 | 待开发 |
+| D1 | `d_wetchem/d1_acid_base_titration/` | 酸碱滴定 | 双臂协同 | 待开发 |
+| D5 | `d_wetchem/d5_distillation/` | 蒸馏分离 | 低优先级 | 待开发 |
 
 ### E 物理检测 (4)
 
@@ -92,13 +90,13 @@ catalogue/
 | E3 | `e_physical/e3_density/` | 密度测定 | 单动作 | 待开发 |
 | E4 | `e_physical/e4_weighing/` | 称量（独立操作） | 单动作 | 待开发 |
 
-**合计：39 个动作**（A3 + B5 + C4 + D23 + E4）。
+**合计：36 个动作**（A3 + B5 + C4 + D20 + E4）。
 
 ## 已有实现映射（不迁移，原样保留）
 
 | v10 动作 | 现有实现（config / task / controller） |
 |---|---|
-| C1 焰色反应（铂丝蘸取固体） | `config/level2_FlameTest.yaml` + `tasks/flametest_task.py` + `controllers/flametest_controller.py`（catalogue 已填，见 `c_flame/c1_flame_wire_solid/`） |
+| C1 焰色反应（铂丝蘸取固体） | `config/level2_C1FlameWireSolid.yaml` + `catalogue/c_flame/c1_flame_wire_solid/{task,controller,meta_actions}/` |
 | D3-D9 试剂滴加模板 | `config/level2_DropperDrip.yaml` + `tasks/dropperdrip_task.py` + `controllers/dropperdrip_controller.py` |
 | B 类加热（近 B2） | `config/level2_HeatLamp.yaml` + `tasks/heatlamp_task.py` + `controllers/heatlamp_controller.py` |
 | 点火前置（B/C 类共用） | `config/level2_IgniteLamp.yaml` + `tasks/ignitelamp_task.py` + `controllers/ignitelamp_controller.py` |
@@ -106,15 +104,15 @@ catalogue/
 > **C2（隔钴玻璃观察）说明**：现有 flametest 场景与流程**不含钴玻璃**（已 grep 确认无 cobalt 引用）。
 > 隔钴玻璃观察需要新场景（钴玻璃片 + 观察步骤，用于滤黄焰以辨 K 紫），C2 归为待开发。
 
-## catalogue 内已填动作的运行方式
+## 已填动作的运行方式
 
-每个已填动作目录含自包含 `config.yaml`（键 = 目录 snake_case，工厂已注册），直接：
+每个已填动作在 `config/level2_*.yaml` 对应一份（键 = 目录 snake_case，工厂已注册），直接：
 
 ```bash
-python main.py --config-dir catalogue/c_flame/c1_flame_wire_solid --config-name config --backend gpu
+python main.py --config-dir config --config-name level2_C1FlameWireSolid --backend gpu
 ```
 
-原 `config/level2_*.yaml`（键如 `flametest`）继续可用，两条路径指向同一实现类。
+所有动作统一走 `config/level2_*.yaml`，不再保留 catalogue 内的自包含 `config.yaml`。
 
 ## 新增动作流程
 

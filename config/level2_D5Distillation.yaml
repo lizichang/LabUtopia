@@ -1,0 +1,95 @@
+name: Level2_D5Distillation
+
+task_type: "d5_distillation"
+controller_type: "d5_distillation"
+
+mode: "collect"
+
+# 场景：d5_distillation（D5 蒸馏分离·预组装装置+机械臂仅点火收集，桌面 z=0.80）
+# 台面（2026-09-02 pxr 实测世界 bbox，gen_d5_scene.py verify；酒精灯/火柴复用 B2/D9 坐标，
+# 机器人底座同 B2 [0.0,-0.08,0.71]）：
+#   酒精灯 (0.5286,0.0029) 灯芯顶 0.9005 火焰底 0.891（灯帽已挪桌面静止位 (0.42,-0.01)）
+#   三脚架 (0.5286,0.0029) 环顶 0.955 → 石棉网 (0.5286,0.0029,0.956) → 蒸馏烧瓶底 0.957
+#   温度计泡尖 1.099（支管口处）、侧支管口 (0.6038,0.0029,1.0986)
+#   冷凝管 斜置 -58° 进口贴支管口、出口 (0.900,0.0029,0.917) 罩接液瓶口
+#   接液瓶 (0.900,0.0029) 锥形瓶 口 0.897
+#   火柴   (0.40,-0.06,0.813) 头 +X 朝灯芯
+#   最远抓点：火柴高位 (0.44,-0.06,1.35) → 距底座 √(0.44²+0.02²+0.64²)≈0.777m，0.855m 臂展内
+usd_path: "assets/scenes/d_wetchem/d5_distillation/d5_distillation.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（一般不用改；gripper 开度 = joint[7]，与 flametest/d2s/d3l/d6/d7/d9/b2 一致）
+grasp_xy_threshold: 0.03        # 夹爪距抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+
+# 蒸馏现象相态时序（帧 @60fps，可调）：
+#   ignite_dwell  点火后停留（火焰亮，未加热）
+#   heat_dwell    加热期（气泡随进度渐起）
+#   boil_dwell    沸腾保持（气泡全开）
+#   之后 distilling 馏出液滴落收集（task 内 RECV_TARGET 决定滴数），
+#   result_hold   收集完成后火焰保持再熄灭
+#   flame_fade    火焰熄灭帧数
+ignite_dwell_frames: 30
+heat_dwell_frames: 180
+boil_dwell_frames: 180
+result_hold_frames: 90
+flame_fade_frames: 45
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 装置预组装静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 前侧拉远俯拍整个工作区（装置横跨 x[0.40,0.90]，中心 ≈(0.60,0,0.85)）
+    translation: [0.60, 0.95, 1.40]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.0, 0.0, 0.46726, 0.88412]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 顶部俯视，对中工作区中心，up=+Y
+    translation: [0.60, -0.05, 1.30]
+    resolution: [1024, 1024]
+    focal_length: 17
+    orientation: [0.98374, 0.17962, 0.0, 0.0]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [1024, 1024]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 (0.0,-0.08)：D5 复用 B2 点火坐标（酒精灯 0.5286,0.0029、火柴 0.40,-0.06），
+  # 故底座必须照 B2 的 [0.0,-0.08,0.71]（不是 D2-S 的 [-0.15,0.05,0.71]）。
+  position: [0.0, -0.08, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

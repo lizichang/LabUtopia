@@ -4,7 +4,7 @@
 > 「运行参数」= 运行时通过 `--result 参数=值` 传入的实验输入（config 的 `experiment_result` 块）；详解见文末「参数详解」。
 > 更新日期：2026-08-26
 
-**完成情况：10 / 27**
+**完成情况：15 / 27**（含 D9 氧气检验，原 D12 改名补位）
 
 ## A. 仪器测量（3）
 
@@ -12,7 +12,7 @@
 |---|---|---|---|---|---|
 | [x] | A1 | 折光率测量（折光仪） | `a_instrument/a1_refractometer/` | `n_d` | 全自动流程，含屏幕读数动画；缺归瓶/合盖/擦镜纸后段 |
 | [ ] | A2 | 旋光仪测量（旋光仪） | `a_instrument/a2_polarimeter/` | — | 复合宏：称量配液+测量；需天平、药匙抖落 |
-| [ ] | A3 | 电导率测量（电导率仪） | `a_instrument/a3_conductivity/` | — | 复合宏：称量配液+电极浸入 |
+| [x] | A3 | 电导率测量（电导率仪） | `a_instrument/a3_conductivity/` | `conductivity` | 夹皿倒粉→洗瓶注水→搅拌→提电极；py_compile 绿，运行验证待用户 |
 
 ## B. 热操作（5）
 
@@ -20,15 +20,16 @@
 |---|---|---|---|---|---|
 | [ ] | B1 | 酒精灯加热（固体样品） | `b_thermal/b1_alcohol_heat_solid/` | — | 前缀复用 D2-S 药匙挖粉 |
 | [x] | B2 | 酒精灯加热（液体/沸点测定） | `b_thermal/b2_alcohol_heat_liquid/` | `boiling_point` | 挂温度计分两段，段1完成，段2待办 |
-| [ ] | B3 | 水浴加热 | `b_thermal/b3_water_bath/` | — | |
-| [ ] | B4 | 冰浴/冷却 | `b_thermal/b4_ice_bath/` | — | |
+| [x] | B3S | 水浴加热（固体熔化） | `b_thermal/b3s_water_bath/` | `sample_phase`, `melt_color` | B3 改名；挖粉→水浴加热→熔化；py_compile+gen verify 绿，运行验证待用户 |
+| [x] | B3L | 水浴加热（液体变色） | `b_thermal/b3l_water_bath/` | `before_color`, `liquid_color` | B3 改液体；滴加溶液（动作参考 d3l）→水浴加热→渐变变色（只变色不沸腾）；py_compile+gen verify 绿，运行验证待用户 |
+| [x] | B4 | 冰浴/冷却 | `b_thermal/b4_ice_bath/` | `liquid_color`, `crystal_color` | 取试管→浸冰浴→归管+洗瓶注水；py_compile 绿，运行验证待用户 |
 | [ ] | B5 | 熔点测定（毛细管法-油浴） | `b_thermal/b5_melting_point/` | — | 最难：研钵+毛细管+橡皮圈，全新器材 |
 
 ## C. 焰色反应与燃烧（4）
 
 | 完成 | 编号 | 动作 | 代码目录 | 运行参数（--result） | 备注 |
 |---|---|---|---|---|---|
-| [x] | C1 | 焰色反应（铂丝蘸取固体） | `c_flame/c1_flame_wire_solid/` | `flame_color` | 复用 flametest |
+| [x] | C1 | 焰色反应（铂丝蘸取固体） | `c_flame/c1_flame_wire_solid/` | `flame_color` | 已迁入 catalogue（类名 C1FlameWireSolidTask） |
 | [ ] | C2 | 焰色反应（隔钴玻璃观察） | `c_flame/c2_cobalt_glass/` | — | 需钴玻璃资产 |
 | [ ] | C3 | 燃烧试验（固体样品） | `c_flame/c3_combustion_solid/` | — | 粉入燃烧匙；燃烧匙已有 |
 | [ ] | C4 | 燃烧试验（液体样品） | `c_flame/c4_combustion_liquid/` | — | |
@@ -41,23 +42,20 @@
 | [x] | D2-L | 液体样品水溶性测试 | `d_wetchem/d2l_water_solubility/` | `mixing`, `sample_color` | 洗瓶滴加水；互溶终点混液颜色 |
 | [x] | D3 | 试剂滴加反应（固体样品） | `d_wetchem/d3s_acid_reagent/` | `has_bubbles`, `has_precipitate`, `input_color`, `liquid_color` | 酸滴加已做（D3-S）；**待办：输入液颜色→震荡渐变未在 task 实现，且整目录未提交 git** |
 | [x] | D4 | 试剂滴加反应（液体样品） | `d_wetchem/d3l_acid_reagent/` + `d4l_alkali_reagent/` | 酸：`has_bubbles`,`has_precipitate`,`liquid_color`；碱：同 | 酸(D3-L)+碱(D4-L)已做，骨架一致 |
-| [ ] | D5 | 固体试剂添加反应（液体样品） | `d_wetchem/d5s_precipitation/` + `d5l_precipitation/` | — | 反向：滴管取液+药匙挖固体 |
 | [x] | D6 | 试纸气体检测（通用） | `d_wetchem/d6_testpaper_gas/` | `gas_result`, `liquid_color` | 4 元动作：润纸/移管/检测/归管 |
 | [ ] | D7 | 气体鉴定（导气管通入检测试剂） | `d_wetchem/d7l_organic_qual/` + `d7s_organic_qual/` | — | 碳酸盐产气鉴定为主，频次约30 |
-| [ ] | D8 | 多步试剂连续滴加反应 | `d_wetchem/d8l_complex_color/` + `d8s_complex_color/` | — | |
-| [ ] | D9 | 同管多试剂串联滴加（VirtualTube） | `d_wetchem/d9l_gas_indicator/` + `d9s_gas_indicator/` | — | 链式宏 |
-| [ ] | D10 | 酸碱滴定 | `d_wetchem/d10_solid_reagent_add/`（注：目录编号与 v12 错位） | — | 双臂协同 |
-| [ ] | D11 | 蒸馏分离 | `d_wetchem/d16_distillation/`（注：目录编号与 v12 错位） | — | 低优先级 |
+| [ ] | D8 | 多步试剂连续滴加反应 | `d_wetchem/d8l_complex_color/` + `d8s_complex_color/` | — | 原 D9 链式宏（VirtualTube）并入 |
+| [x] | D9 | 氧气检验（带火星木条复燃） | `d_wetchem/d9_oxygen_splint/` | `oxygen_result` | 原 D12 改名：摘帽→火柴点灯→木条点燃→甩灭留余烬→悬停管口复燃→归位；py_compile 绿，运行验证待用户 |
+| [ ] | D1 | 酸碱滴定 | `d_wetchem/d1_acid_base_titration/` | — | 双臂协同 |
+| [ ] | D5 | 蒸馏分离 | `d_wetchem/d5_distillation/` | — | 低优先级 |
 
-> 注：仓库 `d_wetchem/` 内另有 `d12_testpaper_gas2`、`d13_multi_drip`、`d14_virtual_tube`、`d15_acid_base_titration` 等目录，为 v10 39 动作时代的占位编号，与 v12 对应关系见下表：
+> 注：仓库 `d_wetchem/` 内另有 `d12_testpaper_gas2`、`d13_multi_drip`、`d14_virtual_tube` 等目录，为 v10 39 动作时代的占位编号，与 v12 对应关系见下表：
 
 | v12 编号 | v10/仓库目录 |
 |---|---|
-| D10 酸碱滴定 | `d15_acid_base_titration/` |
-| D11 蒸馏分离 | `d16_distillation/` |
+| D5 蒸馏分离 | `d5_distillation/` |
 | （v12 已并入 D6） | `d12_testpaper_gas2/` |
-| （v12 已并入 D8） | `d13_multi_drip/` |
-| （v12 已并入 D9） | `d14_virtual_tube/` |
+| （v12 已并入 D8） | `d13_multi_drip/`、`d14_virtual_tube/` |
 
 ## E. 简单物理检测（4）
 
@@ -145,6 +143,14 @@
 |---|---|---|---|
 | `gas_result` | enum | **试纸检测结果**（试纸类型 × 是否变蓝），task 检测时切换湿润端颜色 | `oxidative_blue`(淀粉碘化钾试纸→变蓝，检出氧化性气体)/`oxidative_negative`(不变色)/`alkaline_blue`(红色石蕊试纸→变蓝，检出碱性气体)/`alkaline_negative`(不变色)，默认 `oxidative_blue` |
 | `liquid_color` | enum | **试管内预置反应液颜色**（液柱变体，预留接口） | `colorless`/`blue`/`red`/`green`/`yellow`/`purple`，默认 `blue` |
+
+## D9 氧气检验 — `d9_oxygen_splint`
+
+| 参数 | 类型 | 含义 | 选项 / 默认 |
+|---|---|---|---|
+| `oxygen_result` | enum | **木条是否复燃（氧气检验结果）**。余烬木条悬停氧气试管口上方，`reignite` 余烬复燃（明火显），`negative` 余烬渐熄（无复燃） | `reignite`/`negative`，默认 `reignite` |
+
+行为调参：`grasp_xy_threshold`/`gripper_closed_threshold` 等夹爪检测阈值（一般不用改）。
 
 ## E1 pH 试纸检测 — `e1_ph_testpaper`
 

@@ -12,12 +12,14 @@ reset()：从头再跑（子类必须调用 super().reset()）。
   grip(width, dwell=25)   原地合爪/开爪到 width
   hold(n)                 停在当前位置 n 帧
   shake(center, ...)      在 center 附近水平正弦振荡（"震荡来回 N 下"，抓试管用）
+  stir(center, ...)       绕 center 水平圆周搅拌（"搅拌 N 圈"，棒插烧杯画圆用）
 """
 from ..atomic_actions.flametest.grip_action import GripAction
 from ..atomic_actions.flametest.hold_action import HoldAction
 from ..atomic_actions.flametest.move_action import MoveAction
 from ..atomic_actions.flametest.shake_action import ShakeAction
-from .constants import GRIP_OPEN
+from ..atomic_actions.flametest.stir_action import StirAction
+GRIP_OPEN = 0.04  # 夹爪开度（constants.py 已迁入 catalogue，此值同 catalogue/_shared/constants.py）
 
 
 class BaseMetaAction:
@@ -62,13 +64,18 @@ class BaseMetaAction:
         return self._done
 
 
-def mv(engine, pos, dwell=0, orient=None, linewalk=True, orient_eps=None):
+def mv(engine, pos, dwell=0, orient=None, linewalk=True, orient_eps=None,
+       freeze_dist=0.010, timeout=None):
     """移动到 pos（可带停留/朝向）。orient=None 沿用引擎默认朝向（手指朝下）。
     linewalk=False 强制单次 IK（近奇异短距下降用，见 MoveAction 注释）。
     orient_eps：朝向收敛阈值覆盖（None=全局 ORIENT_EPS；插管入孔段传紧值如
-    0.01 rad ≈0.57°，见 B1 试管放回）。"""
+    0.01 rad ≈0.57°，见 B1 试管放回）。
+    freeze_dist：冻结距离阈值（吸附式抓取低 z IK 死区传 0.03 与 near 一致，
+    机械臂到 near 范围即 freeze，不 force-done 25 秒）。
+    timeout：超时预算帧（近奇异低 z 段传更小值快速放弃，None=全局 1500）。"""
     return MoveAction(engine, pos, dwell, orient=orient, linewalk=linewalk,
-                      orient_eps=orient_eps)
+                      orient_eps=orient_eps, freeze_dist=freeze_dist,
+                      timeout=timeout)
 
 
 def grip(engine, width, dwell=25):
@@ -88,3 +95,13 @@ def shake(engine, center, axis=(1, 0, 0), amplitude=0.02, cycles=3, period=60,
     """
     return ShakeAction(engine, center, axis=axis, amplitude=amplitude,
                        cycles=cycles, period=period, orient=orient)
+
+
+def stir(engine, center, radius=0.015, cycles=3, period=45, orient=None):
+    """绕 center 水平圆周搅拌 cycles 圈（z 锁 center[2]，棒插烧杯后画圆搅拌）。
+
+    orient=None 沿用引擎默认朝向（手指朝下）；显式传时搅拌全程保持该朝向
+    （A3 棒横夹持握用 ORIENT_FWD，见 StirAction）。
+    """
+    return StirAction(engine, center, radius=radius, cycles=cycles,
+                      period=period, orient=orient)

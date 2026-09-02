@@ -1,0 +1,93 @@
+name: Level2_B5MeltingPoint
+
+task_type: "b5_melting_point"
+controller_type: "b5_melting_point"
+
+mode: "collect"
+
+# 场景：b5_melting_point（B5 熔点测定·提勒管法，桌面 z=0.80）
+# 本批次 = 装样五段（用户 2026-08-30「第一个动作拿起毛细管」+「先转着竖过来，然后竖着插进
+# 粉丘里面」+ 2026-08-31「反过来这个毛细管，然后只在竖直方向上下快速来回运动10次」）：
+#   ① PickCapillaryPass —— 拿起台面上的毛细管（熔点管 Ø1.5×100mm，水平躺台面前区，
+#      闭口端 (0.40,0.15)、开口端 (0.50,0.15)，中心抬高 12mm 到 z=0.813 防夹爪扎桌面）：
+#      高位接近 → 竖直下探夹管身中部（两指竖直夹 Ø1.5mm 杆身，照 b2 火柴 LightFlamePass）
+#      → 停顿稳定 → 合爪 → 竖直提起。
+#   ② RotateCapillaryVertical → ③ DipCapillaryIntoPowder → ④ FlipCapillaryToSeal
+#   → ⑤ TampCapillary（竖直快速来回 10 次震实）。
+#   ⑦ 抓温度计（平躺夹起机械臂原地旋转立起来泡朝下）⑧ 蘸石蜡油 ⑨ 贴毛细管吸附 ⑩ 插提勒管；加热/观察熔点留待验收后接续。
+#
+# 台面（2026-09-02 pxr 实测世界 bbox，gen_b5_scene.py verify 输出）：
+#   提勒管 ThieleTube (0.40,0.0029) 底 0.928 口 1.078，侧管 V 顶点（加热点）x=0.355 z=0.9795；
+#   酒精灯 AlcoholLamp (0.355,0.0029) 同轴，火焰尖 0.9795；铁架台 + 试管夹夹主管上部；
+#   石蜡油 ParaffinOil 主管内液柱（静态）；毛细管 CapillaryTube (0.40,0.15,0.813)；
+#   表面皿 SurfaceDish (0.33,0.30) + 粉丘 SamplePowder；主温度计 MainThermometer (0.5340,0.2745)
+#   倒插试管架左前孔泡朝上；蘸油皿 OilDish (0.25,0.15)；试管架 TestTubeRack (0.5528,0.3933)；
+#   火柴 Match (0.40,-0.06,0.813)。
+usd_path: "assets/scenes/b_thermal/b5_melting_point/b5_melting_point.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（与 b1/b2 一致；gripper 开度 = joint[7]）
+grasp_xy_threshold: 0.03        # 夹爪距毛细管抓点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"（毛细管 attached）
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"（毛细管 released）
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 前景取景：毛细管 (0.40-0.50,0.15) + 表面皿 (0.33,0.30) 居画面（主温度计已挪 (0.5340,0.2745)，视线可能偏，待用户目检）。
+    # 取景不佳可平移微调（用户目检）。
+    translation: [0.80, 0.55, 1.50]
+    resolution: [512, 512]
+    focal_length: 10
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 俯视总览：框住 B5 工作区（毛细管/皿/架 x0.33-0.50 + 提勒管/灯/铁架台 x0.50-0.63 两侧）
+    translation: [0.55, 0.15, 1.55]
+    resolution: [512, 512]
+    focal_length: 10
+    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 2026-09-02 用户再调「x=-0.048, y=-0.311」→ [-0.048, -0.311, 0.71]：
+  # 解决温度计挪右后区后的可达性回归——温度计夹点 (0.5340,0.2745,1.000) 距底座 0.875m 卡极限内，
+  # 插管对齐 (0.40,0.0029,1.18) 0.844→0.721m、毛细管/油皿/表面皿全 <0.72m 大幅改善。
+  # ⚠ 温度计提出高位 THERMO_HIGH=1.25 距底座 0.987m 仍超 0.885m，提出段可能 IK 发散（待运行确认）。
+  position: [-0.048, -0.311, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

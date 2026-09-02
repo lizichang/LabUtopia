@@ -3,7 +3,7 @@
 铂丝蘸样品粉末后伸入火焰持续灼烧——task 端 _stain_fired 在铂丝环在火焰区
 且带样品粉时触发染色锥。
 """
-from ._base import BaseMetaAction, mv
+from controllers.flametest_meta_actions._base import BaseMetaAction, mv
 from .constants import FLAME_APPROACH, FLAME_HOLD, COOL_POS
 
 

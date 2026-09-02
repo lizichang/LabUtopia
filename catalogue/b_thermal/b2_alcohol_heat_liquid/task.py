@@ -614,7 +614,7 @@ class B2AlcoholHeatLiquidTask(BaseTask):
     BUBBLE_RISE = 0.0010       # 每帧上升量（m，@60Hz ≈ 0.06m/s，d3l 同款）
     BUBBLE_SPAWN_INTERVAL = 4  # 全速生成间隔帧（@60Hz ≈ 15 颗/s；实际间隔 = 本值/_bubble_vigor）
     BUBBLE_WOBBLE_AMP = 0.0012 # 上升蛇形摆动振幅（±1.2mm，d3l 同款）
-    BUBBLE_MAX_RADIUS = 0.0025  # 气泡中心离管轴最大半径（管内缘 0.0085 − 泡半径 0.006 → ≤0.0025）
+    BUBBLE_MAX_RADIUS = 0.006  # 气泡中心离管轴最大半径（管内缘 0.0085 − 泡半径 0.0025 → ≤0.006）
     BUBBLE_SPAWN_Z = TUBE_BOTTOM_Z + 0.008   # 生成高度（管底上方 8mm，沸石成核点附近）
     N_BUBBLES = 40             # 气泡池数量（== gen BUBBLE_BASE 数量，verify 断言）
 
@@ -986,7 +986,12 @@ class B2AlcoholHeatLiquidTask(BaseTask):
             return
         # 生成：vigor>0 按间隔生成（vigor 越大越密）；vigor=0 停生成（渐熄期只让已飞泡飞完）
         if self._bubble_vigor > 0:
-            if self._bubble_spawn_timer <= 0:
+            # 累积器：每帧 += vigor，攒满 BUBBLE_SPAWN_INTERVAL 生成一颗。旧实现「生成时按当前
+            # vigor 定整数倒计时再每帧 -1」，加热初 vigor≈0.001 时倒计时被钉在 4000 帧，之后
+            # vigor 升到 1 仍要数完 4000 帧才出第二颗 → 全程只看到第一颗（2026-08-29 修）。
+            self._bubble_spawn_timer += self._bubble_vigor
+            if self._bubble_spawn_timer >= self.BUBBLE_SPAWN_INTERVAL:
+                self._bubble_spawn_timer -= self.BUBBLE_SPAWN_INTERVAL
                 for i, active in enumerate(self._bubble_active):
                     if not active:
                         self._bubble_active[i] = True
@@ -994,9 +999,6 @@ class B2AlcoholHeatLiquidTask(BaseTask):
                         self._bubble_age[i] = 0
                         self._set_visible(self.bubble_prims[i], True)
                         break
-                self._bubble_spawn_timer = max(1, round(self.BUBBLE_SPAWN_INTERVAL / self._bubble_vigor))
-            else:
-                self._bubble_spawn_timer -= 1
         # 推进在飞气泡：上升（速度差异）+ 蛇形摆动，到液面消失（隐藏留复用）
         for i, (bx, by) in enumerate(self._bubble_bases):
             if not self._bubble_active[i]:

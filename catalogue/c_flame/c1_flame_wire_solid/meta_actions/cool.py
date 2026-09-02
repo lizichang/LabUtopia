@@ -3,7 +3,7 @@
 铂丝在上一元动作末尾已回到 COOL_POS，这里保持冻结 300 帧（冷却 = 停留，
 不是继续移动）。
 """
-from ._base import BaseMetaAction, mv, hold
+from controllers.flametest_meta_actions._base import BaseMetaAction, mv, hold
 from .constants import COOL_POS
 
 

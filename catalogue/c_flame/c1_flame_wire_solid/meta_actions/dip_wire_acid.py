@@ -3,7 +3,7 @@
 修 bug1：取铂丝用原地 GripAction。
 修 bug2：取走后先垂直提出试管架（WIRE_LIFT=1.12 > 架顶 0.917）再平移。
 """
-from ._base import BaseMetaAction, mv, grip, hold
+from controllers.flametest_meta_actions._base import BaseMetaAction, mv, grip, hold
 from .constants import (H, SETTLE, GRIP_WIRE,
                         WIRE_GRASP, WIRE_XY, WIRE_LIFT, ACID_DIP)
 

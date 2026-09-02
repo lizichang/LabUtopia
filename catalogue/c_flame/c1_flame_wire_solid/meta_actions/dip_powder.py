@@ -3,7 +3,7 @@
 开样品瓶塞与 ① 同形态（瓶口合爪 → 提出 → 倒放桌面，修 bug1/bug2）。
 蘸粉点 POWDER_DIP 在开着的样品瓶口上方，垂直下探后停留。
 """
-from ._base import BaseMetaAction, mv, grip, hold
+from controllers.flametest_meta_actions._base import BaseMetaAction, mv, grip, hold
 from .constants import (H, SETTLE, GRIP_OPEN, GRIP_STOPPER, GRIP_WIRE,
                         SSTO_GRASP, SSTO_SIDE, WIRE_GRASP, WIRE_XY, WIRE_LIFT,
                         POWDER_DIP)

@@ -1,0 +1,115 @@
+name: Level2_C2CobaltGlass
+
+task_type: "c2_cobalt_glass"
+controller_type: "c2_cobalt_glass"
+
+mode: "collect"
+
+# 场景：c2_cobalt_glass（C1 焰色反应布局 + 一块固定钴玻璃竖立摆酒精灯 +Y 侧）
+# 钴玻璃（/World/CobaltGlass）竖立、面朝 +Y，玻璃片 z 0.888-0.988 罩住火焰 z 0.898-0.940；
+# camera2 从 +Y 朝 -Y 透过玻璃看火焰（两步判读：直接观察黄焰=Na，隔钴玻璃看紫=K/无色=仅Na）。
+usd_path: "assets/scenes/c_flame/c2_cobalt_glass/c2_cobalt_glass.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# ---- 器材路径（C2CobaltGlassTask 使用，均为 /World 下顶层 prim）----
+dish_path: "/World/SampleDish"          # 表面皿（固定 (0.20,0.02,0.80)）
+hcl_path: "/World/HClBottle"            # 稀盐酸瓶（P2 旋塞 / P5 蘸酸）
+dropper_path: "/World/Dropper"          # 胶头滴管（P3 吸酸滴 2-3 滴）
+wire_path: "/World/PlatinumWire"        # 铂丝（P5-P12，抓最上端）
+sample_path: "/World/SampleBottle"      # 待测固体样品瓶（P9 蘸粉末）
+burner_path: "/World/AlcoholLamp"       # 酒精灯（P4 点燃 / P6-P10 灼烧 / P11 盖灭）
+match_path: "/World/Match"              # 火柴（P4 点燃）
+droplet_path: "/World/Droplet"          # 盐酸滴效果 prim（隐藏）
+dish_acid_path: "/World/DishAcid"       # 皿内酸液效果 prim（隐藏）
+cobalt_glass_path: "/World/CobaltGlass" # 固定钴玻璃（竖立 +Y，静态不抓取）
+# 实验结果输入接口（运行前）：两步判读。
+# ①直接观察火焰颜色（含钠盐通常为黄焰=Na）；②隔钴玻璃观察（吸掉 Na 589nm 黄线后）：
+#   紫色=K（钾）、无色=仅 Na。task 灼烧时先显示 flame_color（直接），观察阶段切
+#   through_glass 结果（紫→flame_stain_purple / 无色→全隐藏）。
+experiment_result:
+  flame_color:
+    label: "火焰颜色（直接观察）"
+    type: enum
+    options: [yellow, purple, green, red, orange, blue]   # Na 黄 / K 紫 / Cu 绿 / Ca,Sr 红
+    default: yellow
+  through_glass:
+    label: "隔钴玻璃观察"
+    type: enum
+    options: [purple, colorless]   # 紫=K（钾） / 无色=仅 Na（钠，黄线被钴玻璃吸收）
+    default: purple
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+flame_color: yellow
+through_glass: purple
+
+# 检测阈值与事件 dwell 帧数（一般不用改）
+grasp_xy_threshold: 0.03        # 夹爪距抓取点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+ignite_dwell_frames: 15         # 火柴头在灯口连续帧数后点着火
+stain_dwell_frames: 150         # 铂丝尖端入外焰连续帧数后显示受染（≈3s@50Hz）
+through_glass_dwell_frames: 150 # 直接观察后隔玻璃观察 dwell 帧数（≈3s）
+extinguish_dwell_frames: 15     # 灯帽盖灯口连续帧数后熄灭
+drop_dwell_frames: 20           # 滴管口悬停帧数后滴第 1 滴
+drop_interval_frames: 30        # 相邻两滴间隔帧数
+n_drops: 3                      # 滴数（V7 文档 2-3 滴）
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # C1 中景+广角（不变）：同框容纳灯+皿+试管架全局上下文。
+    translation: [0.80, 0.50, 1.55]
+    resolution: [512, 512]
+    focal_length: 10
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # C2 隔钴玻璃观察：从 +Y 朝 -Y 透过玻璃看火焰。
+    # 朝向 quaternion [w,x,y,z]=[0,0,0.7071,0.7071]（绕 (0,1,1)/√2 转 180°）：
+    #   前向=世界 -Y、图像上=世界 +Z（直立）、右向=世界 -X。
+    # 眼位 (0.5132, 0.90, 0.94)：酒精灯火焰 (0.5132,0.5256) 的 +Y 侧、玻璃中心高度，
+    #   玻璃 (y≈0.68) 与火焰 (y≈0.526) 都在视线 -Y 上，玻璃片填满画幅、火焰透过可见。
+    translation: [0.5132, 0.90, 0.94]
+    resolution: [512, 512]
+    focal_length: 30
+    orientation: [0, 0, 0.7071, 0.7071]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  position: [0.25, 0.32, 0.71]   # 底座靠回原位置方向（左下），火柴离机械臂更远；最远物品仍为 Match 0.69m，留 0.16m 余量
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

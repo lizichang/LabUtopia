@@ -1,7 +1,9 @@
 """C1 焰色反应（铂丝蘸取固体样品）。
 
-已实现（复用现有 flametest）：task.py/controller.py re-export
-`tasks.flametest_task.FlameTestTask` 与 `controllers.flametest_controller.FlameTestTaskController`；
-config.yaml 是 config/level2_FlameTest.yaml 的自包含副本（键 c1_flame_wire_solid）。
-运行：python main.py --config-dir catalogue/c_flame/c1_flame_wire_solid --config-name config
+task.py / controller.py / meta_actions/ 已从旧 flametest 实现迁入本目录，
+类名 C1FlameWireSolidTask / C1FlameWireSolidTaskController；
+共享 IK 基础设施仍在 controllers/atomic_actions/flametest/ 与
+controllers/flametest_meta_actions/_base.py（约 20 个实验共用，未迁移）。
+
+运行：python main.py --config-dir config --config-name level2_C1FlameWireSolid --backend gpu
 """

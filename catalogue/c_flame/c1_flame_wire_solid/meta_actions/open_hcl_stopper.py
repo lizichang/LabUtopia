@@ -2,7 +2,7 @@
 
 修 bug1：合爪用原地 GripAction（不驱动 IK），瓶塞真被抓起。
 """
-from ._base import BaseMetaAction, mv, grip, hold
+from controllers.flametest_meta_actions._base import BaseMetaAction, mv, grip, hold
 from .constants import (H, SETTLE, GRIP_OPEN, GRIP_STOPPER,
                         STO_GRASP, STO_SIDE)
 

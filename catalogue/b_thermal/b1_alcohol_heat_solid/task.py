@@ -324,7 +324,9 @@ class B1AlcoholHeatSolidTask(BaseTask):
 
     # 试管（加热流第⑤步：水平横夹拿管 → 移到酒精灯火焰上方，矩阵持握随夹爪转）
     TUBE = "/World/TestTube"
-    TUBE_GRIP_CLOSED = GRIP_TUBE + 0.004   # 夹紧阈值：grip 0.0096 + 4mm 裕量
+    TUBE_GRIP_CLOSED = 0.019              # 夹紧阈值（2026-08-30 修：旧 0.0096+4mm=0.0136 只比指令开度
+                                          #   宽 4mm，手指贴合管壁读回略高于阈值即永不吸附；放宽到 0.019
+                                          #   手指一开始合拢即吸附，同 B3 修法）
     # 持握 = _T_HELD_TUBE · tool_world（模块常量，反解自「抓点处=静止」）；管内白粉柱
     # TUBE_SAMPLE 随管刚性跟随（同矩阵平移 (0,0,TUBE_POWDER_OFFSET_Z)），不再悬在原架里。
 

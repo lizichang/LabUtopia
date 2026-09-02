@@ -22,7 +22,6 @@ from controllers.openclose_controller import OpenCloseTaskController
 from controllers.navigation_controller import NavigationController
 from controllers.mobile_pick_controller import MobilePickController
 from controllers.ignitelamp_controller import IgniteLampTaskController
-from controllers.flametest_controller import FlameTestTaskController
 from controllers.heatlamp_controller import HeatLampTaskController
 from controllers.dropperdrip_controller import DropperDripTaskController
 
@@ -58,6 +57,5 @@ register_controller("LiquidMixing", LiquidMixingController)
 register_controller("navigation", NavigationController)
 register_controller("mobile_pick", MobilePickController)
 register_controller("ignitelamp", IgniteLampTaskController)
-register_controller("flametest", FlameTestTaskController)
 register_controller("heatlamp", HeatLampTaskController)
 register_controller("dropperdrip", DropperDripTaskController)

@@ -9,6 +9,22 @@ from factories.collector_factory import create_collector
 from utils.object_utils import ObjectUtils
 from robots.franka.rmpflow_controller import RMPFlowController as FrankaRMPFlowController
 
+
+class _NullRmpController:
+    """占位 RMPFlow：config `use_rmpflow: false` 时替代真实控制器。
+
+    catalogue 分层任务（C4/C3/D2S/D3L/B2…）用 Lula IK（IkMotionEngine）驱动轨迹，
+    RMPFlow 只被 BaseController 无条件创建 + reset()，从不参与实际运动——纯加载开销
+    （首跑加载神经网络模型，headless 反复起停易卡 GPU）。此占位让各 controller 里的
+    self.rmp_controller.reset() 空操作，跳过模型加载。
+    """
+    def reset(self):
+        return None
+
+    def forward(self, *args, **kwargs):
+        return None
+
+
 class BaseController(ABC):
     """Base class for all controllers in the chemistry lab simulator.
     
@@ -38,11 +54,18 @@ class BaseController(ABC):
         self.rmp_controller = None
         self._last_failure_reason = ""
         
-        self.rmp_controller = FrankaRMPFlowController(
-            name="target_follower_controller",
-            robot_articulation=robot,
-            use_default_config=use_default_config
-        )
+        use_rmpflow = bool(getattr(cfg, "use_rmpflow", True))
+        print("[base] creating RMPFlow controller (use_rmpflow=%s)..." % use_rmpflow)
+        if use_rmpflow:
+            self.rmp_controller = FrankaRMPFlowController(
+                name="target_follower_controller",
+                robot_articulation=robot,
+                use_default_config=use_default_config
+            )
+            print("[base] RMPFlow controller ready")
+        else:
+            self.rmp_controller = _NullRmpController()
+            print("[base] skip RMPFlow (Lula IK only)")
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         OmegaConf.register_new_resolver("eval", lambda x: eval(x))

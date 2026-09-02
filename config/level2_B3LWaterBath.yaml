@@ -1,0 +1,161 @@
+name: Level2_B3LWaterBath
+
+task_type: "b3l_water_bath"
+controller_type: "b3l_water_bath"
+
+mode: "collect"
+
+# 场景：b3l_water_bath（B3L 水浴加热液体样品，桌面 z=0.80）
+# 台面（2026-08-30 B3L 液体实验，pxr 实测）：
+#   样品区＝B3S 改液体（挖粉→滴加溶液，动作参考 d3l）：
+#     试管架 (0.6803,0.3607) z[0.80,0.917]、试管 (0.659,0.241,0.806) 架近侧左孔 z[0.806,0.959]、
+#     滴管 (0.659,0.3209,0.806) 架近侧列第3排竖插（2026-08-31 自中心孔 0.6993 挪近侧列，
+#       再第2排→第3排，尖嘴底贴洞底 0.806，ORIENT_FWD 水平横夹）、
+#     样品瓶 (0.5365,0.20,0.80) 替表面皿位（2026-08-31 自 y=0.105 挪到 rel y=0.15=0.20，
+#       D2S 判据：关键终点相对底座 y ≥0.15 才稳，原 y=0.105 处机械臂正前方奇异位形下不了
+#       探 → 浸液 IK FAIL target=[0.536 0.105 0.96]；瓶内液面 0.840，SolutionLiquid 可见，
+#       瓶口 0.870 尖嘴可浸入；瓶盖倒放桌面 (0.4915,0.20) 密封面朝上）——B3L 无挖粉/皿/药匙，
+#       无洗涤步骤，不摆洗瓶。
+#   加热堆叠＝B2/B3S 相对几何，整组 -Y 平移 25cm：
+#     铁架台 (0.6286,-0.25)、石棉网 (0.5286,-0.25) 顶 0.9205、酒精灯 (0.5286,-0.25)
+#     （火焰初始隐藏，水滴形两焰迁 /World 顶层）、烧杯 250mL (0.5286,-0.25) 底 0.9205 顶 1.0109
+#     （坐石棉网上）——烧杯内盛水 60mm 高（水面 0.9805，水柱 /World/BeakerWater r0.031 可见）=
+#     **水浴**；试管未来由机械臂从架孔取出浸入烧杯水（熔区 = 烧杯水中央 0.9505）。
+#     火柴 (0.40,-0.3129) 头朝灯芯、灯帽静止位 (0.42,-0.2629)（均随灯 -Y 平移）。
+#     无试管夹、铁架台挂钩隐藏。
+#   效果 prim：BeakerWater（烧杯内水柱，可见）、BeakerBubbles/bubble_{0..29}（水浴气泡×30
+#     r2mm 初始隐藏，环带采样只避烧杯壁（B3L 试管浸入水浴，气泡不避试管），加热随温度逐个
+#     reveal、沸腾全亮）、SolutionLiquid（瓶内溶液，可见）、DropperDrop/Drop_0..3（挤胶头
+#     滴落串，初始隐藏）、TestTubeLiquid（管内清色水柱，before_color=clear 回退，隐藏 h0）、
+#     TubeLiquidBefore_<色> ×4（管内加热前色液柱 r8mm，隐藏 h0，滴加逐滴长高）、
+#     TubeLiquidColor_<色> ×4（管内加热后变色柱 r7.6mm 细一圈，隐藏 h0，加热时顶贴液面向下
+#     扩散）——task 动画驱动。
+usd_path: "assets/scenes/b_thermal/b3l_water_bath/b3l_water_bath.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 温度模型（B3L 水浴加热液体）：点火后烧杯水从室温按 heat_rate 升温（8s，气泡随进度逐个出现），
+# 到达沸点后保持并沸腾（气泡全亮 30 泡）→ 触发液体渐变变色（变色柱 TubeLiquidColor_<色> 顶贴
+# 液面向下扩散，~83 帧换完，**只变色不沸腾**）→ 沸腾保持 boil_dwell 5s → tube_return（试管放回
+# 架孔）→ move_lamp（灯 +Y 移 20cm，气泡渐熄）→ cap_lamp（盖帽灭火）→ done
+# debug_cap_lamp=true：跳过段1（滴加/点火），任务直进 cap_lamp 相，只跑 CapLampPass 盖帽
+room_temp: 25.0            # 室温起始温度（°C）
+heat_rate: 0.15625         # 加热速率（°C/帧；25→100°C 差 75，/0.15625 = 480 帧 = 8s @60fps）
+idle_dwell_frames: 20      # 点火前停留帧数（火焰未亮、温度=室温）
+ignite_dwell_frames: 30    # 点火后停留帧数（火焰亮起到开始升温）
+boil_dwell_frames: 300     # 沸腾保持帧数（300 帧 = 5s @60fps，之后进入 tube_return 相放回试管；
+                           #   沸腾期间气泡不熄、变色渐变进行）
+bubble_fade_frames: 240    # 灯移走后气泡逐渐熄灭帧数（240 帧 = 4s @60fps，30 泡逐个熄灭 → done）
+cap_dwell_frames: 15       # 盖帽到位判定的停留帧数（夹爪距 CAP_BURNER < cap_cover_near 连续
+                           #   15 帧 → cap settled → 火焰熄灭、帽锁灯口）
+cap_result_hold_frames: 120  # 熄火后停留帧数（cap settled 火灭后再停留 120 帧=2s 才 done，
+                           #   视频能看到「盖好+火灭」结果再结束）
+debug_cap_lamp: false     # 调试（2026-08-30 盖帽）：true = 跳过段1滴加+点火，任务直进
+                           #   cap_lamp 相只跑 CapLampPass 原位盖帽（task 端把溶液预置管底+
+                           #   火焰点亮）；false = 正常全流程（滴加→点火→加热→盖帽）
+debug_s3_only: false      # 调试（2026-08-31 验证前端，用户「把现在卡住后面的先隐藏，先看
+                           #   前面的对不对」）：true = S3（试管浸入水浴）一完成即收尾成功，
+                           #   跳过段2加热/沸腾/试管放回/移灯/盖帽（卡点，整段隐藏），视频停
+                           #   在试管浸水浴；false = 正常全流程
+
+# 阶段A 滴加：滴管吸液滴入试管循环遍数（一次持握内「瓶口吸液→管口滴液」重复 cycles 遍，
+# 同 d3l；每遍 4 滴，3 遍 = 12 滴 = 管内液面 96mm，浸入水浴后液面高出水面、整管液柱可见）。GRIP_DROPPER/GRIP_SQUEEZE/GRIP_ASPIRATE
+# 在 constants.py（胶头直径/挤/吸，同 d3l）；config 只暴露判定阈值。
+sample_cycles: 3
+grasp_xy_threshold: 0.03      # 进近判定：TCP 距目标点 xy 水平距 < 3cm 视为到达
+gripper_closed_threshold: 0.025   # 夹爪合拢（抓滴管/火柴完成 attached）
+gripper_open_threshold: 0.03      # 夹爪松开（放滴管/火柴 released）
+squeeze_close_threshold: 0.005    # 挤胶头判定（开度 < 5mm = 挤到位，同 d3l）
+
+# 实验结果输入接口（运行前 --result before_color=red --result liquid_color=blue 等覆盖；
+# task 读各字段顶层镜像）。B3L 结果 = 液体加热前/后双颜色 + 渐变变色（照 B2，只变色不沸腾）：
+#   before_color=加热前色（滴加逐滴长高）/ liquid_color=加热后色（变色柱顶贴液面向下扩散）。
+#   颜色 enum 同 B2/d3l：[clear, red, blue, green, purple]。clear=无色水（liquid_color=clear
+#   时无变色，液体保持 before_color）。
+experiment_result:
+  before_color:
+    label: "加热前液体颜色"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: clear
+  liquid_color:
+    label: "加热后液体颜色"
+    type: enum
+    options: [clear, red, blue, green, purple]
+    default: clear
+before_color: clear   # 顶层镜像键（main.py 无条件写回 cfg.before_color，缺则 ConfigKeyError）
+liquid_color: clear   # 顶层镜像键（加热后色，task 读 cfg.liquid_color）
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 常规侧视机位（同 B2/B3S，加热堆叠中心线 x=0.5286 未变，侧视框住整台）。
+    translation: [0.80, 0.50, 1.35]
+    resolution: [1024, 1024]
+    focal_length: 10
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 特写镜头（从 -Y 朝 +Y 水平拍烧杯水浴+试管变色区：烧杯堆叠现 y=-0.25，camera2 在 -0.75
+    #   = 前方 0.5m 正对，框住烧杯水柱 (0.92-1.01)+试管变色区；z=1.00 居中）。
+    # 朝向 [w,x,y,z]=[0.7071,0.7071,0,0]（scipy 验证：前向 R@(0,0,-1)=(0,1,0)=+Y、
+    # 图像上 R@(0,1,0)=(0,0,1)=世界+Z 直立、右向 +X）。用户可后续再调机位。
+    translation: [0.5286, -0.75, 1.00]
+    resolution: [1024, 1024]
+    focal_length: 30
+    orientation: [0.7071, 0.7071, 0.0, 0.0]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera3"
+    name: "camera_3"
+    # 第三独立机位（2026-09-01 用户「现在还没有Camera3，只有两个」）：俯视整张桌面，
+    # 鸟瞰样品区（滴管/样品瓶/试管架）+ 加热堆叠，机械臂可达/卡点一目了然。
+    # 朝向 [w,x,y,z]=[1,0,0,0]（恒等，相机沿局部 -Z = 世界 -Z 竖直朝下）。
+    translation: [0.55, 0.05, 1.70]
+    resolution: [1024, 1024]
+    focal_length: 15
+    orientation: [1.0, 0.0, 0.0, 0.0]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "arm_camera"
+    # 手腕相机（仅显示/视频，不在 obs_names，controller._cache_h5 过滤后不进 h5）；
+    # 2026-09-01 改名 camera_3→arm_camera，把 camera_3 名号让给新加 /World/Camera3 独立机位。
+    resolution: [1024, 1024]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 2026-08-29 复刻 D2-S 机械臂底座 [-0.15, 0.05, 0.71]（用户「把 d2s 所有物品包含机械臂的位置
+  # 复刻过来，这样子挖粉末才不会出错」；D2-S 判据：关键终点相对底座 y ≥0.15 才稳，勿动）。
+  # 滴加 = d3l 同款（滴管/瓶/试管 d3l 坐标）；横越走低空 TRANSIT_Z=1.15。
+  position: [-0.15, 0.05, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

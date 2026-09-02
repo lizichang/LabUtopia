@@ -55,7 +55,7 @@ from isaacsim.core.utils.prims import set_prim_visibility
 from tasks.base_task import BaseTask
 
 
-class FlameTestTask(BaseTask):
+class C1FlameWireSolidTask(BaseTask):
     """Task definition for the 13-step flame test (焰色反应) on a bunsen burner."""
 
     FLAME_COLORS = {

@@ -1,0 +1,102 @@
+name: Level2_C3CombustionSolid
+
+task_type: "c3_combustion_solid"
+controller_type: "c3_combustion_solid"
+
+mode: "collect"
+
+# 场景：c3_combustion_solid（C3 燃烧试验专用布局，桌面 z=0.80）。
+# 用户 2026-09-01 定稿（与 d2s 对齐）：无铁架台；燃烧匙 combustion_spoon.usd 靠在试管架旁
+# (0.596,0.250,0.8068)；药匙 spatula.usd 立架中心孔 (0.6993,0.3608,0.828)；
+# 酒精灯 (0.35,0.05) 帽分离放台面；表面皿 (0.5365,0.105) 内预置粉末；火柴 (0.52,0.05)。
+usd_path: "assets/scenes/c_flame/c3_combustion_solid/c3_combustion_solid.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# ---- 器材路径（C3CombustionSolidTask 使用，均为 /World 下顶层 prim）----
+spoon_path: "/World/CombustionSpoon"    # 燃烧匙（靠在试管架旁，夹柄入焰）
+spatula_path: "/World/Spatula"          # 药匙（立架，挖粉倒燃烧匙）
+dish_path: "/World/SurfaceDish"         # 表面皿（粉末样品来源，固定）
+powder_path: "/World/SamplePowder"      # 粉末样品（皿内，挖粉来源）
+lamp_path: "/World/AlcoholLamp"         # 酒精灯（点燃/加热/移灯/盖灭）
+match_path: "/World/Match"              # 火柴（点燃酒精灯）
+rack_path: "/World/TestTubeRack"        # 试管架（药匙立架所在）
+
+cap_dwell_frames: 15       # 盖帽到位判定停留帧数（夹爪距 CAP_BURNER < cap_cover_near 连续帧，
+                           #   同 B2/B3/C4；帽盖严实才熄火锁灯口）
+
+# 实验结果输入接口（运行前 --result combustion=<档> / --result flame_color=<色> 等；
+# task 读 cfg.combustion / cfg.flame_color）
+experiment_result:
+  combustion:
+    label: "固体燃烧现象（燃烧匙碗入外焰：可燃点燃火焰烧尽留残渣 / 不可燃轻微碳化变黑）"
+    type: enum
+    options: [combustible, non_combustible]
+    default: combustible
+  flame_color:
+    label: "固体燃烧火焰颜色（可燃样品点燃火焰色，用户 09-02「火焰颜色通过输入决定」）"
+    type: enum
+    options: [orange, yellow, red, blue, green, purple]
+    default: orange
+
+# 顶层镜像（写回目标）：结构化 config 需先声明字段，main.py 才能 cfg[field]=值 写回。
+# task 直接读 cfg.combustion / cfg.flame_color。
+combustion: combustible
+flame_color: orange
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 全局概览（复用 C1 camera_1 眼位/朝向）：广角同框容纳灯+皿+燃烧匙+试管架。
+    translation: [0.80, 0.50, 1.55]
+    resolution: [512, 512]
+    focal_length: 10
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 燃烧匙俯视近景：复用 d3l camera_2 俯瞰朝向（朝下看台面，forward≈[-0.136,0.181,-0.974]）。
+    # 旧朝向 [0.7618,-0.6478,0,0] 视线反了朝 -Y（空桌面）→ 2026-09-01 用户反馈空白，改 d3l 朝向。
+    # 眼位 (0.70,0.17,1.24) 俯视燃烧匙碗/把手中心 (0.636,0.25)。
+    translation: [0.70, 0.17, 1.64]
+    resolution: [512, 512]
+    focal_length: 17
+    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  position: [-0.15, 0.05, 0.71]   # 与 d2s 同底座（改前自定义底座致臂卡死，用户要求对齐 d2s）
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
