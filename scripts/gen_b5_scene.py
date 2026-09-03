@@ -12,7 +12,9 @@
 
 用法：python scripts/gen_b5_scene.py   （运行环境：labutopia conda env 有 pxr）
 """
+import math
 import os
+import random
 import shutil
 from pxr import Usd, UsdGeom, UsdShade, UsdLux, Sdf, Gf
 
@@ -49,6 +51,25 @@ OIL_BOTTOM_Z = THIELE_BOTTOM_Z + 0.004   # 0.932
 OIL_TOP_Z = THIELE_BOTTOM_Z + 0.138      # 1.066（液面高于上叉口 0.085）
 OIL_H = OIL_TOP_Z - OIL_BOTTOM_Z
 OIL_CZ = (OIL_BOTTOM_Z + OIL_TOP_Z) / 2
+
+# 石蜡油对流气泡（熔点现象「油浴对流」：加热时在主管内从下叉口上升的气泡，task 动态池驱动）。
+# 气泡 = 亮白小泡，基准位散布主管轴周围，z 全写油底上方（task 每帧覆盖 z）。不变量：
+# len(OIL_BUBBLE_BASE) == task.N_OIL_BUBBLES(16)，verify() 断言。
+OIL_BUBBLE_R = 0.002                        # 气泡半径（Ø4mm，油柱内 r0.010 可见）
+
+
+def _gen_oil_bubbles(n=16, seed=7):
+    rng = random.Random(seed)
+    out = []
+    for _ in range(n):
+        r = 0.0050 * math.sqrt(rng.random())          # 均匀圆盘（sqrt 面积均匀）
+        a = 2.0 * math.pi * rng.random()
+        out.append((TUBE_X + r * math.cos(a), TUBE_Y + r * math.sin(a),
+                    OIL_BOTTOM_Z + 0.012))
+    return out
+
+
+OIL_BUBBLE_BASE = _gen_oil_bubbles()
 
 # 毛细管：台面左前区（待装样，长 100mm 沿 x；抬高 12mm 防夹爪 collider 扎桌面，同火柴）
 # 2026-09-02 tmp 重摆：闭口端 (0.1710,0.2704)、开口端 (0.2710,0.2704)（原 (0.40,0.15)）
@@ -170,6 +191,32 @@ def add_oil_liquid(stage):
           f"(top {OIL_TOP_Z:.4f} > upper port {THIELE_BOTTOM_Z+0.085:.4f})")
 
 
+def add_oil_bubbles(st2):
+    """石蜡油对流气泡组：16 颗亮白小泡在主管内，初始隐藏，加热时 task 动态池 reveal + 上升。
+    （照 b2 气泡组：Sphere 骨架挂 /World/OilBubbles 下，共享亮白材质；半径 Ø4mm 在黄油柱里
+    对比可见）。"""
+    UsdGeom.Xform.Define(st2, "/World/OilBubbles")
+    bub_prims = []
+    for i, (x, y, z) in enumerate(OIL_BUBBLE_BASE):
+        sp = UsdGeom.Sphere.Define(st2, f"/World/OilBubbles/bubble_{i}")
+        sp.CreateRadiusAttr(OIL_BUBBLE_R)
+        sp.AddTranslateOp().Set(Gf.Vec3d(x, y, z))
+        UsdGeom.Imageable(sp).MakeInvisible()
+        bub_prims.append(sp.GetPrim())
+    mat = UsdShade.Material.Define(st2, "/World/OilBubbles/bubble_mat")
+    sh = UsdShade.Shader.Define(st2, "/World/OilBubbles/bubble_mat/Shader")
+    sh.CreateIdAttr("UsdPreviewSurface")
+    sh.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.85, 0.85, 0.80))
+    sh.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.7, 0.7, 0.65))
+    sh.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(0.85)
+    sh.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.3)
+    sh.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+    mat.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), "surface")
+    for p in bub_prims:
+        UsdShade.MaterialBindingAPI(p).Bind(mat)
+    print(f"[effect] {len(OIL_BUBBLE_BASE)} oil bubbles hidden")
+
+
 def add_oil_dish_liquid(stage):
     """蘸油皿里的石蜡油薄层：装样后臂把温度计泡垂直下探蘸油（油滴法吸附的油源）。
 
@@ -215,6 +262,33 @@ def add_sample_plug(st2):
     mat.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), "surface")
     UsdShade.MaterialBindingAPI(plug).Bind(mat)
     print("[plug] SamplePlug cylinder r0.0005 h0.005 at local z0.094 (invisible until dip)")
+
+
+def add_sample_melt(st2):
+    """管内熔化后液柱（熔点现象「相变」：固体白粉 → 透明液，观察熔点用）。
+
+    与 SamplePlug 同尺寸（Ø1mm×5mm，卡开口端内），挂 CapillaryTube 下随管一起动。材质 = 透明
+    半透光（opacity 0.45 微亮，区别于固体白粉不透明），默认 invisible，温度达熔点由 task 打开
+    （同 SamplePlug 固体→透明液 visibility 切换，headless RTX 只响应 visibility 不响应运行时材质编辑）。
+    """
+    melt = UsdGeom.Cylinder.Define(st2, "/World/CapillaryTube/SampleMelt")
+    melt.CreateRadiusAttr(0.0005)
+    melt.CreateHeightAttr(0.005)
+    melt.CreateAxisAttr("Z")
+    UsdGeom.Xformable(melt).AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, 0.094))
+    UsdGeom.Imageable(melt).GetVisibilityAttr().Set(UsdGeom.Tokens.invisible)
+
+    mat = UsdShade.Material.Define(st2, "/World/CapillaryTube/SampleMelt_mat")
+    sh = UsdShade.Shader.Define(st2, "/World/CapillaryTube/SampleMelt_mat/Shader")
+    sh.CreateIdAttr("UsdPreviewSurface")
+    sh.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.90, 0.88, 0.82))
+    sh.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.10, 0.09, 0.08))
+    sh.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.25)
+    sh.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+    sh.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(0.45)
+    mat.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), "surface")
+    UsdShade.MaterialBindingAPI(melt).Bind(mat)
+    print("[melt] SampleMelt cylinder r0.0005 h0.005 at local z0.094 (invisible until melt)")
 
 
 def add_thermo_stopper(stage):
@@ -315,25 +389,32 @@ def detach_lamp_cap(st2):
     print(f"[cap] (no translate op) add translate {tuple(tgt)}")
 
 
-def add_droplet_flame(st2, name, r, z_b, z_a, emissive):
-    """水滴形火焰 = 底半球 Sphere（底部圆） + 上部 Cone（收尖），绕 Z 轴。x 对齐酒精灯中心。"""
-    zc = z_b + r
-    sph = UsdGeom.Sphere.Define(st2, f"/World/{name}_sphere")
+def add_droplet_flame_grp(st2, name, r, z_b, z_a, emissive, hidden=True):
+    """水滴形火焰组 /World/<name>_grp：pivot=火焰底 (LAMP_X, TUBE_Y, z_b)。
+
+    照 C4：组 op 序 translate→rotateXYZ→scale（点先 scale 后 rotate 再 translate = 绕组原点
+    即火焰底缩放/侧摆，不漂移）。task 每帧动画组 scale(高/宽 flicker)+rotateXYZ(侧摆)，
+    火焰「动起来」不呆板（用户 2026-09-02「火焰应该是水滴型然后在动比较逼真，模仿 C3/C4」）。
+    水滴形 = 底半球 Sphere（底部圆）+ 上部 Cone（收尖）。初始熄灭：B5 装样阶段酒精灯尚未点燃，
+    火焰留待点火动作由 task 翻 visible。"""
+    grp = UsdGeom.Xform.Define(st2, f"/World/{name}_grp")
+    grp.AddTranslateOp().Set(Gf.Vec3d(LAMP_X, TUBE_Y, z_b))
+    grp.AddRotateXYZOp().Set(Gf.Vec3f(0.0, 0.0, 0.0))
+    grp.AddScaleOp().Set(Gf.Vec3f(1.0, 1.0, 1.0))
+    zc = r                              # 球心 = 底 + r（局部，底为组原点）
+    h = (z_a - z_b) - r                 # 锥高（底球顶 → apex）
+    sph = UsdGeom.Sphere.Define(st2, f"/World/{name}_grp/{name}_sphere")
     sph.CreateRadiusAttr(r)
-    UsdGeom.Xformable(sph).AddTranslateOp().Set(Gf.Vec3d(LAMP_X, TUBE_Y, zc))
-    h = z_a - zc
-    cone = UsdGeom.Cone.Define(st2, f"/World/{name}")
+    UsdGeom.Xformable(sph).AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, zc))
+    cone = UsdGeom.Cone.Define(st2, f"/World/{name}_grp/{name}")
     cone.GetHeightAttr().Set(h)
     cone.GetRadiusAttr().Set(r)
     cone.CreateAxisAttr("Z")
-    UsdGeom.Xformable(cone).AddTranslateOp().Set(Gf.Vec3d(LAMP_X, TUBE_Y, zc + h / 2))
+    UsdGeom.Xformable(cone).AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, zc + h / 2.0))
     for prim in (sph, cone):
         pname = prim.GetPath().name
-        # 初始熄灭：B5 装样阶段（拿毛细管/蘸粉/贴泡/插管）酒精灯尚未点燃，
-        # 火焰留待后续加热观察阶段由 task 打开 visibility（用户 2026-09-02「最开始是没有点燃火焰的」）
-        UsdGeom.Imageable(prim).GetVisibilityAttr().Set(UsdGeom.Tokens.invisible)
-        mat = UsdShade.Material.Define(st2, f"/World/{pname}_mat")
-        sh = UsdShade.Shader.Define(st2, f"/World/{pname}_mat/Shader")
+        mat = UsdShade.Material.Define(st2, f"/World/{name}_grp/{pname}_mat")
+        sh = UsdShade.Shader.Define(st2, f"/World/{name}_grp/{pname}_mat/Shader")
         sh.CreateIdAttr("UsdPreviewSurface")
         sh.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.01, 0.01, 0.01))
         sh.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*emissive))
@@ -342,22 +423,29 @@ def add_droplet_flame(st2, name, r, z_b, z_a, emissive):
         sh.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
         mat.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), "surface")
         UsdShade.MaterialBindingAPI(prim).Bind(mat)
-    print(f"[lamp] droplet {name}: sphere r{r} c{zc:.4f} + cone apex {z_a:.4f}")
+        if hidden:
+            UsdGeom.Imageable(prim).MakeInvisible()
+    print(f"[lamp] droplet grp {name}: pivot({LAMP_X:.4f},{TUBE_Y:.4f},{z_b:.4f}) "
+          f"r{r} apex {z_a:.4f}" + (" (hidden)" if hidden else ""))
+    return grp
 
 
 def rebuild_flames(st2):
-    """酒精灯火焰迁到 /World 顶层（灯下引用子 prim RTX 不渲染），apex 对准侧管下弯处。"""
+    """酒精灯火焰迁到 /World 顶层 grp（灯下引用子 prim RTX 不渲染），apex 对准侧管下弯处。"""
     for path in ("/World/AlcoholLamp/flame_outer", "/World/AlcoholLamp/flame_inner",
                  "/World/AlcoholLamp/_materials/flame_outer_mat",
-                 "/World/AlcoholLamp/_materials/flame_inner_mat"):
+                 "/World/AlcoholLamp/_materials/flame_inner_mat",
+                 "/World/flame_outer", "/World/flame_inner",
+                 "/World/flame_outer_sphere", "/World/flame_inner_sphere",
+                 "/World/flame_outer_grp", "/World/flame_inner_grp"):
         if st2.GetPrimAtPath(path).IsValid():
             st2.RemovePrim(path)
-    add_droplet_flame(st2, "flame_outer", FLAME_OUTER_R, FLAME_BASE_Z, FLAME_APEX_Z,
-                      (0.35, 0.55, 2.40))   # 外焰偏蓝
-    add_droplet_flame(st2, "flame_inner", FLAME_INNER_R, FLAME_BASE_Z, FLAME_INNER_APEX_Z,
-                      (2.80, 0.55, 0.20))   # 内焰偏黄
-    print(f"[lamp] flames: base {FLAME_BASE_Z:.4f} apex {FLAME_APEX_Z:.4f} "
-          f"(touches thiele heating point x={LAMP_X:.4f})")
+    add_droplet_flame_grp(st2, "flame_outer", FLAME_OUTER_R, FLAME_BASE_Z, FLAME_APEX_Z,
+                          (0.35, 0.55, 2.40), hidden=True)   # 外焰偏蓝
+    add_droplet_flame_grp(st2, "flame_inner", FLAME_INNER_R, FLAME_BASE_Z, FLAME_INNER_APEX_Z,
+                          (2.80, 0.55, 0.20), hidden=True)   # 内焰偏黄
+    print(f"[lamp] flames grp: base {FLAME_BASE_Z:.4f} apex {FLAME_APEX_Z:.4f} "
+          f"(touches thiele heating point x={LAMP_X:.4f}, flicker-driven)")
 
 
 def fix_thermo_material(st2, name="Thermometer"):
@@ -424,6 +512,39 @@ def powder_textures(st2):
                 print(f"[powder] texture {base} -> {newp}")
 
 
+def rotate_thermo_scale(st2):
+    """温度计刻度/白底绕竖轴转净 270°（= 先 +90° 再 +180°）。
+
+    2026-09-03 用户两轮：①「以z为轴+y到+x方向旋转90度，刻度从朝向+x改为-y」→ +90°；②「我刚刚
+    忘考虑还要旋转温度计，在现在基础上还要绕z轴旋转180度」→ 净 270°。原因：+90° 只让**试管架静止位**
+    刻度朝 -Y（pxr 实测 scale 质心 y=0.2668 < 轴 0.2696）；但机械臂 pick 端对端翻转（法兰 -166° +
+    IK ~-14°）会绕水平轴翻 180°，把刻度面**镜像**到 +Y（背对 camera_2）→ 加热工作位（⑫ 插管后）镜头
+    看到的是白底那面。再 +180°（净 270°）让工作位刻度回到 -Y 朝 camera_2。
+
+    asset 里各 prim 局部原点都在温度计轴线上（居中），给每个杆件 prim 加 RotateXYZ(0,0,270) = 绕
+    自身竖轴转。挂环 hanging_ring 不加 → 方向不变。杆/泡/液柱轴对称（转了看不出），实际只有白底和
+    刻度（刻度/白底互换到工作位朝向镜头那面）。机械臂抓杆/插管/挂环坐标不受影响（杆轴对称仍居中）。
+    液柱毛细管若加 z 向锚定缩放 transform，与本 Rz(270) 同绕竖轴，可交换、互不干扰。
+    """
+    rot = Gf.Vec3f(0, 0, 270)
+    for name in ("stem", "bulb", "bulb_liquid", "capillary_liquid", "white_backing", "scale"):
+        p = st2.GetPrimAtPath(f"/World/MainThermometer/Thermometer/{name}")
+        if not p.IsValid():
+            print(f"[thermo] {name} MISSING")
+            continue
+        UsdGeom.Xformable(p).AddRotateXYZOp().Set(rot)
+        print(f"[thermo] {name} RotateXYZ(0,0,270)")
+    # 挂环必须没有 rotate op（方向不变）
+    ring = st2.GetPrimAtPath("/World/MainThermometer/Thermometer/hanging_ring")
+    for op in UsdGeom.Xformable(ring).GetOrderedXformOps():
+        assert op.GetOpType() != UsdGeom.XformOp.TypeRotateXYZ, \
+            "hanging_ring got a rotation — ring direction must stay"
+    r = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"]).ComputeWorldBound(
+        st2.GetPrimAtPath("/World/MainThermometer")).ComputeAlignedRange()
+    print(f"[thermo] thermometer bbox after scale rotation "
+          f"x[{r.GetMin()[0]:+.4f},{r.GetMax()[0]:+.4f}] y[{r.GetMin()[1]:+.4f},{r.GetMax()[1]:+.4f}]")
+
+
 def verify(st2):
     bc = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default"])
     names = ["IronStand", "AlcoholLamp", "ThieleTube", "TestTubeClamp",
@@ -484,6 +605,20 @@ def verify(st2):
     assert plug.IsValid(), "SamplePlug missing"
     assert UsdGeom.Imageable(plug).GetVisibilityAttr().Get() == UsdGeom.Tokens.invisible, \
         "SamplePlug should start invisible"
+    # 熔化后液柱：存在、默认 invisible（温度达熔点由 task 打开）
+    melt = st2.GetPrimAtPath("/World/CapillaryTube/SampleMelt")
+    assert melt.IsValid(), "SampleMelt missing"
+    assert UsdGeom.Imageable(melt).GetVisibilityAttr().Get() == UsdGeom.Tokens.invisible, \
+        "SampleMelt should start invisible"
+    # 石蜡油对流气泡组：16 泡、默认 invisible、半径 OIL_BUBBLE_R（task 加热时 reveal + 上升）
+    bub = st2.GetPrimAtPath("/World/OilBubbles")
+    assert bub.IsValid(), "OilBubbles group missing"
+    nb = len([c for c in bub.GetChildren() if c.GetTypeName() == "Sphere"])
+    assert nb == len(OIL_BUBBLE_BASE), f"oil bubbles count {nb} != {len(OIL_BUBBLE_BASE)}"
+    for i in range(nb):
+        bs = st2.GetPrimAtPath(f"/World/OilBubbles/bubble_{i}")
+        assert abs(UsdGeom.Sphere(bs).GetRadiusAttr().Get() - OIL_BUBBLE_R) < 0.0005, \
+            f"oil bubble_{i} radius wrong"
 
     # 试管架：贴台面（底板底 0.80），左前孔放倒插温度计
     rkn, rkx = boxes["TestTubeRack"]
@@ -544,11 +679,14 @@ def verify(st2):
     assert abs((cmn[0] + cmx[0]) / 2 - (LAMP_X - 0.12)) < 0.005, "cap center x off 12cm beside lamp"
     assert abs((cmn[1] + cmx[1]) / 2 - TUBE_Y) < 0.005, "cap center y off lamp axis"
 
-    # 火焰迁到 /World 顶层，apex 对准侧管下弯处
-    f = st2.GetPrimAtPath("/World/flame_outer")
+    # 火焰迁到 /World 顶层 grp（水滴形，pivot=火焰底，task flicker），apex 对准侧管下弯处
+    f = st2.GetPrimAtPath("/World/flame_outer_grp/flame_outer")
     assert f.IsValid() and f.GetTypeName() == "Cone", "flame_outer cone missing"
     assert abs(UsdGeom.Cone(f).GetRadiusAttr().Get() - FLAME_OUTER_R) < 0.0005, "flame r wrong"
     assert abs(FLAME_APEX_Z - HEAT_Z) < 0.0005, "flame apex not at heat point"
+    assert UsdGeom.Imageable(f).ComputeVisibility() == "invisible", "flame_outer should be hidden"
+    assert st2.GetPrimAtPath("/World/flame_outer_grp").IsValid(), "flame_outer_grp missing"
+    assert not st2.GetPrimAtPath("/World/flame_outer").IsValid(), "ungrouped flame_outer present"
     assert not st2.GetPrimAtPath("/World/AlcoholLamp/flame_outer").IsValid(), \
         "old lamp sub-prim flame still present"
 
@@ -584,6 +722,9 @@ def main():
     fix_env_light(st2)
     fix_thermo_material(st2, "MainThermometer")  # 主温度计：红液去反光
     add_sample_plug(st2)        # 管内样品柱（开口端白粉柱，蘸粉前不可见）
+    add_sample_melt(st2)        # 管内熔化后液柱（相变：固体→透明液，温度达熔点 task 打开）
+    add_oil_bubbles(st2)        # 石蜡油对流气泡组（油浴对流现象，加热时 task 动态池上升）
+    rotate_thermo_scale(st2)    # 温度计刻度/白底绕竖轴 +90°（刻度 +X→-Y 朝 camera_2，挂环不动）
     verify(st2)
     st2.GetRootLayer().Save()
     print("SAVED", OUT)

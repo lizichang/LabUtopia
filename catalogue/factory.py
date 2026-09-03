@@ -22,6 +22,8 @@ from catalogue.c_flame.c4_combustion_liquid.task import C4CombustionLiquidTask
 from catalogue.c_flame.c4_combustion_liquid.controller import C4CombustionLiquidTaskController
 from catalogue.d_wetchem.d2s_water_solubility.task import D2SWaterSolubilityTask
 from catalogue.d_wetchem.d2s_water_solubility.controller import D2SWaterSolubilityTaskController
+from catalogue.d_wetchem.d1_acid_base_titration.task import D1AcidBaseTitrationTask
+from catalogue.d_wetchem.d1_acid_base_titration.controller import D1AcidBaseTitrationTaskController
 from catalogue.d_wetchem.d3l_acid_reagent.task import D3LAcidReagentTask
 from catalogue.d_wetchem.d3l_acid_reagent.controller import D3LAcidReagentTaskController
 from catalogue.d_wetchem.d3s_acid_reagent.task import D3SAcidReagentTask
@@ -110,6 +112,11 @@ def register_catalogue_actions() -> None:
     # D2-S 固体水溶性测试（catalogue 内原生实现：Lula IK + PickSpatula 元动作）
     register_task("d2s_water_solubility", D2SWaterSolubilityTask)
     register_controller("d2s_water_solubility", D2SWaterSolubilityTaskController)
+
+    # D1 酸碱滴定（单臂顺序改编）：P1 加指示剂——滴管吸酚酞→滴入锥形瓶 W 无色→粉→放回；
+    # P2 搬瓶 W→酸式滴定管下、P3 滴定循环、P4 终点读数后续补
+    register_task("d1_acid_base_titration", D1AcidBaseTitrationTask)
+    register_controller("d1_acid_base_titration", D1AcidBaseTitrationTaskController)
 
     # D3-L 酸性试剂滴加反应（液体样品，catalogue 内原生：Lula IK + 滴管元动作）
     register_task("d3l_acid_reagent", D3LAcidReagentTask)

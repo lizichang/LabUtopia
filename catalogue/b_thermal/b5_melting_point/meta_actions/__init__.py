@@ -16,6 +16,7 @@ B5 装样段（用户 2026-08-31「算了还是换一种方法」弃程序化旋
   ⑩ StickCapillaryToBulb    横移到温度计泡旁 → 下探封口端竖贴泡（吸附）
   ⑪ PickThermometer         抓温度计杆身拎起 → 法兰滚 166° 泡翻朝下
   ⑫ InsertThermometerIntoTube  抬高安全高位 → 对齐管口 XY → 竖直下探插管（塞子封口）
+  ⑬ LightFlamePass          拿起火柴 → 斜推进触灯芯点燃酒精灯 → 斜退放回（加热开始）
 加热/观察熔点留待验收后接续。
 """
 from ._base import BaseMetaAction, mv, grip, hold, shake
@@ -30,6 +31,9 @@ from .dip_capillary_oil import DipCapillaryInOil
 from .stick_capillary import StickCapillaryToBulb
 from .pick_thermometer import PickThermometer
 from .insert_thermometer import InsertThermometerIntoTube
+from .light_flame import LightFlamePass
+from .lamp_heat import LampHeatMovePass
+from .cap_lamp import CapLampPass
 
 __all__ = [
     "BaseMetaAction", "mv", "grip", "hold", "shake",
@@ -38,5 +42,6 @@ __all__ = [
     "ReturnCapillaryToTable", "ReturnCapillaryAfterTamp", "ReturnCapillaryAfterOil",
     "TampCapillary", "TampVerticalAction",
     "PickCapillaryMiddle", "DipCapillaryInOil", "StickCapillaryToBulb",
-    "PickThermometer", "InsertThermometerIntoTube",
+    "PickThermometer", "InsertThermometerIntoTube", "LightFlamePass",
+    "LampHeatMovePass", "CapLampPass",
 ]

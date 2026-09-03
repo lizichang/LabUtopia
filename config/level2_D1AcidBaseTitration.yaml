@@ -1,0 +1,97 @@
+name: Level2_D1AcidBaseTitration
+
+task_type: "d1_acid_base_titration"
+controller_type: "d1_acid_base_titration"
+
+mode: "collect"
+
+# 场景：d1_acid_base_titration（D1 酸碱滴定，P1 加指示剂，桌面 z=0.80）。
+# 台面由用户 Blender 手摆 d1_tmp.usd reroot 而来（authoritative final layout）——
+# gen.verify() 世界 bbox（2026-09-02）：
+#   TestTubeRack      (0.475,0.386,0.796)..(0.561,0.672,0.913)
+#   Dropper           竖插架内 (0.4997,0.4512)，尖嘴底 z=0.80、胶头顶 0.9502
+#   IndicatorBottle   (0.2685,0.3925) 瓶口 rim 0.870、瓶内酚酞液面 0.828（塞已搬平放桌面）
+#   conical_flask_93x93x165  独立清点 W (0.2751,0.1844)，瓶口顶 0.9645，
+#                            瓶内预装 NaOH 无色 20mL（FlaskNaOH 柱 r0.033 h0.012，液面 0.816）
+usd_path: "assets/scenes/d_wetchem/d1_acid_base_titration/d1_acid_base_titration.usd"
+
+max_episodes: 1
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+# 检测阈值（gripper 开度 = joint[7]，与 flametest/d2s/d3l 一致；一般不用改）
+grasp_xy_threshold: 0.03        # 夹爪距目标点多近算"到位"
+gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"
+gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"
+squeeze_close_threshold: 0.0035 # 开合小于此值算"挤胶头"（排空气/滴液），持握 0.0055 下留 0.002 裕量
+
+# P1 加指示剂：一次持握 = 抓滴管吸酚酞→移到锥形瓶 W 挤 1 下（成串 3 滴坠入）→放回。
+# 一次挤胶头 = task DropperDrop/Drop_0..2 动画 3 颗粉球；酚酞遇碱即粉，无需重复遍数。
+indicator_cycles: 1
+
+# P1 无色→粉为确定性现象（酚酞遇 NaOH 即显粉），无需实验输入 → 无 experiment_result 块。
+
+task:
+  max_steps: 30000
+  obj_paths: []   # 器材静态摆放，无需随机化
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    # 依次仿照 B5 camera_1（角度/位置逐值照搬；曾疑三摄像头全黑是相机姿态错）。
+    # D1 动作区：指示剂瓶 (0.268,0.393) → 锥形瓶 W (0.275,0.184) → 滴管架 (0.500,0.451)，
+    # 画面中央应罩住这三者 + 滴定管/铁架台 (0.48,0.18)（铁架台+滴定管已整体 +X 10cm）；
+    # 取景不佳可再平移微调（用户目检）。
+    translation: [0.80, 0.55, 1.80]
+    resolution: [512, 512]
+    focal_length: 10
+    orientation: [0.38519, 0.13095, 0.29403, 0.86489]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    # 依次仿照 B5 camera_2（俯视总览，逐值照搬）。
+    # D1 工作区桌面总览（锥形瓶/指示剂瓶/滴管架/滴定管/盐酸瓶均在视线内）。
+    translation: [0.55, 0.15, 1.55]
+    resolution: [512, 512]
+    focal_length: 10
+    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [512, 512]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  # 底座 (0.0379,-0.108)：置于 D1 桌面前下角，锥形瓶 W (0.275,0.184)/指示剂瓶 (0.269,0.393)/
+  # 滴管架 (0.500,0.451) 全部在其 +x/+y 前方。P1 最远抓点（滴管架顶 H=1.15）0.848m 仍在
+  # Franka 0.855m 臂展内。台面范围 P1 不出桌。
+  position: [0.0379, -0.108, 0.71]
+  # 底座朝向（wxyz 标量在前四元数）：绕 +Z 逆时针转 +90°，默认(回家)姿态从朝 +X 转向朝 +Y
+  # （用户 2026-09-03「初始朝向+x 能不能直接朝向+y」）。底座 yaw ≡ joint1 常偏置，运动学等价；
+  # D1 全程竖握滴管(绕 Z 轴对称) → 各世界抓点/下探点可达性不变。P1 控制器运行时读
+  # robot.get_world_pose() 喂 Lula set_robot_base_pose（wxyz 约定一致）→ IK 自动补偿底座旋转。
+  orientation: [0.7071068, 0, 0, 0.7071068]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}

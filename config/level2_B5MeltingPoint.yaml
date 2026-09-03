@@ -14,7 +14,8 @@ mode: "collect"
 #      → 停顿稳定 → 合爪 → 竖直提起。
 #   ② RotateCapillaryVertical → ③ DipCapillaryIntoPowder → ④ FlipCapillaryToSeal
 #   → ⑤ TampCapillary（竖直快速来回 10 次震实）。
-#   ⑦ 抓温度计（平躺夹起机械臂原地旋转立起来泡朝下）⑧ 蘸石蜡油 ⑨ 贴毛细管吸附 ⑩ 插提勒管；加热/观察熔点留待验收后接续。
+#   ⑦ 抓温度计（平躺夹起机械臂原地旋转立起来泡朝下）⑧ 蘸石蜡油 ⑨ 贴毛细管吸附 ⑩ 插提勒管；
+#   ⑬ 火柴点燃酒精灯 → ⑭ 夹灯 X 摆动 15s 控温（油浴对流+样品熔化）→ ⑮ 移灯 -X 5cm → ⑯ 盖帽熄火（2026-09-03 已实现）。
 #
 # 台面（2026-09-02 pxr 实测世界 bbox，gen_b5_scene.py verify 输出）：
 #   提勒管 ThieleTube (0.40,0.0029) 底 0.928 口 1.078，侧管 V 顶点（加热点）x=0.355 z=0.9795；
@@ -44,6 +45,34 @@ grasp_xy_threshold: 0.03        # 夹爪距毛细管抓点多近算"到位"
 gripper_closed_threshold: 0.025 # 夹爪开合小于此值算"夹紧"（毛细管 attached）
 gripper_open_threshold: 0.03    # 夹爪开合大于此值算"松开"（毛细管 released）
 
+# 温度模型（B5 熔点测定）：熔点由输入决定（experiment_result.melting_point，CLI --result 覆盖），
+# 点火后温度从室温按 heat_rate 线性上升，15s（HEAT_SWAY_CYCLES×HEAT_SWAY_PERIOD=900 帧）夹灯
+# X 摆动结束正好升到熔点 → 样品固体熔化（SamplePlug 隐藏/SampleMelt 显示）+ 油浴对流气泡上升；
+# 移灯 -X 5cm 后盖帽熄火 → done。heat_rate 由 task 内部按 (熔点-室温)/900 计算（与 15s 摆动同步），
+# 无需配置。
+# debug_heat_move=true：跳过段1（装样+挂温度计+点火），任务直进 heating 相只跑 LampHeatMovePass
+#   （夹灯摆动 15s + 移灯 -X 5cm）；debug_cap_lamp=true：跳过段1+加热+移灯，灯预摆移灯位+火焰
+#   点亮，任务直进 cap_lamp 相只跑 CapLampPass 盖帽熄火。
+room_temp: 25.0              # 室温起始温度（°C）
+ignite_dwell_frames: 30      # 点火后停留帧数（火焰亮起到开始升温）
+cap_dwell_frames: 15         # 盖帽到位判定的停留帧数（夹爪距 LAMPCAP_BURNER < cap_cover_near
+                             #   连续 15 帧 → cap settled → 火焰熄灭、帽锁灯口）
+cap_result_hold_frames: 180  # 熄火后停留帧数（cap settled 火灭后再停留 180 帧=3s 才 done，
+                             #   视频能看到「盖好+火灭+熔化结果」再结束，同用户「机械臂运动结束
+                             #   后视频再多拍3s」）
+debug_heat_move: false       # 调试：true = 跳过段1，任务直进 heating 相只跑 LampHeatMovePass
+debug_cap_lamp: false        # 调试：true = 跳过段1+加热+移灯，任务直进 cap_lamp 相只跑 CapLampPass
+
+# 实验结果输入接口（运行前 --result melting_point=158 等覆盖；task 读 cfg.melting_point 顶层镜像）
+# 2026-09-03 用户「熔点通过输入决定」：熔点 = 输入数字（number），驱动加热 15s 升温目标 + 样品
+# 熔化相变判定（T>=熔点 → SamplePlug 隐藏、SampleMelt 显示）。
+experiment_result:
+  melting_point:
+    label: "测得样品熔点（°C）"
+    type: number
+    default: 158.0
+melting_point: 158.0    # 顶层镜像键（main.py 无条件写回 cfg.melting_point，缺则 ConfigKeyError）
+
 task:
   max_steps: 30000
   obj_paths: []   # 器材静态摆放，无需随机化
@@ -61,11 +90,17 @@ cameras:
 
   - prim_path: "/World/Camera2"
     name: "camera_2"
-    # 俯视总览：框住 B5 工作区（毛细管/皿/架 x0.33-0.50 + 提勒管/灯/铁架台 x0.50-0.63 两侧）
-    translation: [0.55, 0.15, 1.55]
-    resolution: [512, 512]
-    focal_length: 10
-    orientation: [0.9425, 0.10815, 0.03605, 0.31417]
+    # 温度计刻度特写（2026-09-03 用户「跟 b2 类似的从 -y 朝 +y 拍摄温度计」，摄加热工作位）：
+    #   刻度已由 gen_b5_scene rotate_thermo_scale 把 stem/bulb/scale 等 6 部绕 z +90°（asset +X→+Y，
+    #   再经外层 X-翻转 → 世界 -Y），朝 camera_2；温度计 ⑫ 插入提勒管后在工作位
+    #   (x=0.397,y=0.0059) 直立，管口 z=1.078 上方露刻度段 ~1.08-1.20 → 相机放 -Y 侧平视 +Y
+    #   直拍刻度段（orientation [0.7071,0.7071,0,0] = 沿 +Y 看、+Z 朝上，同 b2 camera_2）。
+    #   酒精灯/铁架台在刻度段下方(z<0.95)不进画面；取景/对焦不佳可平移 translation.z 或调
+    #   focal_length 微调（用户目检）。
+    translation: [0.397, -0.72, 1.15]
+    resolution: [1024, 1024]
+    focal_length: 35
+    orientation: [0.7071, 0.7071, 0.0, 0.0]
     image_type: "rgb"
 
   - prim_path: "/World/Franka/panda_hand/arm_camera"

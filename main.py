@@ -172,10 +172,15 @@ class FFmpegVideoWriter:
 
     def __init__(self, path, width, height, fps=60.0):
         self.path = path
+        # 画质：旧 ultrafast/crf23/yuv420p 高度有损（x264 分块伪影 + 4:2:0 色度抽样磨掉
+        # 火焰/彩色液体边缘）→ 用户反馈 mp4 远不如同帧 PNG 快照清晰（2026-09-03）。
+        # 近无损：veryfast 保吞吐 + crf16 + yuv444p 免色度抽样 → 画面贴近快照；代价文件大、
+        # 编码稍慢（写入阻塞会自然给 sim 限速，单 episode 可接受）。若播放器不支持
+        # yuv444p 或嫌慢，改回 yuv420p 或 crf 23 即可。
         cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo",
                "-pix_fmt", "bgr24", "-s", f"{width}x{height}", "-r", str(fps),
-               "-i", "-", "-an", "-c:v", "libx264", "-preset", "ultrafast",
-               "-threads", "0", "-crf", "23", "-pix_fmt", "yuv420p",
+               "-i", "-", "-an", "-c:v", "libx264", "-preset", "veryfast",
+               "-threads", "0", "-crf", "16", "-pix_fmt", "yuv444p",
                "-g", "60",
                "-movflags", "+frag_keyframe+empty_moov",
                path]
@@ -235,9 +240,14 @@ def main():
         # 只在有图形会话时显示；save_video（mp4 录制）与显示无关，保持开启。
         show_video = (not args.headless) and bool(os.environ.get("DISPLAY"))
 
+    # 底座世界朝向：config robot.orientation（wxyz 标量在前）。缺省恒等四元数——绝大多数任务不设
+    # 就保持底座朝 +X（现状不变）；设了即旋转底座（D1 用于初始朝 +Y，见 config 注释）。Franka
+    # __init__ 收 orientation 传给 Robot → 应用到 /World/Franka prim；P1 控制器运行时读
+    # get_world_pose() 喂 Lula 求解器（同 wxyz 约定），底座旋转由 IK 自动补偿。
     robot = create_robot(
         cfg.robot.type,
-        position=np.array(cfg.robot.position)
+        position=np.array(cfg.robot.position),
+        orientation=np.array(cfg.robot.get("orientation", [1.0, 0.0, 0.0, 0.0])),
     )
     
     stage = omni.usd.get_context().get_stage()

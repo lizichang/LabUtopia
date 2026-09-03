@@ -2,7 +2,10 @@
 """生成滴定管箍环（burette ring clamp）资产，单位：米。
 
 2026-08-27 用户定稿：不要蝴蝶夹，一一复刻铁架台(iron_stand)上那套铁环总成的
-三件结构，只把"大铁环"缩成正好箍住酸式滴定管管身（Ø16）的小环。
+三件结构，只把"大铁环"缩成正好箍住酸式滴定管管身的小环。
+v4 贴管缩（2026-09-02）：burette_acid 已缩 25mL（tube Ø10.2），铁圈内孔从 Ø17
+缩到 Ø11.5（0.65mm 径向余量），环心 RING_CX 钉在管轴 0.113 不变，支臂随环缩
+自动加长到环内缘切点（原 3 倍长在 v3 是外移基准，此处以 RING_CX 为不变锚点）。
 v3 渐变融合：两处连接不再硬拼——
 - collar 端：Ø8 焊球（sphere，圆心在甜甜圈 +X 管心）吞并甜甜圈管端，Ø6 臂杆
   从球内平滑穿出 → 无台阶、圆润过渡；
@@ -13,12 +16,13 @@ v3 渐变融合：两处连接不再硬拼——
 - collar 甜甜圈：套在竖杆上的水平圆环（固定件），外 Ø32 内 Ø16 厚 8mm
   （铁架台竖杆为 12×12mm 方杆，collar 内孔套在杆上）
 - arm   圆柱支臂：圆杆（非方杆），从甜甜圈 +X 外缘伸向大环，长 ~31mm
-- ring  大铁环：水平圆环，原外 Ø108 厚 8mm → 缩成内 Ø17 外 Ø29 厚 Ø6，
-  环心在 x=0.056（管身中心），竖直滴定管管身穿过环心被箍住
+- ring  大铁环：水平圆环，原外 Ø108 厚 8mm → 复刻后缩成内 Ø11.5 外 Ø23.5
+  厚 Ø6，环心在 x=0.113（管身中心），竖直滴定管管身穿过环心被箍住
 
 坐标：竖杆轴=原点（collar 环心在原点、管轴沿 z 竖直）；arm 沿 +X；
-ring 环心在 x=RING_CX=0.056。管身 Ø16 竖直穿过环心，环内孔 Ø17 留 0.5mm
-余量防共面闪烁；arm 外缘到管身内缘 0.5mm 间隙（不穿进管身孔）。
+ring 环心在 x=RING_CX=0.113（= 滴定管管身中心，gen_d1 以 0.113 放滴定管）。
+管身 Ø10.2 竖直穿过环心，环内孔 Ø11.5 留 0.65mm 单边余量防共面闪烁；
+arm 外缘到管身外缘 0.65mm 间隙（不穿进管身孔）。
 
 材质：铸铁深灰金属（metallic 0.85 / roughness 0.30）。
 
@@ -37,23 +41,24 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_USD = os.path.join(REPO, "assets", "equipment")
 OUT_OBJ = os.path.join(tempfile.gettempdir(), "burette_ring_obj")
 
-# 尺寸（米）——酸式滴定管管身实测 Ø16×859mm（burette_acid tube_body）
-TUBE_OD = 0.016      # 管身外径 Ø16
-RING_ID = 0.017      # 箍管环内径 Ø17（箍住 Ø16，0.5mm 余量防共面闪烁）
-ARM_R = 0.003        # 臂杆半径 Ø6（圆杆）
+# 尺寸（米）——酸式滴定管 25mL 缩后管身实测 Ø10.2（burette_acid tube_body）
+TUBE_OD = 0.0102     # 管身外径 Ø10.2
+RING_ID = 0.0115     # 箍管环内径 Ø11.5（贴管缩：箍住 Ø10.2，0.65mm 单边余量）
+ARM_R = 0.003        # 臂杆半径 Ø6（圆杆，v4 不变）
 RING_TUBE = ARM_R    # 箍管环管径 = 臂杆管径（同一根铁条弯成环 → 一体交汇）
-RING_R = RING_ID / 2 + RING_TUBE   # 箍管环环心半径 8.5+3 = 11.5mm
+RING_R = RING_ID / 2 + RING_TUBE   # 箍管环环心半径 5.75+3 = 8.75mm
 
 COLLAR_R = 0.012     # 甜甜圈环心半径（外 Ø32 内 Ø16 厚 Ø8 = 复刻铁架台 collar）
 COLLAR_TUBE = 0.004  # 甜甜圈截面半径 Ø8
 ARM_X0 = COLLAR_R    # 0.012 臂杆起点=甜甜圈 +X 管心（埋进焊球内，端面隐藏）
 
-# 支臂 3 倍长（用户 2026-08-27）：可见杆长（焊球 +X 外缘 0.016 → 箍管环管心）
-# 28.5mm → 85.5mm，箍管环随杆端外移
-ARM_LEN_BASE = 0.0285        # 基准可见杆长
-ARM_LEN = ARM_LEN_BASE * 3.0  # 3 倍
-ARM_X1 = (ARM_X0 + COLLAR_TUBE) + ARM_LEN   # 0.1015 臂杆终点=箍管环管心（同径一体交汇）
-RING_CX = ARM_X1 + RING_R                   # 0.113 箍管环环心 x（= 滴定管管身中心）
+# 环心 RING_CX 钉在管轴 x=0.113（不变锚点）：gen_d1 以 RING_OFFSET_X=0.113 放滴定管/
+# 锥形瓶（世界 0.533），gen_iron_stand 也 verify ring 世界 x == RING_CX。缩环只改半径、
+# 不挪环心 → 支臂随环内缘切点自动外移到 ARM_X1 = RING_CX - RING_R（v3 的"3 倍长"
+# 是让环随杆端外移，v4 反转为环心钉死不外移、杆长由环半径唯一决定）。
+RING_CX = 0.113                    # 箍管环环心 x（= 滴定管管身中心，勿改）
+ARM_X1 = RING_CX - RING_R          # 0.10425 臂杆终点=箍管环环心（同径一体交汇）
+ARM_LEN = ARM_X1 - (ARM_X0 + COLLAR_TUBE)  # 0.08825 可见杆长（焊球外缘 0.016 → 0.10425）
 
 SEG_U, SEG_V = 48, 24   # 圆环周向/截面段数
 
@@ -67,7 +72,7 @@ def build(mb):
     #    ring 端：臂杆管径 = 箍管环管径（同一根铁条弯成环）→ 一体交汇无翻边
     mb.sphere(ARM_X0, 0.0, 0.0, COLLAR_TUBE, 12, SEG_V, "arm")
     mb.h_cylinder((ARM_X0, 0.0, 0.0), (ARM_X1, 0.0, 0.0), ARM_R, 24, "arm")
-    # ③ 箍管环 ring：管径=臂径（一体弯管），内孔Ø17 箍住竖直穿过环心的滴定管
+    # ③ 箍管环 ring：管径=臂径（一体弯管），内孔Ø11.5 箍住竖直穿过环心的滴定管
     mb.torus(RING_CX, 0.0, 0.0, RING_R, RING_TUBE, SEG_U, SEG_V, "ring")
 
 
@@ -121,19 +126,19 @@ def verify(out_usd):
     ok1 = abs(cmax[0] - cmin[0] - 2 * (COLLAR_R + COLLAR_TUBE)) < 1e-3 \
         and abs(cmax[2] - cmin[2] - 2 * COLLAR_TUBE) < 1e-3 \
         and abs((cmax[0] + cmin[0]) / 2) < 1e-4 and abs((cmax[1] + cmin[1]) / 2) < 1e-4
-    # arm: 焊球 x∈[0.008,0.016]（球心0.012-半径0.004）→ 臂杆止 0.0445；y/z=Ø8（球）
+    # arm: 焊球 x∈[0.008,0.016]（球心0.012-半径0.004）→ 臂杆止 0.10425；y/z=Ø8（球）
     ok2 = abs(amax[0] - amin[0] - (ARM_X1 - (ARM_X0 - COLLAR_TUBE))) < 1e-3 \
         and abs(amax[1] - amin[1] - 2 * COLLAR_TUBE) < 1e-3 \
         and abs(amax[2] - amin[2] - 2 * COLLAR_TUBE) < 1e-3
-    # ring: 外 Ø29，环心 x=RING_CX（管身中心），内孔 Ø17，厚 Ø6
+    # ring: 外 Ø23.5，环心 x=RING_CX（管身中心），内孔 Ø11.5，厚 Ø6
     ok3 = abs(rmax[0] - rmin[0] - 2 * (RING_R + RING_TUBE)) < 1e-3 \
         and abs(rmax[1] - rmin[1] - 2 * (RING_R + RING_TUBE)) < 1e-3 \
         and abs(rmax[2] - rmin[2] - 2 * RING_TUBE) < 1e-3 \
         and abs((rmax[0] + rmin[0]) / 2 - RING_CX) < 1e-3
-    # 支臂外缘不穿进管身孔（arm 外缘 < 管身内缘）
+    # 支臂外缘不穿进管身孔（arm 外缘 < 管身外缘-余量）
     ok4 = (amax[0] + ARM_R) <= (RING_CX - TUBE_OD / 2)
-    # 甜甜圈内孔 Ø16（collar 环心半径−截面半径=内孔半径）
-    ok5 = abs(COLLAR_R - COLLAR_TUBE - RING_ID / 2) < 1e-3
+    # 箍管环内孔单边余量 ~0.65mm：内孔半径(RING_R-RING_TUBE) 比 管半径(TUBE_OD/2) 大 0.0006~0.0007
+    ok5 = 0.0005 < (RING_R - RING_TUBE) - TUBE_OD / 2 < 0.0010
     ok = ok1 and ok2 and ok3 and ok4 and ok5 and bad_n == 0
     print(f"[verify] collar=[{(cmax[0]-cmin[0])*1000:.0f}x{(cmax[2]-cmin[2])*1000:.0f}]mm"
           f"(外Ø{2*(COLLAR_R+COLLAR_TUBE)*1000:.0f} 内Ø{2*(COLLAR_R-COLLAR_TUBE)*1000:.0f}) "

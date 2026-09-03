@@ -23,15 +23,18 @@ class PickThermometer(BaseMetaAction):
         e = self.engine
         gx, gy, gz = THERMO_GRASP
         return [
-            # ① 从 -X 侧对齐杆身高度接近（用户 2026-09-02「拿温度计应该先对齐然后往 +X 移动，
-            #    现在直接旋转到位直接跟温度计穿模」——旧高位竖直下探从泡正上方穿泡，改 -X 侧横移避开泡）
-            mv(e, (gx - THERMO_APPROACH_X, gy, gz), orient=ORIENT_FWD),
-            mv(e, THERMO_GRASP, orient=ORIENT_FWD),                        # ② +X 横移到杆身夹点
-            hold(e, SETTLE),                                               # ③ 停顿稳定
-            grip(e, GRIP_THERMOMETER, 60),                                 # ④ 合爪夹杆身
-            mv(e, (gx, gy, THERMO_HIGH), 5, orient=ORIENT_FWD),            # ⑤ 竖直提出（挂环清架顶 0.914）
-            # ⑥ 法兰滚 −166°（限位 ±166°，泡翻朝下 14° 短；纯关节不重解 IK，冻结 TCP 无漂移）
+            # ① 先竖直上提（从贴泡位升到清高 THERMO_HIGH）——用户 2026-09-02「拿温度计前先抬高机械臂
+            #    （当前直接下降旋转）…旋转机械臂都在高处旋转」，避免低处旋转穿铁架台/试管夹
+            mv(e, (gx, gy, THERMO_HIGH)),
+            # ② 高位 -X 侧接近 + 转 ORIENT_FWD（手指朝前）——旋转在高处完成，不再扫铁架台
+            mv(e, (gx - THERMO_APPROACH_X, gy, THERMO_HIGH), orient=ORIENT_FWD),
+            mv(e, (gx, gy, THERMO_HIGH), orient=ORIENT_FWD),    # ③ 高位 +X 横移到杆身正上方
+            mv(e, THERMO_GRASP, orient=ORIENT_FWD),             # ④ 竖直下探到杆身夹点
+            hold(e, SETTLE),                                    # ⑤ 停顿稳定
+            grip(e, GRIP_THERMOMETER, 60),                      # ⑥ 合爪夹杆身
+            mv(e, (gx, gy, THERMO_HIGH), 5, orient=ORIENT_FWD), # ⑦ 竖直提出（挂环清架顶 0.914）
+            # ⑧ 法兰滚 −166°（限位 ±166°，泡翻朝下 14° 短；纯关节不重解 IK，冻结 TCP 无漂移）
             FlangeRollTubeAction(angle=FLANGE_ANGLE),
-            # ⑦ IK 校直剩余 ~14°：ORIENT_VERT=Rx(180°)·ORIENT_FWD（泡朝下精确朝向）
+            # ⑨ IK 校直剩余 ~14°：ORIENT_VERT=Rx(180°)·ORIENT_FWD（泡朝下精确朝向）
             mv(e, (gx, gy, THERMO_HIGH), orient=ORIENT_VERT, linewalk=False, orient_eps=0.03),
         ]

@@ -1,40 +1,43 @@
 # -*- coding: utf-8 -*-
-"""InsertThermometerIntoTube：吸附后整组（温度计+毛细管）高位对齐管口 XY → 竖直下探插管
-（塞子封口）。
+"""InsertThermometerIntoTube：吸附后整组（温度计+毛细管）高位对齐管口 XY → **直接松爪**让
+温度计靠重力落进提勒管、橡胶塞正好卡住管口（弃竖直下探按入）。
 
-用户 2026-09-01 逐字：「然后将温度计竖直以后要抬高竖直插入试管（xy坐标先对齐，然后最后
-只向下运动），现在你是水平穿模按进去的」——旧版从低位直接横移到管口再下探，会水平穿模穿
-过提勒管壁。
+用户 2026-09-02 逐字：「整个过程都没有什么问题就是最把温度计要插进试管里面的时候有问题，
+整个过程应该是位置比较高的地方完成对准然后直接松爪让温度计它落进去，塞子正好对准」——旧版
+从高位竖直下探按进管口（mv 到 insert_z=1.023），用户要的是「高位对准 → 松爪 → 自由落体落进、
+塞子对准卡口」，下探按入动作删除。
 
-2026-09-02 倒插改流程：PickThermometer 已竖直提出并法兰翻转泡朝下，且夹点停在
-THERMO_HIGH=1.25。Insert 从 INSERT_CLEAR_Z=1.18（泡底 1.096 > 管口 1.078 清高；用户「对齐的
-时候 z 坐标不用太高」降 1.25→1.18 保 IK 可达）对齐后下探，无需中转/抬升，两步即可：
-  ① 高位对齐管口 XY（只动 x,y；泡底 1.096 高于管口 1.078，横移不碰壁；对齐 (0.40,0.0029,1.18)
-     =0.844m 底座 < 0.885m 安全）
-  ② 竖直下探插管（只动 z，泡底沉到 INSERT_BULB_Z=0.939、塞子封管口；紧朝向防杆碰口沿）
+轨迹（全程 ORIENT_VERT=Rx(180°)·ORIENT_FWD 泡朝下）：
+  ① 先竖直上提（x,y 锁温度计夹点）到清高 INSERT_CLEAR_Z=1.22（泡底 1.136 > 管口 1.078，先上移再横移）
+  ② 只 -Y 对准（y 从夹点 0.2696 → 管口 0.0059，x 锁夹点 0.3471，纯 y 平移）
+  ③ 只 +X 对准（x 从 0.3471 → 管口 0.397，y 锁 0.0059，纯 x 平移）
+  ④ 直接松爪 grip(GRIP_OPEN)（不再下探）——温度计落体/塞子卡口交 task 侧 _ThermometerLifecycle
+     dropping 状态（松爪触发落体动画，DROP_FRAMES 帧加速落到 INSERT_THERMO_ORIGIN_Z=0.941）。
 
-朝向：全程 ORIENT_VERT（=Rx(180°)·ORIENT_FWD 泡朝下），温度计矩阵持握随夹爪、毛细管相对
-贴泡（task 侧 _update_stuck_capillary）整组竖直插下。
-
-几何：法兰翻转后泡底在夹点正下方 THERMO_BULB_DZ=0.084；下探后夹点 0.939+0.084=1.023 →
-泡底 0.939（塞子封管口 1.078）。毛细管封口端贴泡、开口端沿杆朝上（平行贴杆），随整组竖直
-插下，均在 Ø25mm 主管内腔（泡半径 5mm + 毛细管偏移 5.75mm < 12.5mm），无穿模。
+对齐 (0.397,0.0059,1.22) 距底座 [-0.048,-0.311,0.71] 0.747m < 0.885m 安全（用户 2026-09-02 报
+「松爪子高度太高」1.35→1.22 降 13cm）。松爪后 task 侧温度计 origin 从高位（夹点 1.22 下方
+0.084=1.136）自由落体到 0.941，塞中心 0.137 精确封管口 1.078；毛细管贴泡随整组下落
+（_update_stuck_capillary）。
 """
-from ._base import BaseMetaAction, mv
-from .constants import (TUBE_XY, INSERT_BULB_Z, THERMO_BULB_DZ,
-                        INSERT_CLEAR_Z, ORIENT_VERT)
+from ._base import BaseMetaAction, mv, grip
+from .constants import TUBE_XY, INSERT_CLEAR_Z, ORIENT_VERT, GRIP_OPEN, THERMO_GRASP
 
 
 class InsertThermometerIntoTube(BaseMetaAction):
-    """吸附后：高位对齐管口 XY → 竖直下探插管（塞子封口）。"""
+    """吸附后：高位对齐管口 XY → 直接松爪（温度计落进管口、塞子卡口，task 侧落体动画）。"""
 
     def _build_actions(self):
         e = self.engine
         tx, ty = TUBE_XY                  # 提勒管口轴心 xy
-        insert_z = INSERT_BULB_Z + THERMO_BULB_DZ   # 0.939 + 0.084 = 1.023
+        gx, gy, _ = THERMO_GRASP          # 温度计当前 xy（pick 结束位 = 夹点 xy，泡朝下竖直）
         return [
-            # ① 高位对齐管口 XY（INSERT_CLEAR_Z=1.18，泡底 1.096 > 管口 1.078 清高横移）
+            # ① 先竖直上提（x,y 锁温度计位）到清高 INSERT_CLEAR_Z——用户 2026-09-02「机械臂开始应该
+            #    直接往上移动」，先上移再横移，避免从温度计斜切穿提勒管/夹
+            mv(e, (gx, gy, INSERT_CLEAR_Z), orient=ORIENT_VERT),
+            # ② 只 -Y 对准（y 夹点→管口，x 锁夹点，纯 y 平移）——用户 2026-09-02「旋转完只往 -y 方向移动」
+            mv(e, (gx, ty, INSERT_CLEAR_Z), orient=ORIENT_VERT),
+            # ③ 只 +X 对准（x 夹点→管口，y 锁管口，纯 x 平移）——「-y 对准之后，只往 +x 方向移动」
             mv(e, (tx, ty, INSERT_CLEAR_Z), orient=ORIENT_VERT),
-            # ② 竖直下探插管（只动 z，泡底沉到 0.939、塞子封管口；紧朝向防杆碰口沿）
-            mv(e, (tx, ty, insert_z), orient=ORIENT_VERT, orient_eps=0.03, dwell=60),
+            # ④ 直接松爪（dwell 60 帧给 task 侧落体动画留时间），温度计落进管口、塞子卡口
+            grip(e, GRIP_OPEN, 60),
         ]

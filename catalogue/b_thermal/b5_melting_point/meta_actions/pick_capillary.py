@@ -14,7 +14,8 @@
 """
 from ._base import BaseMetaAction, mv, grip, hold
 from .move_preserve import MovePreserveAction
-from .constants import SETTLE, GRIP_CAPILLARY, GRASP_SEALED, GRASP_OPEN, LIFT_HIGH
+from .constants import (SETTLE, GRIP_CAPILLARY, GRASP_SEALED, GRASP_OPEN,
+                        LIFT_HIGH, CAP_LIFT_Z)
 
 
 class _PickCapillaryEnd(BaseMetaAction):
@@ -22,15 +23,33 @@ class _PickCapillaryEnd(BaseMetaAction):
 
     grasp = GRASP_SEALED            # 子类覆盖：GRASP_SEALED（封口端）/ GRASP_OPEN（开口端）
 
+    def __init__(self, engine, from_home=False):
+        # from_home=True：开局第一个元动作（① 首抓封口端），先竖直上提再横移（见 _build_actions）。
+        self.from_home = from_home
+        super().__init__(engine)
+
     def _build_actions(self):
         e = self.engine
         gx, gy, _ = self.grasp
-        return [
-            mv(e, (gx, gy, LIFT_HIGH)),      # ① 高位接近（手指朝下）
-            mv(e, self.grasp),               # ② 竖直下探到端部夹点（两指竖直夹杆身）
-            hold(e, SETTLE),                 # ③ 停顿稳定（合爪前多停稳）
-            grip(e, GRIP_CAPILLARY, 60),     # ④ 合爪夹住毛细管（task 检测 attached）
-            MovePreserveAction(e, (gx, gy, LIFT_HIGH)),  # ⑤ 纯竖直拎起（管身 task 侧摆转竖直）
+        if self.from_home:
+            # 开局先竖直上提（home 位 → 清高）再横移到毛细管正上方——用户 2026-09-02「第一步就是
+            # 机械臂往上抬不要直接去拿毛细管」：旧版第一动作从 home 直接斜切扫过温度计/试管架穿模。
+            # home 位由 fk_pose(ik_home) 反解（机器人默认即 ik_home），xy 与实际起始夹爪严格一致，
+            # 上提段判为纯 z 直线（x,y 不变），再在高位横移、避开温度计泡顶 1.084 / 架顶 0.897。
+            home_pos, _ = e.fk_pose(e.ik_home)
+            hx, hy, _ = home_pos
+            approach = [
+                mv(e, (hx, hy, CAP_LIFT_Z)),      # ① 先竖直上提（home xy → 清高，纯 z）
+                mv(e, (gx, gy, CAP_LIFT_Z)),      # ② 高位横移到毛细管正上方（清高，不碰温度计/架）
+            ]
+        else:
+            # 非开局（④ 夹开口端 / ⑨ 再夹封口端）：臂已在毛细管附近，直接高位接近即可
+            approach = [mv(e, (gx, gy, LIFT_HIGH))]   # 高位接近（手指朝下）
+        return approach + [
+            mv(e, self.grasp),               # 竖直下探到端部夹点（两指竖直夹杆身）
+            hold(e, SETTLE),                 # 停顿稳定（合爪前多停稳）
+            grip(e, GRIP_CAPILLARY, 60),     # 合爪夹住毛细管（task 检测 attached）
+            MovePreserveAction(e, (gx, gy, LIFT_HIGH)),  # 纯竖直拎起（管身 task 侧摆转竖直）
         ]
 
 

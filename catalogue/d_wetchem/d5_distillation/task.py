@@ -27,6 +27,7 @@ from isaacsim.core.utils.prims import set_prim_visibility
 from tasks.base_task import BaseTask
 from .meta_actions.constants import (
     MATCH_XY, MATCH_REST_Z, MATCH_GRASP, MATCH_HELD_OFFSET, MATCH_TIP_OFFSET, WICK,
+    FLAME_GRPS, FLAME_PRIMS,
 )
 
 
@@ -96,22 +97,33 @@ class D5DistillationTask(BaseTask):
     MATCH_IGNITE_NEAR_FRAMES = 15
     MATCH_IGNITE_DIST = 0.035
 
-    # 现象几何常量（照 gen_d5_scene.py）
-    LAMP_X, LAMP_Y = 0.5286, 0.0029
-    FLASK_BOTTOM_Z = 0.957
-    SAMPLE_LIQ_TOP = 0.971               # 样品液面（0.965 + 0.012/2），气泡触此消失
+    # 现象几何常量（2026-09-03 gen_d5_final.py 实测：忠实用户 tmp 组装件）
+    LAMP_X, LAMP_Y = 0.6981, 0.4610
+    FLASK_BOTTOM_Z = 0.9091
+    SAMPLE_LIQ_TOP = 0.9231               # 样品液面（气泡触此消失）
     BUBBLE_RISE = 0.0004                 # 气泡每帧上升量（m）
     BUBBLE_WOBBLE = 0.0015               # 气泡水平抖动振幅
     BUBBLE_SPAWN_INTERVAL = 2.0          # vigor=1 时每 N 帧生成一个气泡
     N_BUBBLES = 30
-    RECV_X, RECV_Y = 0.900, 0.0029
+    RECV_X, RECV_Y = 0.7051, 0.0787
     RECV_BOTTOM_Z = 0.80
-    DROP_HOME = (0.900, 0.0029, 0.907)   # 冷凝管出口下方 1cm（液滴生成点）
+    DROP_HOME = (0.6991, 0.0759, 0.8372)   # 牛角管下尖(0.8432)下方 6mm（液滴生成点）
     N_DROPS = 8
     DRIP_INTERVAL = 30                   # 每 N 帧落一滴
     DROP_FALL = 30                       # 液滴坠落帧数（加速下落）
     RECV_LEVEL_STEP = 0.006              # 每滴馏出液高度增量
-    RECV_TARGET = 0.042                  # 收集完成液面高（7 滴）
+    RECV_TARGET = 0.042                  # 收集完成液面高（7 滴，顶 0.842 < 牛角管尖 0.8432）
+
+    # 温度计红柱（用户 2026-09-03：开机不该就 100°C，红柱应在点燃酒精灯后缓慢上升）。
+    # 红毛细管 = 整高静态 mesh（局部 z[0.006,0.2533] 底→110°C），gen 已给 Xform 加
+    # (translate,scale) 两 op 压到室温；task 每帧按温度重写两 op（scale.z=f、translate.z=
+    # z0(1-f) 绕底钉 pivot）让红柱随温升自下而上顶起。刻度线性实测：0° 刻线在红底上
+    # 52.4mm、每 °C 升 1.765mm（tmp 刻度 major_0..100 @z 1.0064..1.1833，per-20°≈35.3mm）。
+    ROOM_TEMP = 25.0                     # 起始室温（°C）
+    BOIL_TEMP = 100.0                    # 水沸点（°C，沸腾后恒温）
+    RED_OFF_TO_0MARK = 0.0524            # 红底到 0° 刻线距离 (m)
+    RED_M_PER_DEG = 0.001765             # 每 °C 红柱上升 (m)
+    RED_XFORM = "/World/Thermometer_001/Thermometer/capillary_liquid_001"
 
     LAMP = "/World/AlcoholLamp"
     MATCH = "/World/Match"
@@ -135,9 +147,12 @@ class D5DistillationTask(BaseTask):
         self.result_hold_frames = int(getattr(cfg, "result_hold_frames", 90))
         self.flame_fade_frames = int(getattr(cfg, "flame_fade_frames", 45))
 
-        # 火焰 prim（/World 顶层，照 B2/D9 _flame_paths）
+        # 火焰 = B5 水滴形组（/World/flame_<outer|inner>_grp，gen 建，pivot=火焰底）。
+        #   叶子 prim（球+锥，组内局部坐标）只做可见性 toggle；组本身每帧 flicker（scale/rotate），
+        #   见 _step_flame_anim。组 translate 固定 = gen 实测基准（复位时写回，勿挪）。
         self.flame_prims = self._flame_paths()
-        self.flame_base = [np.array(self._read_translate(p)) for p in self.flame_prims]
+        self.flame_grps = list(FLAME_GRPS)
+        self.flame_grp_base = [np.array(self._read_translate(p)) for p in self.flame_grps]
 
         # 气泡 prim（/World/FlaskBubbles/bubble_0..29，Sphere，初始隐藏）
         self.bubble_prims = [f"{self.FLASK_BUBBLES}/bubble_{i}" for i in range(self.N_BUBBLES)]
@@ -166,6 +181,11 @@ class D5DistillationTask(BaseTask):
         self._drop_to = [None] * self.N_DROPS
         self.recv_level = 0.0
 
+        # 温度计：读红毛细管局部 extent（底 z0 / 全长 L），起始温度 = 室温
+        self._red_ok = False
+        self._read_red_geom()
+        self.temp_c = self.ROOM_TEMP
+
     def reset(self):
         super().reset()
         self.robot.initialize()
@@ -180,10 +200,11 @@ class D5DistillationTask(BaseTask):
         self._drop_state = ["idle"] * self.N_DROPS
         self._drop_t = [0] * self.N_DROPS
         self.recv_level = 0.0
-        # 火焰/气泡/液滴/馏出液全隐 + 基准位复位
+        self.temp_c = self.ROOM_TEMP           # 温度计红柱回室温
+        # 火焰组复位：隐叶子 + 组 translate/scale/rotate 归位（防上轮 flicker 残留）
         self._set_visible(self.flame_prims, False)
-        for p, base in zip(self.flame_prims, self.flame_base):
-            self._set_translate(p, base)
+        for p, base in zip(self.flame_grps, self.flame_grp_base):
+            self._reset_flame_grp(p, base)
         self._set_visible(self.bubble_prims, False)
         for p, base in zip(self.bubble_prims, self.bubble_base):
             self._set_translate(p, base)
@@ -192,6 +213,7 @@ class D5DistillationTask(BaseTask):
         for p in self.drop_prims:
             self._set_translate(p, self.DROP_HOME)
         self._update_recv_liquid()
+        self._apply_red_level()                # 红柱写回室温液位
         # 火柴归位
         self.match.reset()
 
@@ -207,6 +229,7 @@ class D5DistillationTask(BaseTask):
         self.match.step(gripper_pos, opening)
         self._step_match_ignite(gripper_pos)
         self._step_phenomenon()
+        self._apply_red_level()          # 红柱随温度逐帧升（室温起步）
         self._update_effects()
         return self.get_basic_state_info(additional_info={
             "phase": self.phase,
@@ -283,6 +306,15 @@ class D5DistillationTask(BaseTask):
         elif self.phase == "done":
             self.vigor = 0.0
 
+        # 温度模型（红柱跟随）：点燃后在 ignited/heating 线性升温，ramp = 点燃停留 + 加热帧
+        # 数，到沸腾相恰达 100°C 后恒温（水沸点，液体/蒸气温度不再升）；收集完成火焰熄仍 100。
+        if self.phase in ("boiling", "distilling", "finishing"):
+            self.temp_c = self.BOIL_TEMP
+        elif self.flame_lit and self.phase in ("ignited", "heating"):
+            ramp = max(1, self.ignite_dwell_frames + self.heat_dwell_frames)
+            self.temp_c = min(self.BOIL_TEMP,
+                              self.temp_c + (self.BOIL_TEMP - self.ROOM_TEMP) / ramp)
+
         # 气泡动画（沸腾强度 > 0 时逐帧推进；火焰熄灭后 vigor=0 停止）
         self._step_bubbles()
 
@@ -355,15 +387,58 @@ class D5DistillationTask(BaseTask):
         self._set_translate(self.RECV_LIQUID,
                             (self.RECV_X, self.RECV_Y, self.RECV_BOTTOM_Z + h / 2.0))
 
+    def _read_red_geom(self):
+        """读温度计红毛细管 mesh 局部 extent：底 z0 / 全长 L（gen_d5_final 同源读法）。
+        gen 已给 Xform 加 (translate,scale) op，绕 z0 缩放；z0/L 只作底 pivot 与比例标定。"""
+        prim = self.stage.GetPrimAtPath(self.RED_XFORM)
+        if not prim.IsValid():
+            self._red_ok = False
+            return
+        self._red_ok = True
+        self._red_z0 = 0.006        # 兜底：tmp 实测局部底（gen 同值）
+        self._red_len = 0.2473      # 兜底：局部全长（底→110°C）
+        for c in prim.GetChildren():
+            if c.GetTypeName() == "Mesh":
+                g = UsdGeom.Gprim(c)
+                ext = g.GetExtentAttr().Get() if g.GetExtentAttr() else None
+                if ext and len(ext) == 2:
+                    self._red_z0 = float(ext[0][2])
+                    self._red_len = float(ext[1][2] - ext[0][2])
+                break
+
+    def _red_frac(self):
+        """温度 → 红柱高比例 f（红底上 0° 刻线 52.4mm、每 °C 升 1.765mm 线性实测）。
+        室温 25°C≈0.39、沸点 100°C≈0.93、110°C 刻度=1.0（封顶）。"""
+        off = self.RED_OFF_TO_0MARK + self.temp_c * self.RED_M_PER_DEG
+        f = off / max(1e-9, self._red_len)
+        return float(max(0.0, min(1.0, f)))
+
+    def _apply_red_level(self):
+        """把红柱 Xform 的 scale.z=f / translate.z=z0(1-f) 写成当前温度对应液位。
+        op 序 (translate,scale)：矩阵=T·S → 底 z0 钉住不动、柱顶从下往上顶到温度刻线。"""
+        if not getattr(self, "_red_ok", False):
+            return
+        prim = self.stage.GetPrimAtPath(self.RED_XFORM)
+        if not prim.IsValid():
+            return
+        f = self._red_frac()
+        z0 = self._red_z0
+        for op in UsdGeom.Xformable(prim).GetOrderedXformOps():
+            ot = op.GetOpType()
+            if ot == UsdGeom.XformOp.TypeScale:
+                op.Set(Gf.Vec3f(1.0, 1.0, f))
+            elif ot == UsdGeom.XformOp.TypeTranslate:
+                op.Set(Gf.Vec3d(0.0, 0.0, z0 * (1.0 - f)))
+
     def _update_effects(self):
-        """酒精灯火焰：点火后逐帧抖动位置。"""
+        """酒精灯火焰：点火 reveal（叶子 visible）→ B5 水滴组每帧 flicker（scale 高/宽+侧摆）。
+
+        用户「火焰应该像 B5 一样动起来」：只挪 translate 的散装火焰无法缩放焰体，须对组写
+        scale/rotateXYZ。叶子 prim 只切可见性，形状动画全在组上（_step_flame_anim）。
+        """
         self._set_visible(self.flame_prims, self.flame_lit)
         if self.flame_lit:
-            t = float(self.frame_idx)
-            for path, base in zip(self.flame_prims, self.flame_base):
-                jx = 0.0012 * math.sin(t * 0.6 + base[0] * 7.0)
-                jz = 0.0010 * math.sin(t * 0.8 + base[2] * 5.0)
-                self._set_translate(path, np.array(base) + np.array([jx, 0.0, jz]))
+            self._step_flame_anim()
 
     # ------------------------------------------------------------------
     # 持握 / 辅助
@@ -387,8 +462,65 @@ class D5DistillationTask(BaseTask):
                 and abs(gripper_pos[2] - pos[2]) < z_thresh)
 
     def _flame_paths(self):
-        return ["/World/flame_outer", "/World/flame_outer_sphere",
-                "/World/flame_inner", "/World/flame_inner_sphere"]
+        """4 个火焰叶子 prim（外/内焰各 球+锥，组内局部坐标，仅可见性用）。"""
+        return list(FLAME_PRIMS)
+
+    def _reset_flame_grp(self, grp_path, base):
+        """复位火焰组：translate 回 gen 基准，scale/rotate 归位（清上轮 flicker 残留）。"""
+        prim = self.stage.GetPrimAtPath(grp_path)
+        if not prim.IsValid():
+            return
+        for op in UsdGeom.Xformable(prim).GetOrderedXformOps():
+            ot = op.GetOpType()
+            if ot == UsdGeom.XformOp.TypeScale:
+                op.Set(Gf.Vec3f(1.0, 1.0, 1.0))
+            elif ot == UsdGeom.XformOp.TypeRotateXYZ:
+                op.Set(Gf.Vec3f(0.0, 0.0, 0.0))
+            elif ot == UsdGeom.XformOp.TypeTranslate:
+                op.Set(Gf.Vec3d(*base))
+
+    def _smooth_noise(self, t, seed):
+        """确定性平滑噪声（每 3 帧一个随机值，相邻 smoothstep 插值）。火焰 flicker 用，
+        同输入同输出（无随机抖动，录像可复现）。照 B5/C4（修过 20Hz 爆闪 bug）。"""
+        span = 3.0
+        i = math.floor(t / span)
+        f = (t - i * span) / span
+
+        def _rand(n):
+            n = (n * 2654435761 + 12345) & 0xFFFFFFFF
+            n ^= n >> 13
+            return ((n % 1000) / 500.0) - 1.0
+
+        v0, v1 = _rand(i + seed * 131), _rand(i + 1 + seed * 131)
+        f = f * f * (3.0 - 2.0 * f)   # smoothstep
+        return v0 + (v1 - v0) * f
+
+    def _apply_flame_flicker(self, grp_path, base_pos=None, seed=0):
+        """对火焰组每帧 flicker：scale(高/宽) + rotateXYZ(侧摆)，pivot=组原点=火焰底
+        （gen 组 op 序 translate→rotate→scale：先 scale 后 rotate 再 translate = 绕底不漂移）。
+        base_pos 给则同时写 translate（D5 酒精灯火焰固定，恒 None 不动 translate）。"""
+        prim = self.stage.GetPrimAtPath(grp_path)
+        if not prim.IsValid():
+            return
+        t = float(self.frame_idx)
+        h = 1.0 + 0.13 * self._smooth_noise(t, seed) + 0.06 * math.sin(t * 0.35 + seed)
+        w = 1.0 + 0.10 * self._smooth_noise(t, seed + 7) + 0.04 * math.sin(t * 0.53 + seed)
+        lean = 7.0 * self._smooth_noise(t, seed + 13)      # 侧摆度数（±~7°）
+        for op in UsdGeom.Xformable(prim).GetOrderedXformOps():
+            ot = op.GetOpType()
+            if ot == UsdGeom.XformOp.TypeScale:
+                op.Set(Gf.Vec3f(w, w, h))
+            elif ot == UsdGeom.XformOp.TypeRotateXYZ:
+                op.Set(Gf.Vec3f(lean, 0.0, 0.0))
+            elif base_pos is not None and ot == UsdGeom.XformOp.TypeTranslate:
+                op.Set(Gf.Vec3d(*base_pos))
+
+    def _step_flame_anim(self):
+        """酒精灯火焰每帧 flicker（点燃后，B5 同款：外焰 seed1 / 内焰 seed2）。"""
+        if not self.flame_lit:
+            return
+        self._apply_flame_flicker(FLAME_GRPS[0], None, seed=1)
+        self._apply_flame_flicker(FLAME_GRPS[1], None, seed=2)
 
     def _read_translate(self, path):
         prim = self.stage.GetPrimAtPath(path)
